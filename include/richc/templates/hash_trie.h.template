@@ -1,0 +1,164 @@
+// Version 1
+
+#include "base/arena.h"
+#include "base/defines.h"
+
+#ifndef TEMPLATE_HASH_TRIE_NAME
+#error Must define TEMPLATE_HASH_TRIE_NAME with the prefix of the array type name
+#endif
+
+#ifndef TEMPLATE_HASH_TRIE_KEY_TYPE
+#error Must define TEMPLATE_HASH_TRIE_KEY_TYPE with the key type of the hash trie
+#endif
+
+#ifndef TEMPLATE_HASH_TRIE_VALUE_TYPE
+#error Must define TEMPLATE_HASH_TRIE_KEY_TYPE with the value type of the hash trie
+#endif
+
+
+
+#define HASH_TRIE_NAME_t                CONCAT(TEMPLATE_HASH_TRIE_NAME, _t)
+#define HASH_TRIE_KEY_t                 TEMPLATE_HASH_TRIE_KEY_TYPE
+#define HASH_TRIE_VALUE_t               TEMPLATE_HASH_TRIE_VALUE_TYPE
+#define HASH_TRIE_NAME_node_t           CONCAT(TEMPLATE_HASH_TRIE_NAME, _node_t)
+#define HASH_TRIE_NAME_node_array       CONCAT(TEMPLATE_HASH_TRIE_NAME, _node_array)
+#define HASH_TRIE_NAME_node_array_t     CONCAT(TEMPLATE_HASH_TRIE_NAME, _node_array_t)
+#define HASH_TRIE_NAME_node_array_push  CONCAT(TEMPLATE_HASH_TRIE_NAME, _node_array_push)
+#define HASH_TRIE_NAME_make             CONCAT(TEMPLATE_HASH_TRIE_NAME, _make)
+#define HASH_TRIE_NAME_add              CONCAT(TEMPLATE_HASH_TRIE_NAME, _add)
+#define HASH_TRIE_NAME_find             CONCAT(TEMPLATE_HASH_TRIE_NAME, _find)
+
+#ifdef TEMPLATE_HASH_TRIE_LINKAGE
+#define HASH_TRIE_LINKAGE               TEMPLATE_HASH_TRIE_LINKAGE
+#else
+#define HASH_TRIE_LINKAGE               static inline
+#endif
+
+
+#ifndef TEMPLATE_HASH_TRIE_IMPL
+
+typedef struct HASH_TRIE_NAME_node_t {
+    uint32_t child_nodes[4];
+    HASH_TRIE_KEY_t key;
+    HASH_TRIE_VALUE_t value;
+} HASH_TRIE_NAME_node_t;
+
+#define TEMPLATE_ARRAY_NAME             HASH_TRIE_NAME_node_array
+#define TEMPLATE_ARRAY_TYPE             HASH_TRIE_NAME_node_t
+#ifdef TEMPLATE_HASH_TRIE_DEC
+#define TEMPLATE_ARRAY_DEC
+#endif
+#include "templates/array.h.template"
+
+typedef struct HASH_TRIE_NAME_t {
+    HASH_TRIE_NAME_node_array_t *array;
+    uint32_t start;
+} HASH_TRIE_NAME_t;
+
+
+HASH_TRIE_LINKAGE HASH_TRIE_NAME_t HASH_TRIE_NAME_make(HASH_TRIE_NAME_node_array_t *array, arena_t *arena);
+HASH_TRIE_LINKAGE bool HASH_TRIE_NAME_add(HASH_TRIE_NAME_t trie, arena_t *arena, HASH_TRIE_KEY_t key, HASH_TRIE_VALUE_t value);
+HASH_TRIE_LINKAGE const HASH_TRIE_VALUE_t *HASH_TRIE_NAME_find(HASH_TRIE_NAME_t trie, HASH_TRIE_KEY_t key);
+
+
+#endif // ifndef TEMPLATE_HASH_TRIE_IMPL
+
+#ifndef TEMPLATE_HASH_TRIE_DEC
+
+#ifndef TEMPLATE_HASH_TRIE_HASH_FN
+#error Must define TEMPLATE_HASH_TRIE_HASH_FN with the hash function for the key
+#endif
+
+#ifndef TEMPLATE_HASH_TRIE_COMPARE_FN
+#error Must define TEMPLATE_HASH_TRIE_COMPARE_FN with the compare function for the key
+#endif
+
+#define HASH_TRIE_hash                  TEMPLATE_HASH_TRIE_HASH_FN
+#define HASH_TRIE_compare               TEMPLATE_HASH_TRIE_COMPARE_FN
+
+#ifdef TEMPLATE_HASH_TRIE_IMPL
+#define TEMPLATE_ARRAY_NAME             HASH_TRIE_NAME_node_array
+#define TEMPLATE_ARRAY_TYPE             HASH_TRIE_NAME_node_t
+#ifdef TEMPLATE_HASH_TRIE_IMPL
+#define TEMPLATE_ARRAY_IMPL
+#endif
+#include "templates/array.h.template"
+#endif
+
+
+HASH_TRIE_LINKAGE HASH_TRIE_NAME_t HASH_TRIE_NAME_make(HASH_TRIE_NAME_node_array_t *array, arena_t *arena) {
+    uint32_t index = HASH_TRIE_NAME_node_array_push(array, arena);
+    array->data[index] = (HASH_TRIE_NAME_node_t) {0};
+    return (HASH_TRIE_NAME_t) {
+        .array = array,
+        .start = index
+    };
+}
+
+HASH_TRIE_LINKAGE bool HASH_TRIE_NAME_add(HASH_TRIE_NAME_t trie, arena_t *arena, HASH_TRIE_KEY_t key, HASH_TRIE_VALUE_t value) {
+    assert(trie.array && trie.array->data);
+    uint64_t hash = HASH_TRIE_hash(key);
+    uint32_t i = trie.start;
+    while (true) {
+        uint32_t next_i = trie.array->data[i].child_nodes[hash >> 62];
+        if (next_i == 0) {
+            next_i = HASH_TRIE_NAME_node_array_push(trie.array, arena);
+            trie.array->data[i].child_nodes[hash >> 62] = next_i;
+            trie.array->data[next_i] = (HASH_TRIE_NAME_node_t) {
+                .key = key,
+                .value = value
+            };
+            return false;
+        }
+        i = next_i;
+        if (HASH_TRIE_compare(key, trie.array->data[i].key)) {
+            trie.array->data[i].value = value;
+            return true;
+        }
+        hash = (hash << 2) | (hash >> 62);
+    }
+}
+
+HASH_TRIE_LINKAGE const HASH_TRIE_VALUE_t *HASH_TRIE_NAME_find(HASH_TRIE_NAME_t trie, HASH_TRIE_KEY_t key) {
+    if (!trie.array || !trie.array->data) {
+        return 0;
+    }
+    uint64_t hash = HASH_TRIE_hash(key);
+    uint32_t i = trie.start;
+    while (true) {
+        i = trie.array->data[i].child_nodes[hash >> 62];
+        if (i == 0) {
+            return 0;
+        }
+        if (HASH_TRIE_compare(key, trie.array->data[i].key)) {
+            return &trie.array->data[i].value;
+        }
+        hash = (hash << 2) | (hash >> 62);
+    }
+}
+
+
+#endif // TEMPLATE_HASH_TRIE_DEC
+
+#undef HASH_TRIE_NAME_t
+#undef HASH_TRIE_KEY_t
+#undef HASH_TRIE_VALUE_t
+#undef HASH_TRIE_HASH_FN
+#undef HASH_TRIE_COMPARE_FN
+#undef HASH_TRIE_NAME_node_t
+#undef HASH_TRIE_NAME_node_array
+#undef HASH_TRIE_NAME_node_array_t
+#undef HASH_TRIE_NAME_node_array_push
+#undef HASH_TRIE_NAME_make
+#undef HASH_TRIE_NAME_add
+#undef HASH_TRIE_NAME_find
+#undef HASH_TRIE_LINKAGE
+
+#undef TEMPLATE_HASH_TRIE_NAME
+#undef TEMPLATE_HASH_TRIE_KEY_TYPE
+#undef TEMPLATE_HASH_TRIE_VALUE_TYPE
+#undef TEMPLATE_HASH_TRIE_HASH_FN
+#undef TEMPLATE_HASH_TRIE_COMPARE_FN
+#undef TEMPLATE_HASH_TRIE_LINKAGE
+#undef TEMPLATE_HASH_TRIE_DEC
+#undef TEMPLATE_HASH_TRIE_IMPL

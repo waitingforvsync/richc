@@ -1,0 +1,14 @@
+target_sources("richc" PUBLIC
+    "aabb2f.h"
+    "mat22f.h"
+    "mat23f.h"
+    "mat33f.h"
+    "mat34f.h"
+    "mat44f.h"
+    "math.h"
+    "rational.h"
+    "vec2f.h"
+    "vec2i.h"
+    "vec3f.h"
+    "vec4f.h"
+)
