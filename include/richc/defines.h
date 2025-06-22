@@ -17,6 +17,7 @@
 #endif
 
 #define check(cond) ((void)((cond) || (trap(), 0)))
+#define require(cond) ((void)((cond) || (abort(), 0)))
 #define static_check(cond, msg) _Static_assert(cond, msg)
 
 #define ssizeof(x) ((int32_t)sizeof(x))

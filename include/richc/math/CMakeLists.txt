@@ -6,6 +6,7 @@ target_sources("richc" PUBLIC
     "mat34f.h"
     "mat44f.h"
     "math.h"
+    "quat.h"
     "rational.h"
     "vec2f.h"
     "vec2i.h"

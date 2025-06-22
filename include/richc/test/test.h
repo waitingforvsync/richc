@@ -93,11 +93,11 @@ struct test_item {
 	static void test_##group##_##test(struct test_group_data_##group##_t *data)
 
 
-#define REQUIRE(a, op, b)  REQUIRE_IMPL(a, op, b, __FILE__, __LINE__)
-#define REQUIRE_TRUE(a)    REQUIRE_IMPL(!!(a),==,true, __FILE__, __LINE__)
-#define REQUIRE_FALSE(a)   REQUIRE_IMPL(!(a),==,true, __FILE__, __LINE__)
+#define TEST_REQUIRE(a, op, b)  TEST_REQUIRE_IMPL(a, op, b, __FILE__, __LINE__)
+#define TEST_REQUIRE_TRUE(a)    TEST_REQUIRE_IMPL(!!(a),==,true, __FILE__, __LINE__)
+#define TEST_REQUIRE_FALSE(a)   TEST_REQUIRE_IMPL(!(a),==,true, __FILE__, __LINE__)
 
-#define REQUIRE_IMPL(a, op, b, file, line) \
+#define TEST_REQUIRE_IMPL(a, op, b, file, line) \
 	_Generic((a), \
 		bool: test_require_bool, \
 		int8_t: test_require_int, \

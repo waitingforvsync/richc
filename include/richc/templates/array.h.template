@@ -17,8 +17,16 @@
  *      TEMPLATE_ARRAY_LINKAGE   Define to explicitly specify the linkage of generated functions (static, inline, etc)
  */
 
+#ifndef RICHC_TEMPLATE_ARRAY_H_
+#define RICHC_TEMPLATE_ARRAY_H_
+
 #include <string.h>
 #include "richc/arena.h"
+
+
+
+#endif // RICHC_TEMPLATE_ARRAY_H_
+
 
 
 #ifndef TEMPLATE_ARRAY_NAME
@@ -36,6 +44,7 @@
 #define ARRAY_NAME_slice_t             CONCAT(TEMPLATE_ARRAY_NAME, _slice_t)
 
 #define ARRAY_NAME_make                CONCAT(TEMPLATE_ARRAY_NAME, _make)
+#define ARRAY_NAME_make_static         CONCAT(TEMPLATE_ARRAY_NAME, _make_static)
 #define ARRAY_NAME_slice_make          CONCAT(TEMPLATE_ARRAY_NAME, _slice_make)
 #define ARRAY_NAME_view_make           CONCAT(TEMPLATE_ARRAY_NAME, _view_make)
 #define ARRAY_NAME_make_copy           CONCAT(TEMPLATE_ARRAY_NAME, _make_copy)
@@ -367,6 +376,7 @@ ARRAY_LINKAGE bool ARRAY_NAME_view_is_empty(ARRAY_NAME_view_t view) {
 #undef ARRAY_NAME_slice_t
 
 #undef ARRAY_NAME_make
+#undef ARRAY_NAME_make_static
 #undef ARRAY_NAME_slice_make
 #undef ARRAY_NAME_view_make
 #undef ARRAY_NAME_make_copy

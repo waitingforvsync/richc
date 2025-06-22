@@ -9,10 +9,6 @@ typedef struct str_t {
     int32_t len;
 } str_t;
 
-typedef struct str_pair_t {
-    str_t first;
-    str_t second;
-} str_pair_t;
 
 typedef struct mstr_t {
     union {
@@ -57,10 +53,17 @@ int32_t str_find_last(str_t a, str_t b);
 bool str_contains(str_t a, str_t b);
 str_t str_remove_prefix(str_t src, str_t prefix);
 str_t str_remove_suffix(str_t src, str_t suffix);
+
+typedef struct str_pair_t {
+    str_t first;
+    str_t second;
+} str_pair_t;
+
 str_pair_t str_first_split(str_t src, str_t split_by);
 str_pair_t str_last_split(str_t src, str_t split_by);
 uint64_t str_hash(str_t s);
 const char *str_as_cstr(str_t s, char *buffer, int32_t buffer_size);
+
 
 #define STR_PRINT(s) (s).len, (s).data
 #define STR_FORMAT "%.*s"

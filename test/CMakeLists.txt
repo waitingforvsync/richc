@@ -9,6 +9,7 @@ endif()
 target_link_libraries("richc_tests" PRIVATE "richc")
 
 target_sources("richc_tests" PRIVATE
+	"arena_tests.c"
     "file_tests.c"
     "main.c"
     "str_tests.c"

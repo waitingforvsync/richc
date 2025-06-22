@@ -3,7 +3,7 @@
 
 
 #define ARENA_BLOCK_HEADER_SIZE (32)
-#define ARENA_DEFAULT_BLOCK_SIZE (16 * 1024)
+#define ARENA_DEFAULT_BLOCK_SIZE (64 * 1024)
 
 // Arenas are coarse allocations from which smaller allocations are made in a stack-like manner.
 // Instead of freeing allocations individually, they may be freed in one go by resetting the arena.
@@ -36,7 +36,7 @@ arena_t arena_make_with_size(int32_t initial_size) {
 
 static arena_block_header_t *arena_add_block(int32_t size, arena_block_header_t *prev_block) {
     arena_block_header_t *block = calloc(size, 1);
-    check(block);
+    require(block);
 
     if (prev_block) {
         prev_block->next = block;
