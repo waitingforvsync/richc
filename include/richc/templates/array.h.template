@@ -23,6 +23,9 @@
 #include <string.h>
 #include "richc/arena.h"
 
+#define ARRAY(a) {a, ssizeof(a) / ssizeof(*a), ssizeof(a) / ssizeof(*a) }
+#define SLICE(a) {a, ssizeof(a) / ssizeof(*a)}
+#define VIEW(a)  {a, ssizeof(a) / ssizeof(*a)}
 
 
 #endif // RICHC_TEMPLATE_ARRAY_H_
@@ -30,10 +33,12 @@
 
 
 #ifndef TEMPLATE_ARRAY_NAME
+#define TEMPLATE_ARRAY_NAME int_array
 #error Must define TEMPLATE_ARRAY_NAME with the prefix of the array type name
 #endif
 
 #ifndef TEMPLATE_ARRAY_TYPE
+#define TEMPLATE_ARRAY_TYPE int
 #error Must define TEMPLATE_ARRAY_TYPE with the element type of the array
 #endif
 
@@ -112,11 +117,12 @@ typedef struct ARRAY_NAME_t {
 } ARRAY_NAME_t;
 
 ARRAY_LINKAGE ARRAY_NAME_t ARRAY_NAME_make(arena_t *arena, int32_t initial_capacity);
+ARRAY_LINKAGE ARRAY_NAME_t ARRAY_NAME_make_static(ARRAY_TYPE_t *data, int32_t num);
 ARRAY_LINKAGE ARRAY_NAME_slice_t ARRAY_NAME_slice_make(ARRAY_TYPE_t *data, int32_t num);
 ARRAY_LINKAGE ARRAY_NAME_view_t ARRAY_NAME_view_make(const ARRAY_TYPE_t *data, int32_t num);
 ARRAY_LINKAGE ARRAY_NAME_t ARRAY_NAME_make_copy(const ARRAY_NAME_view_t src, arena_t *arena, int32_t min_capacity);
 ARRAY_LINKAGE void ARRAY_NAME_reserve(ARRAY_NAME_t *array, arena_t *arena, int32_t capacity);
-ARRAY_LINKAGE ARRAY_NAME_slice_t ARRAY_NAME_resize(ARRAY_NAME_t *array, arena_t *arena, int32_t size);
+ARRAY_LINKAGE ARRAY_NAME_slice_t ARRAY_NAME_resize(ARRAY_NAME_t *array, arena_t *arena, int32_t size, bool zero_initialize);
 ARRAY_LINKAGE void ARRAY_NAME_reset(ARRAY_NAME_t *array);
 ARRAY_LINKAGE int32_t ARRAY_NAME_add(ARRAY_NAME_t *array, arena_t *arena, ARRAY_TYPE_t value);
 ARRAY_LINKAGE int32_t ARRAY_NAME_append(ARRAY_NAME_t *array, arena_t *arena, ARRAY_NAME_view_t to_append);
@@ -138,7 +144,7 @@ ARRAY_LINKAGE ARRAY_TYPE_t ARRAY_NAME_view_get_last(ARRAY_NAME_view_t view);
 ARRAY_LINKAGE const ARRAY_TYPE_t *ARRAY_NAME_view_at(ARRAY_NAME_view_t view, int32_t index);
 ARRAY_LINKAGE ARRAY_NAME_view_t ARRAY_NAME_make_subview(ARRAY_NAME_view_t view, int32_t start, int32_t end);
 ARRAY_LINKAGE ARRAY_NAME_view_t ARRAY_NAME_view_get_head(ARRAY_NAME_view_t view, int32_t num);
-ARRAY_LINKAGE ARRAY_NAME_view_t ARRAY_NAME_view_get_tail(ARRAY_NAME_view_t view, int32_t num);
+ARRAY_LINKAGE ARRAY_NAME_view_t ARRAY_NAME_view_get_tail(ARRAY_NAME_view_t view, int32_t from_index);
 ARRAY_LINKAGE bool ARRAY_NAME_is_empty(const ARRAY_NAME_t *array);
 ARRAY_LINKAGE bool ARRAY_NAME_slice_is_empty(ARRAY_NAME_slice_t slice);
 ARRAY_LINKAGE bool ARRAY_NAME_view_is_empty(ARRAY_NAME_view_t view);
@@ -158,7 +164,19 @@ ARRAY_LINKAGE ARRAY_NAME_t ARRAY_NAME_make(arena_t *arena, int32_t initial_capac
     };
 }
 
+ARRAY_LINKAGE ARRAY_NAME_t ARRAY_NAME_make_static(ARRAY_TYPE_t *data, int32_t num) {
+    check(data);
+    check(num >= 0);
+    return (ARRAY_NAME_t) {
+        .data = data,
+        .num = num,
+        .capacity = 0
+    };
+}
+
 ARRAY_LINKAGE ARRAY_NAME_slice_t ARRAY_NAME_slice_make(ARRAY_TYPE_t *data, int32_t num) {
+    check(data);
+    check(num >= 0);
     return (ARRAY_NAME_slice_t) {
         .data = data,
         .num = num
@@ -166,6 +184,8 @@ ARRAY_LINKAGE ARRAY_NAME_slice_t ARRAY_NAME_slice_make(ARRAY_TYPE_t *data, int32
 }
 
 ARRAY_LINKAGE ARRAY_NAME_view_t ARRAY_NAME_view_make(const ARRAY_TYPE_t *data, int32_t num) {
+    check(data);
+    check(num >= 0);
     return (ARRAY_NAME_view_t) {
         .data = data,
         .num = num
@@ -181,7 +201,7 @@ ARRAY_LINKAGE ARRAY_NAME_t ARRAY_NAME_make_copy(const ARRAY_NAME_view_t src, are
         .num = src.num,
         .capacity = capacity
     };
-    memcpy(array.data, src.data, src.num * ssizeof(ARRAY_TYPE_t));
+    memcpy(array.data, src.data, src.num * sizeof(ARRAY_TYPE_t));
     return array;
 }
 
@@ -194,12 +214,17 @@ ARRAY_LINKAGE void ARRAY_NAME_reserve(ARRAY_NAME_t *array, arena_t *arena, int32
     }
 }
 
-ARRAY_LINKAGE ARRAY_NAME_slice_t ARRAY_NAME_resize(ARRAY_NAME_t *array, arena_t *arena, int32_t size) {
+ARRAY_LINKAGE ARRAY_NAME_slice_t ARRAY_NAME_resize(ARRAY_NAME_t *array, arena_t *arena, int32_t size, bool zero_initialize) {
     check(array);
-    check(arena || size <= array->capacity);
+    require(arena || size <= array->capacity);
     if (arena && size > array->capacity) {
         ARRAY_NAME_reserve(array, arena, size);
     }
+
+    if (zero_initialize && size > array->num) {
+        memset(array->data + array->num, 0, (size - array->num) * sizeof(ARRAY_TYPE_t));
+    }
+
     array->num = size;
     return array->slice; 
 }
@@ -211,7 +236,7 @@ ARRAY_LINKAGE void ARRAY_NAME_reset(ARRAY_NAME_t *array) {
 
 ARRAY_LINKAGE int32_t ARRAY_NAME_add(ARRAY_NAME_t *array, arena_t *arena, ARRAY_TYPE_t value) {
     check(array);
-    check(arena || array->num < array->capacity);
+    require(arena || array->num < array->capacity);
     if (arena && array->num == array->capacity) {
         ARRAY_NAME_reserve(array, arena, (array->capacity < 8) ? 16 : array->capacity * 2);
     }
@@ -222,18 +247,18 @@ ARRAY_LINKAGE int32_t ARRAY_NAME_add(ARRAY_NAME_t *array, arena_t *arena, ARRAY_
 ARRAY_LINKAGE int32_t ARRAY_NAME_append(ARRAY_NAME_t *array, arena_t *arena, ARRAY_NAME_view_t to_append) {
     check(array);
     check(to_append.data);
-    check(arena || array->num + to_append.num <= array->capacity);
+    require(arena || array->num + to_append.num <= array->capacity);
     if (arena && array->num + to_append.num > array->capacity) {
         ARRAY_NAME_reserve(array, arena, (array->num + to_append.num < 8) ? 16 : (array->num + to_append.num) * 2);
     }
-    memcpy(array->data + array->num, to_append.data, to_append.num * ssizeof(ARRAY_TYPE_t));
+    memcpy(array->data + array->num, to_append.data, to_append.num * sizeof(ARRAY_TYPE_t));
     array->num += to_append.num;
     return array->num;
 }
 
 ARRAY_LINKAGE int32_t ARRAY_NAME_push(ARRAY_NAME_t *array, arena_t *arena) {
     check(array);
-    check(arena || array->num < array->capacity);
+    require(arena || array->num < array->capacity);
     if (arena && array->num == array->capacity) {
         ARRAY_NAME_reserve(array, arena, (array->capacity < 8) ? 16 : array->capacity * 2);
     }
@@ -248,90 +273,101 @@ ARRAY_LINKAGE int32_t ARRAY_NAME_pop(ARRAY_NAME_t *array) {
 
 ARRAY_LINKAGE void ARRAY_NAME_insert(ARRAY_NAME_t *array, arena_t *arena, int32_t index, int32_t n) {
     check(array);
-    if (index <= array->num) {
-        check(arena || array->num + n <= array->capacity);
+    check(index >= 0);
+    if (index <= array->num && n > 0) {
+        require(arena || array->num + n <= array->capacity);
         if (arena && array->num + n > array->capacity) {
             ARRAY_NAME_reserve(array, arena, (array->num + n < 8) ? 16 : (array->num + n) * 2);
         }
-        memmove(array->data + index + n, array->data + index, (array->num - index) * ssizeof(ARRAY_TYPE_t));
+        memmove(array->data + index + n, array->data + index, (array->num - index) * sizeof(ARRAY_TYPE_t));
+        memset(array->data + index, 0, n * sizeof(ARRAY_TYPE_t));
         array->num += n;
     }
 }
 
 ARRAY_LINKAGE void ARRAY_NAME_remove(ARRAY_NAME_t *array, int32_t index, int32_t n) {
     check(array);
-    if (index <= array->num) {
+    check(index >= 0);
+    if (index < array->num) {
         if (index + n > array->num) {
             n = array->num - index;
         }
-        memmove(array->data + index, array->data + index + n, (array->num - index - n) * ssizeof(ARRAY_TYPE_t));
-        array->num -= n;
+        if (n > 0) {
+            memmove(array->data + index, array->data + index + n, (array->num - index - n) * sizeof(ARRAY_TYPE_t));
+            array->num -= n;
+        }
     }
+}
+
+ARRAY_LINKAGE void ARRAY_NAME_remove_swap(ARRAY_NAME_t *array, int32_t index) {
+    check(array);
+    require(index >= 0 && index < array->num);
+    array->data[index] = array->data[--array->num];
 }
 
 ARRAY_LINKAGE void ARRAY_NAME_set(ARRAY_NAME_t *array, int32_t index, ARRAY_TYPE_t value) {
     check(array);
-    check(index < array->num);
+    require(index >= 0 && index < array->num);
     array->data[index] = value;
 }
 
 ARRAY_LINKAGE void ARRAY_NAME_slice_set(ARRAY_NAME_slice_t slice, int32_t index, ARRAY_TYPE_t value) {
     check(slice.data);
-    check(index < slice.num);
+    require(index >= 0 && index < slice.num);
     slice.data[index] = value;
 }
 
 ARRAY_LINKAGE ARRAY_TYPE_t ARRAY_NAME_get(const ARRAY_NAME_t *array, int32_t index) {
     check(array);
-    check(index < array->num);
+    require(index >= 0 && index < array->num);
     return array->data[index];
 }
 
 ARRAY_LINKAGE ARRAY_TYPE_t ARRAY_NAME_get_last(const ARRAY_NAME_t *array) {
     check(array);
-    check(array->num > 0);
+    require(array->num > 0);
     return array->data[array->num - 1];
 }
 
 ARRAY_LINKAGE ARRAY_TYPE_t *ARRAY_NAME_at(const ARRAY_NAME_t *array, int32_t index) {
     check(array);
-    check(index < array->num);
+    require(index >= 0 && index < array->num);
     return array->data + index;
 }
 
 ARRAY_LINKAGE ARRAY_TYPE_t ARRAY_NAME_slice_get(ARRAY_NAME_slice_t slice, int32_t index) {
     check(slice.data);
-    check(index < slice.num);
+    require(index >= 0 && index < slice.num);
     return slice.data[index];
 }
 
 ARRAY_LINKAGE ARRAY_TYPE_t ARRAY_NAME_slice_get_last(ARRAY_NAME_slice_t slice) {
     check(slice.data);
-    check(slice.num > 0);
+    require(slice.num > 0);
     return slice.data[slice.num - 1];
 }
 
 ARRAY_LINKAGE ARRAY_TYPE_t *ARRAY_NAME_slice_at(ARRAY_NAME_slice_t slice, int32_t index) {
     check(slice.data);
-    check(index < slice.num);
+    require(index >= 0 && index < slice.num);
     return slice.data + index;
 }
 
 ARRAY_LINKAGE ARRAY_TYPE_t ARRAY_NAME_view_get(ARRAY_NAME_view_t view, int32_t index) {
     check(view.data);
-    check(index < view.num);
+    require(index >= 0 && index < view.num);
     return view.data[index];
 }
 
 ARRAY_LINKAGE ARRAY_TYPE_t ARRAY_NAME_view_get_last(ARRAY_NAME_view_t view) {
     check(view.data);
-    check(view.num > 0);
+    require(view.num > 0);
     return view.data[view.num - 1];
 }
 
 ARRAY_LINKAGE const ARRAY_TYPE_t *ARRAY_NAME_view_at(ARRAY_NAME_view_t view, int32_t index) {
     check(view.data);
-    check(index < view.num);
+    require(index >= 0 && index < view.num);
     return view.data + index;
 }
 
@@ -345,14 +381,16 @@ ARRAY_LINKAGE ARRAY_NAME_view_t ARRAY_NAME_make_subview(ARRAY_NAME_view_t view, 
 
 ARRAY_LINKAGE ARRAY_NAME_view_t ARRAY_NAME_view_get_head(ARRAY_NAME_view_t view, int32_t num) {
     check(view.data);
+    check(num >= 0);
     num = (num < view.num) ? num : view.num;
     return (ARRAY_NAME_view_t) {view.data, num};
 }
 
-ARRAY_LINKAGE ARRAY_NAME_view_t ARRAY_NAME_view_get_tail(ARRAY_NAME_view_t view, int32_t num) {
+ARRAY_LINKAGE ARRAY_NAME_view_t ARRAY_NAME_view_get_tail(ARRAY_NAME_view_t view, int32_t from_index) {
     check(view.data);
-    num = (num < view.num) ? num : view.num;
-    return (ARRAY_NAME_view_t) {view.data + num, view.num - num};
+    check(from_index >= 0);
+    from_index = (from_index < view.num) ? from_index : view.num;
+    return (ARRAY_NAME_view_t) {view.data + from_index, view.num - from_index};
 }
 
 ARRAY_LINKAGE bool ARRAY_NAME_is_empty(const ARRAY_NAME_t *array) {

@@ -7,6 +7,7 @@
 typedef struct arena_t {
     void *base;
     int32_t offset;
+    uint32_t size;
 } arena_t;
 
 
@@ -19,7 +20,6 @@ void *arena_calloc(arena_t *arena, int32_t size);
 void *arena_realloc(arena_t *arena, void *old_ptr, int32_t old_size, int32_t new_size);
 void arena_free(arena_t *arena, void *ptr, int32_t size);
 void arena_reset(arena_t *arena);
-int32_t arena_get_current_block_size(const arena_t *arena);
 
 #define arena_new(type, arena) ((type *)arena_alloc(arena, ssizeof(type)))
 #define arena_new_n(type, n, arena) ((type *)arena_alloc(arena, ssizeof(type) * (n)))
