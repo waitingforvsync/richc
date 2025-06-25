@@ -5,15 +5,15 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#if defined(_WIN32) || defined(_WIN64)
-#define RICHC_PLATFORM_WINDOWS 1
-#elif defined(__linux__)
-#define RICHC_PLATFORM_LINUX 1
-#elif defined(__APPLE__) && defined(__MACH__)
-#define RICHC_PLATFORM_MACOS 1
-#else
-#error Platform not supported
-#endif
+// #if defined(_WIN32) || defined(_WIN64)
+// #define RICHC_PLATFORM_WINDOWS 1
+// #elif defined(__linux__)
+// #define RICHC_PLATFORM_LINUX 1
+// #elif defined(__APPLE__) && defined(__MACH__)
+// #define RICHC_PLATFORM_MACOS 1
+// #else
+// #error Platform not supported
+// #endif
 
 #ifdef _MSC_VER
 #include <intrin.h>

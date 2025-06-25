@@ -6,7 +6,7 @@ DEF_TEST(arena, basic) {
     // Make new arena and check that the initial state is as expected
     arena_t arena = arena_make_with_size(4096);
     TEST_REQUIRE_TRUE(arena.base);
-    TEST_REQUIRE((uintptr_t)arena.base & 255, ==, 0);
+    TEST_REQUIRE((uintptr_t)arena.base & 0xFFF, ==, 0);
     TEST_REQUIRE(arena.offset, ==, 0);
     TEST_REQUIRE(arena.size, >=, 4096);
 

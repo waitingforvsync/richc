@@ -7,7 +7,7 @@
 typedef struct arena_t {
     void *base;
     int32_t offset;
-    uint32_t size;
+    int32_t size;
 } arena_t;
 
 

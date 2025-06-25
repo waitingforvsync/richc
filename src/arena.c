@@ -3,14 +3,14 @@
 #if RICHC_PLATFORM_WINDOWS
 #include <memoryapi.h>
 #endif
-#if RICHC_PLATFORM_LINUX
+#if RICHC_PLATFORM_LINUX || RICHC_PLATFORM_MACOS
 #include <unistd.h>
 #include <sys/mman.h>
 #endif
 
 
 #define RESERVE_SIZE (1ULL<<30)
-#define COMMIT_SIZE (1ULL<<16)
+#define COMMIT_SIZE (4096ULL)       // standard page size for all supported OSes
 #define ALIGNMENT (16)
 
 
@@ -23,6 +23,10 @@ static void arena_reserve_region(arena_t *arena) {
 #endif
 #if RICHC_PLATFORM_LINUX
     void *ptr = mmap(0, RESERVE_SIZE, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    require(ptr != MAP_FAILED);
+#endif
+#if RICHC_PLATFORM_MACOS
+    void *ptr = mmap(0, RESERVE_SIZE, PROT_NONE, MAP_PRIVATE | MAP_ANON, -1, 0);
     require(ptr != MAP_FAILED);
 #endif
     arena->base = ptr;
@@ -40,11 +44,11 @@ static void arena_commit_region(arena_t *arena, int32_t size) {
         void *ptr = VirtualAlloc(arena->base, aligned_size, MEM_COMMIT, PAGE_READWRITE);
         require(ptr);
 #endif
-#if RICHC_PLATFORM_LINUX
-        int result = mprotect(arena->base, aligned_size, PROT_READ | PROT_WRITE);
-        require(result == 0);
+#if RICHC_PLATFORM_LINUX || RICHC_PLATFORM_MACOS
+        int error = mprotect(arena->base, aligned_size, PROT_READ | PROT_WRITE);
+        require(!error);
 #endif
-        arena->size = (uint32_t)aligned_size;
+        arena->size = (int32_t)aligned_size;
     }
 }
 
@@ -53,12 +57,12 @@ static void arena_decommit_region(arena_t *arena) {
     check(arena);
     check(arena->base);
 #if RICHC_PLATFORM_WINDOWS
-    int success = VirtualFree(addr, size, MEM_DECOMMIT);
+    int success = VirtualFree(arena->base, arena->size, MEM_DECOMMIT);
     require(success);
 #endif
-#if RICHC_PLATFORM_LINUX
-    int result = mprotect(arena->base, arena->size, PROT_NONE) || madvise(arena->base, arena->size, MADV_DONTNEED);
-    require(result == 0);
+#if RICHC_PLATFORM_LINUX || RICHC_PLATFORM_MACOS
+    int error = mprotect(arena->base, arena->size, PROT_NONE) || madvise(arena->base, arena->size, MADV_DONTNEED);
+    require(!error);
 #endif
     arena->offset = 0;
     arena->size = 0;
