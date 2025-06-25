@@ -1,4 +1,5 @@
 add_subdirectory("app")
+add_subdirectory("gfx")
 add_subdirectory("math")
 add_subdirectory("templates")
 add_subdirectory("test")
