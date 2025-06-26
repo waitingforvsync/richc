@@ -5,7 +5,9 @@
 
 
 typedef struct app_callbacks_t {
-    void (*on_paint)(void *app_context);
+    void (*on_update)(void *app_context, float delta_time);
+    void (*on_init_render)(void *app_context, int32_t width, int32_t height);
+    void (*on_render)(void *app_context, int32_t width, int32_t height);
     void (*on_resize)(void *app_context, int32_t width, int32_t height);
     void (*on_key_down)(void *app_context, int32_t keycode);
     void (*on_key_up)(void *app_context, int32_t keycode);
@@ -27,10 +29,7 @@ typedef struct app_desc_t {
 } app_desc_t;
 
 
-void app_init(app_desc_t *desc);
-void app_set_window_title(const char *title);
-void app_run(void);
-void app_deinit(void);
+void app_run(const app_desc_t *desc);
 
 
 

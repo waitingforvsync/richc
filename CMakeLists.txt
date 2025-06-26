@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.31)
 project("richc")
 
-set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD 17)
 
 add_library("richc" STATIC)
 set_target_properties("richc" PROPERTIES DEBUG_POSTFIX "_d")
@@ -12,9 +12,9 @@ target_compile_options("richc" PRIVATE
 )
 
 target_compile_definitions("richc" PRIVATE
-	"$<$<PLATFORM_ID:Windows>:RICHC_PLATFORM_WINDOWS>"
-	"$<$<PLATFORM_ID:Darwin>:RICHC_PLATFORM_MACOS>"
-	"$<$<PLATFORM_ID:Linux>:RICHC_PLATFORM_LINUX>"
+	"$<$<PLATFORM_ID:Windows>:RICHC_PLATFORM_WINDOWS=1>"
+	"$<$<PLATFORM_ID:Darwin>:RICHC_PLATFORM_MACOS=1>"
+	"$<$<PLATFORM_ID:Linux>:RICHC_PLATFORM_LINUX=1>"
 )
 
 add_subdirectory("include")
