@@ -8,7 +8,7 @@
  *   | m.cx.z  m.cy.z  m.cz.z  t.z |
  *
  * Applied to a column vector v as:  m.m * v + m.t
- * This encodes rotation, scale, shear, and translation in 3D.
+ * This encodes rotation, scale, and translation in 3D.
  *
  * Type
  * ----

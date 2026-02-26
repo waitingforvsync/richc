@@ -7,7 +7,7 @@
  *   | m.cx.y  m.cy.y  t.y |
  *
  * Applied to a column vector v as:  m.m * v + m.t
- * This encodes rotation, scale, shear, and translation in 2D.
+ * This encodes rotation, scale, and translation in 2D.
  *
  * Type
  * ----
