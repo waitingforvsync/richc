@@ -35,7 +35,7 @@
  *       On failure data is { NULL, 0 } and error is non-zero.
  *
  *   rc_load_binary_array(filename, arena)
- *       Read the entire file into arena memory as a growable rc_bytes array.
+ *       Read the entire file into arena memory as a growable rc_array_bytes array.
  *       cap is set to the file size; call rc_array_uint8_t_push etc. to mutate.
  *       On failure data is { NULL, 0, 0 } and error is non-zero.
  *
@@ -76,7 +76,7 @@ typedef struct {
 } rc_load_binary_result;
 
 typedef struct {
-    rc_bytes      data;
+    rc_array_bytes      data;
     rc_file_error error;
 } rc_load_binary_array_result;
 

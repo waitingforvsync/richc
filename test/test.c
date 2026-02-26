@@ -4401,7 +4401,7 @@ static void test_file(void)
         ASSERT(r.data.num == 3);
         ASSERT(RC_AT(r.data, 0) == 1);
         ASSERT(RC_AT(r.data, 2) == 3);
-        rc_array_uint8_t_push(&r.data, 4, &a);
+        rc_array_bytes_push(&r.data, 4, &a);
         ASSERT(r.data.num == 4);
         ASSERT(RC_AT(r.data, 3) == 4);
         rc_arena_destroy(&a);

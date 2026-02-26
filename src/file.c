@@ -110,9 +110,9 @@ rc_load_binary_array_result rc_load_binary_array(const char *filename, rc_arena 
 {
     load_raw_result r = load_raw(filename, a, 0);
     if (r.error != RC_FILE_OK)
-        return (rc_load_binary_array_result) {(rc_bytes) {0}, r.error};
+        return (rc_load_binary_array_result) {(rc_array_bytes) {0}, r.error};
     return (rc_load_binary_array_result) {
-        (rc_bytes) {.data = (uint8_t *)r.buf, .num = r.size, .cap = r.size},
+        (rc_array_bytes) {.data = (uint8_t *)r.buf, .num = r.size, .cap = r.size},
         RC_FILE_OK
     };
 }

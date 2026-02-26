@@ -266,7 +266,7 @@ rc_file_error              { RC_FILE_OK=0, RC_FILE_ERROR_NOT_FOUND,
                              RC_FILE_ERROR_IO }
 rc_load_text_result        { rc_str text; rc_file_error error; }
 rc_load_binary_result      { rc_view_bytes data; rc_file_error error; }
-rc_load_binary_array_result{ rc_bytes data; rc_file_error error; }
+rc_load_binary_array_result{ rc_array_bytes data; rc_file_error error; }
 ```
 
 All file functions use binary mode (no line-ending translation). All load functions
@@ -281,7 +281,7 @@ from the arena. A shared static `load_raw` helper keeps the three load functions
 - `rc_load_binary(filename, arena)` — reads entire file; returns a read-only
   `rc_view_bytes`. Returns `{NULL, 0}` on failure.
 - `rc_load_binary_array(filename, arena)` — reads entire file as a growable
-  `rc_bytes` with `cap` set to the file size. Use `rc_array_uint8_t_push` etc.
+  `rc_array_bytes` with `cap` set to the file size. Use `rc_array_uint8_t_push` etc.
   to mutate after loading. Returns `{0}` on failure.
 - `rc_save_binary(filename, data)` — writes `rc_view_bytes` to file (create or
   truncate). Returns `rc_file_error`.
@@ -291,10 +291,10 @@ Convenience include-guarded header that generates the `uint8_t` array family:
 ```c
 rc_view_bytes  { const uint8_t *data; uint32_t num; }
 rc_span_bytes  {       uint8_t *data; uint32_t num; }
-rc_bytes       {       uint8_t *data; uint32_t num; uint32_t cap; }
+rc_array_bytes       {       uint8_t *data; uint32_t num; uint32_t cap; }
 ```
-Operation functions are named after `ARRAY_T` (not `ARRAY_NAME`):
-`rc_array_uint8_t_push`, `rc_array_uint8_t_push_n`, etc.
+Operation functions are named after `ARRAY_NAME`:
+`rc_array_bytes_push`, `rc_array_bytes_push_n`, etc.
 
 ## Algorithms
 
@@ -324,7 +324,7 @@ include/richc/
   debug.h                       — RC_ASSERT
   str.h                         — non-owning string view (rc_str, rc_str_pair)
   mstr.h                        — mutable/managed string (rc_mstr)
-  bytes.h                       — rc_view_bytes, rc_span_bytes, rc_bytes (uint8_t array types)
+  bytes.h                       — rc_view_bytes, rc_span_bytes, rc_array_bytes (uint8_t array types)
   file.h                        — rc_load_text, rc_save_text, rc_load_binary, rc_save_binary, rc_file_error
   template_util.h               — RC_CONCAT, RC_STRINGIFY preprocessor helpers
   math/
