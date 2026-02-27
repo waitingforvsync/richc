@@ -48,7 +48,9 @@
  *   rc_bigint_negate(a)              — negate in-place             (inline)
  *   rc_bigint_reserve(a, cap, arena) — ensure at least cap limbs
  *   rc_bigint_add(a, b, arena)       — a += b
+ *   rc_bigint_sub(a, b, arena)       — a -= b
  *   rc_bigint_add3(r, b, c, arena)   — r = b + c  (r must be pre-initialised)
+ *   rc_bigint_sub3(r, b, c, arena)   — r = b - c  (r must be pre-initialised)
  *
  * Conversion (inline)
  * -------------------
@@ -144,11 +146,21 @@ void rc_bigint_reserve(rc_bigint *a, uint32_t new_cap, rc_arena *arena);
 /* a += b.  Handles a == b (self-add). */
 void rc_bigint_add(rc_bigint *a, const rc_bigint *b, rc_arena *arena);
 
+/* a -= b.  Handles a == b (self-sub, result is zero). */
+void rc_bigint_sub(rc_bigint *a, const rc_bigint *b, rc_arena *arena);
+
 /*
  * result = b + c.  result must already be initialised.
  * Handles result == b and result == c.
  */
 void rc_bigint_add3(rc_bigint *result, const rc_bigint *b, const rc_bigint *c,
+                    rc_arena *arena);
+
+/*
+ * result = b - c.  result must already be initialised.
+ * Handles result == b and result == c.
+ */
+void rc_bigint_sub3(rc_bigint *result, const rc_bigint *b, const rc_bigint *c,
                     rc_arena *arena);
 
 /* ---- conversion (inline) ---- */

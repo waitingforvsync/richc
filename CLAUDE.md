@@ -229,7 +229,7 @@ All inline functions carry an explicit type suffix to avoid Windows macro confli
 | `math/mat44f.h` | `rc_mat44f` | 4×4 column-major float matrix; `determinant`/`inverse` in `.c` |
 | `math/quatf.h` | `rc_quatf` | Unit quaternion; `{rc_vec3f xyz; float w}`; Hamilton convention |
 | `math/rational.h` | `rc_rational` | Rational arithmetic; `{int64_t num, denom}`; always canonical |
-| `math/bigint.h` | `rc_bigint` | Arbitrary-precision integer; sign-magnitude, arena-backed; trivial ops inline, rest in `bigint.c` |
+| `math/bigint.h` | `rc_bigint` | Arbitrary-precision integer; sign-magnitude, arena-backed; add/sub share a unified kernel; trivial ops inline, rest in `bigint.c` |
 
 Matrix storage is column-major throughout: `cx` is the first column, etc.
 The `make_transpose(rx, ry, rz, ...)` constructors accept *row* vectors and store
@@ -374,9 +374,9 @@ src/
     math/
       mat44f.c                  — rc_mat44f_determinant, rc_mat44f_inverse
       rational.c                — rc_rational non-trivial operations (make, from_double, int_mul, mul, int_div, div, add, sub)
-      bigint.c                  — rc_bigint non-trivial operations (make, from_u64/i64, copy, reserve, add, add3)
+      bigint.c                  — rc_bigint non-trivial operations (make, from_u64/i64, copy, reserve, add, sub, add3, sub3)
 test/
-  test.c                        — full test suite (~5,400 lines, 1709 assertions)
+  test.c                        — full test suite (~5,600 lines, 1731 assertions)
 ```
 
 All library headers are included as `#include "richc/..."` (the `include/` directory

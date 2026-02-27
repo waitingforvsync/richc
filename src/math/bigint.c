@@ -3,38 +3,56 @@
  *
  * Internal helpers
  * ----------------
- * limb_add_carry(a, b, carry)  — compute a + b + *carry, update *carry (0 or 1)
- * limb_sub_borrow(a, b, borrow) — compute a - b - *borrow, update *borrow (0 or 1)
- * bigint_normalize(a)          — strip leading zero limbs; set sign=0 if len==0
- * bigint_mag_cmp(a, b)         — compare unsigned magnitudes: -1 / 0 / +1
+ * limb_add_carry(a, b, carry)   — a + b + *carry; updates *carry (0 or 1)
+ * limb_sub_borrow(a, b, borrow) — a - b - *borrow; updates *borrow (0 or 1)
+ * bigint_normalize(a)           — strip leading zero limbs; set sign=0 if len==0
+ * bigint_mag_cmp(a, b)          — compare unsigned magnitudes: -1 / 0 / +1
  *
- * Addition algorithm
- * ------------------
- * rc_bigint_add(a, b):
- *   Zero cases: if b==0 return; if a==0 copy b into a.
- *   Same sign: add magnitudes limb-by-limb with carry; result sign = a->sign.
- *     Reserve max(a->len, b->len)+1 limbs first so there is room for a carry
- *     ripple into a new most-significant limb.
- *   Different sign:
- *     |a| == |b|: result is zero.
- *     |a|  > |b|: subtract b from a in-place; result sign = a->sign.
- *     |a|  < |b|: compute b - a, store in a; result sign = b->sign.
- *       This case saves a_old_digits before reserve (the pointer remains valid
- *       in the arena even if realloc returns a new pointer), then subtracts
- *       a_old_digits from b->digits into a->digits.
+ * Unified add/sub kernel: bigint_add_impl
+ * ----------------------------------------
+ * Both rc_bigint_add and rc_bigint_sub are thin wrappers around
+ * bigint_add_impl(a, b, b_sign_factor, arena), where b_sign_factor is
+ * +1 for addition and -1 for subtraction.  The effective sign of b for
+ * this operation is b_eff_sign = b->sign * b_sign_factor.
  *
- * Aliasing notes
- * --------------
- * add(a, b) with a == b (self-add):
- *   Both pointers refer to the same struct so b->digits is always the current
- *   value of a->digits.  Since a->sign == b->sign always holds, the same-sign
- *   path is taken.  Each limb is read into a local (bd) before a->digits[i]
- *   is overwritten, so self-add is correct.
+ * Dispatch:
+ *   b_eff_sign == 0          → no-op.
+ *   a->sign == 0             → copy b into a with sign b_eff_sign.
+ *   a->sign == b_eff_sign    → add magnitudes with carry; sign unchanged.
+ *   a->sign != b_eff_sign    → subtract smaller magnitude from larger:
+ *       |a| == |b|: reset a to zero.
+ *       |a|  > |b|: subtract b from a in-place; sign = a->sign.
+ *       |a|  < |b|: compute b - a, store in a; sign = b_eff_sign.
+ *         Saves a_old_digits before any reserve call so the subtraction
+ *         is correct whether reserve extends in-place or moves the buffer.
  *
- * add(a, b) different-sign, |b| > |a|:
- *   a != b is guaranteed (same struct implies same sign).  a_old_digits is
- *   captured before reserve; if reserve extends in-place a_old_digits ==
- *   a->digits, but each read still precedes the corresponding write.
+ * Aliasing in bigint_add_impl
+ * ----------------------------
+ * a == b, b_sign_factor == +1 (self-add):
+ *   a->sign == b->sign so the same-sign (add-magnitudes) path is taken.
+ *   Each limb is read into a local before a->digits[i] is written.
+ *
+ * a == b, b_sign_factor == -1 (self-sub):
+ *   b_eff_sign == -a->sign so the different-sign path is taken.
+ *   bigint_mag_cmp returns 0 → a is reset to zero.  Correct: a - a = 0.
+ *
+ * |b| > |a|, different-sign:
+ *   a != b is guaranteed when b_sign_factor == +1 (same pointer means same
+ *   sign, but b_eff_sign would equal a->sign, contradiction).
+ *   When b_sign_factor == -1, a == b implies self-sub (handled above).
+ *   a_old_digits captured before reserve; each a_old_digits[i] is read
+ *   before a->digits[i] is written, even when reserve returned the same
+ *   pointer (in-place extension).
+ *
+ * Unified 3-arg kernel: bigint_add3_impl
+ * ----------------------------------------
+ * bigint_add3_impl(result, b, c, c_sign_factor, arena):
+ *   result == b → bigint_add_impl(result, c, c_sign_factor).
+ *   result == c → if c_sign_factor == -1, negate result first; then add b.
+ *                 (negate + add(b) gives b + (-c) = b - c for sub3, or
+ *                  add(b) alone gives c + b for add3.)
+ *   otherwise   → copy b into result, then bigint_add_impl(result, c,
+ *                  c_sign_factor).
  */
 
 #include "richc/math/bigint.h"
@@ -49,9 +67,9 @@
 static uint64_t limb_add_carry(uint64_t a, uint64_t b, uint64_t *carry)
 {
     uint64_t sum = a + b;
-    uint64_t c1  = (sum < a);        /* overflow from a + b      */
+    uint64_t c1  = (sum < a);        /* overflow from a + b        */
     sum         += *carry;
-    uint64_t c2  = (sum < *carry);   /* overflow from adding carry */
+    uint64_t c2  = (sum < *carry);   /* overflow from adding carry  */
     *carry       = c1 | c2;
     return sum;
 }
@@ -63,10 +81,10 @@ static uint64_t limb_add_carry(uint64_t a, uint64_t b, uint64_t *carry)
 static uint64_t limb_sub_borrow(uint64_t a, uint64_t b, uint64_t *borrow)
 {
     uint64_t diff = a - b;
-    uint64_t b1   = (diff > a);        /* underflow from a - b        */
+    uint64_t b1   = (diff > a);      /* underflow from a - b         */
     uint64_t prev = diff;
     diff         -= *borrow;
-    uint64_t b2   = (diff > prev);     /* underflow from subtracting borrow */
+    uint64_t b2   = (diff > prev);   /* underflow from subtracting borrow */
     *borrow       = b1 | b2;
     return diff;
 }
@@ -156,32 +174,34 @@ void rc_bigint_reserve(rc_bigint *a, uint32_t new_cap, rc_arena *arena)
     uint32_t grown = a->cap < 8 ? 8 : a->cap * 2;
     if (grown < new_cap) grown = new_cap;
     a->digits = rc_arena_realloc(arena, a->digits,
-                                 a->cap  * (uint32_t)sizeof(uint64_t),
-                                 grown   * (uint32_t)sizeof(uint64_t));
+                                 a->cap * (uint32_t)sizeof(uint64_t),
+                                 grown  * (uint32_t)sizeof(uint64_t));
     a->cap = grown;
 }
 
-void rc_bigint_add(rc_bigint *a, const rc_bigint *b, rc_arena *arena)
+/*
+ * Core of add and sub.  b_sign_factor is +1 for addition, -1 for subtraction.
+ * b_eff_sign = b->sign * b_sign_factor is the effective sign of b.
+ */
+static void bigint_add_impl(rc_bigint *a, const rc_bigint *b,
+                             int32_t b_sign_factor, rc_arena *arena)
 {
-    RC_ASSERT(rc_bigint_is_valid(a));
-    RC_ASSERT(rc_bigint_is_valid(b));
+    int32_t b_eff_sign = b->sign * b_sign_factor;
 
-    if (b->sign == 0) return;
+    if (b_eff_sign == 0) return;
 
     if (a->sign == 0) {
-        /* a is zero: copy b. */
         rc_bigint_reserve(a, b->len, arena);
         memcpy(a->digits, b->digits, b->len * sizeof(uint64_t));
         a->len  = b->len;
-        a->sign = b->sign;
+        a->sign = b_eff_sign;
         return;
     }
 
-    if (a->sign == b->sign) {
+    if (a->sign == b_eff_sign) {
         /*
-         * Same sign: add magnitudes with carry.
-         *
-         * Reserve enough room for a carry out of the most significant limb.
+         * Same effective sign: add magnitudes with carry.
+         * Reserve room for a possible carry into a new most-significant limb.
          * If b is longer, zero-extend a to b->len first.
          */
         uint32_t max_len = a->len > b->len ? a->len : b->len;
@@ -207,10 +227,7 @@ void rc_bigint_add(rc_bigint *a, const rc_bigint *b, rc_arena *arena)
             a->len++;
         }
     } else {
-        /*
-         * Different signs: subtract the smaller magnitude from the larger.
-         * a != b is guaranteed here (same pointer implies same sign).
-         */
+        /* Different effective signs: subtract smaller magnitude from larger. */
         int cmp = bigint_mag_cmp(a, b);
 
         if (cmp == 0) {
@@ -219,7 +236,7 @@ void rc_bigint_add(rc_bigint *a, const rc_bigint *b, rc_arena *arena)
         }
 
         if (cmp > 0) {
-            /* |a| > |b|: a->digits -= b->digits in-place; sign stays. */
+            /* |a| > |b|: subtract b from a in-place; sign unchanged. */
             uint64_t borrow = 0;
             uint32_t i;
             for (i = 0; i < b->len; i++) {
@@ -233,11 +250,8 @@ void rc_bigint_add(rc_bigint *a, const rc_bigint *b, rc_arena *arena)
         } else {
             /*
              * |b| > |a|: result = b - a, written into a's buffer.
-             *
-             * Save a's current pointer before reserve — the old arena region
-             * remains readable even if reserve returns a new pointer, and the
-             * reads of a_old_digits[i] happen before the writes to a->digits[i]
-             * (which may be the same address when reserve extended in-place).
+             * Save a_old_digits before reserve; the pointer remains valid in
+             * the arena even if reserve allocates a new block.
              */
             uint32_t  a_old_len    = a->len;
             uint64_t *a_old_digits = a->digits;
@@ -254,11 +268,55 @@ void rc_bigint_add(rc_bigint *a, const rc_bigint *b, rc_arena *arena)
             }
             RC_ASSERT(borrow == 0);
             a->len  = b->len;
-            a->sign = b->sign;
+            a->sign = b_eff_sign;
         }
 
         bigint_normalize(a);
     }
+}
+
+void rc_bigint_add(rc_bigint *a, const rc_bigint *b, rc_arena *arena)
+{
+    RC_ASSERT(rc_bigint_is_valid(a));
+    RC_ASSERT(rc_bigint_is_valid(b));
+    bigint_add_impl(a, b, 1, arena);
+}
+
+void rc_bigint_sub(rc_bigint *a, const rc_bigint *b, rc_arena *arena)
+{
+    RC_ASSERT(rc_bigint_is_valid(a));
+    RC_ASSERT(rc_bigint_is_valid(b));
+    bigint_add_impl(a, b, -1, arena);
+}
+
+/* Core of add3 and sub3.  c_sign_factor is +1 for add3, -1 for sub3. */
+static void bigint_add3_impl(rc_bigint *result, const rc_bigint *b,
+                              const rc_bigint *c, int32_t c_sign_factor,
+                              rc_arena *arena)
+{
+    if (result == b) {
+        bigint_add_impl(result, c, c_sign_factor, arena);
+        return;
+    }
+    if (result == c) {
+        /*
+         * result = b + c_factor*c  where c == result (old value).
+         * For add3 (c_factor=+1): result + b = old_c + b. Just add b.
+         * For sub3 (c_factor=-1): b - old_c = b + (-old_c).
+         *   Negate result first (result = -old_c), then add b.
+         */
+        if (c_sign_factor == -1) rc_bigint_negate(result);
+        rc_bigint_add(result, b, arena);
+        return;
+    }
+
+    /* No struct-level aliasing: copy b into result, then add/sub c. */
+    rc_bigint_reserve(result, b->len, arena);
+    if (b->len > 0)
+        memcpy(result->digits, b->digits, b->len * sizeof(uint64_t));
+    result->len  = b->len;
+    result->sign = b->sign;
+    bigint_add_impl(result, c, c_sign_factor, arena);
 }
 
 void rc_bigint_add3(rc_bigint *result, const rc_bigint *b, const rc_bigint *c,
@@ -267,23 +325,14 @@ void rc_bigint_add3(rc_bigint *result, const rc_bigint *b, const rc_bigint *c,
     RC_ASSERT(rc_bigint_is_valid(result));
     RC_ASSERT(rc_bigint_is_valid(b));
     RC_ASSERT(rc_bigint_is_valid(c));
+    bigint_add3_impl(result, b, c, 1, arena);
+}
 
-    if (result == b) {
-        /* result already holds b's value: just add c. */
-        rc_bigint_add(result, c, arena);
-        return;
-    }
-    if (result == c) {
-        /* result already holds c's value: just add b. */
-        rc_bigint_add(result, b, arena);
-        return;
-    }
-
-    /* Copy b into result (reusing result's buffer if large enough), then add c. */
-    rc_bigint_reserve(result, b->len, arena);
-    if (b->len > 0)
-        memcpy(result->digits, b->digits, b->len * sizeof(uint64_t));
-    result->len  = b->len;
-    result->sign = b->sign;
-    rc_bigint_add(result, c, arena);
+void rc_bigint_sub3(rc_bigint *result, const rc_bigint *b, const rc_bigint *c,
+                    rc_arena *arena)
+{
+    RC_ASSERT(rc_bigint_is_valid(result));
+    RC_ASSERT(rc_bigint_is_valid(b));
+    RC_ASSERT(rc_bigint_is_valid(c));
+    bigint_add3_impl(result, b, c, -1, arena);
 }

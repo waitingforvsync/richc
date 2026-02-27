@@ -5018,6 +5018,182 @@ static void test_bigint(void)
     }
     END_GROUP();
 
+    /* ---- subtraction ---- */
+
+    BEGIN_GROUP("bigint: sub zero - zero");
+    {
+        rc_bigint r = rc_bigint_make(0, &a);
+        rc_bigint b = rc_bigint_make(0, &a);
+        rc_bigint_sub(&r, &b, &a);
+        ASSERT(rc_bigint_is_zero(&r));
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("bigint: sub positive - zero");
+    {
+        rc_bigint r = rc_bigint_from_i64(5, &a);
+        rc_bigint b = rc_bigint_make(0, &a);
+        rc_bigint_sub(&r, &b, &a);
+        ASSERT(rc_bigint_to_i64(&r) == 5);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("bigint: sub zero - positive");
+    {
+        rc_bigint r = rc_bigint_make(0, &a);
+        rc_bigint b = rc_bigint_from_i64(5, &a);
+        rc_bigint_sub(&r, &b, &a);
+        ASSERT(rc_bigint_to_i64(&r) == -5);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("bigint: sub positive - positive (a > b)");
+    {
+        rc_bigint r = rc_bigint_from_i64(10, &a);
+        rc_bigint b = rc_bigint_from_i64(3, &a);
+        rc_bigint_sub(&r, &b, &a);
+        ASSERT(rc_bigint_to_i64(&r) == 7);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("bigint: sub positive - positive (a < b)");
+    {
+        rc_bigint r = rc_bigint_from_i64(3, &a);
+        rc_bigint b = rc_bigint_from_i64(10, &a);
+        rc_bigint_sub(&r, &b, &a);
+        ASSERT(rc_bigint_to_i64(&r) == -7);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("bigint: sub positive - positive (a == b)");
+    {
+        rc_bigint r = rc_bigint_from_i64(7, &a);
+        rc_bigint b = rc_bigint_from_i64(7, &a);
+        rc_bigint_sub(&r, &b, &a);
+        ASSERT(rc_bigint_is_zero(&r));
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("bigint: sub negative - negative (a more negative)");
+    {
+        /* -10 - (-3) = -7 */
+        rc_bigint r = rc_bigint_from_i64(-10, &a);
+        rc_bigint b = rc_bigint_from_i64(-3, &a);
+        rc_bigint_sub(&r, &b, &a);
+        ASSERT(rc_bigint_to_i64(&r) == -7);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("bigint: sub negative - negative (b more negative)");
+    {
+        /* -3 - (-10) = 7 */
+        rc_bigint r = rc_bigint_from_i64(-3, &a);
+        rc_bigint b = rc_bigint_from_i64(-10, &a);
+        rc_bigint_sub(&r, &b, &a);
+        ASSERT(rc_bigint_to_i64(&r) == 7);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("bigint: sub positive - negative (becomes addition)");
+    {
+        /* 3 - (-4) = 7 */
+        rc_bigint r = rc_bigint_from_i64(3, &a);
+        rc_bigint b = rc_bigint_from_i64(-4, &a);
+        rc_bigint_sub(&r, &b, &a);
+        ASSERT(rc_bigint_to_i64(&r) == 7);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("bigint: sub negative - positive (becomes more negative)");
+    {
+        /* -3 - 4 = -7 */
+        rc_bigint r = rc_bigint_from_i64(-3, &a);
+        rc_bigint b = rc_bigint_from_i64(4, &a);
+        rc_bigint_sub(&r, &b, &a);
+        ASSERT(rc_bigint_to_i64(&r) == -7);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("bigint: sub with borrow across limb boundary");
+    {
+        /* 2^64 - 1 = UINT64_MAX */
+        rc_bigint r = rc_bigint_make(2, &a);
+        r.digits[0] = 0;
+        r.digits[1] = 1;
+        r.len  = 2;
+        r.sign = 1;
+        rc_bigint b = rc_bigint_from_u64(1, &a);
+        rc_bigint_sub(&r, &b, &a);
+        ASSERT(r.len == 1 && r.digits[0] == UINT64_MAX && r.sign == 1);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("bigint: sub borrow ripple through multiple limbs");
+    {
+        /* 2^128 - 1 = {UINT64_MAX, UINT64_MAX} */
+        rc_bigint r = rc_bigint_make(3, &a);
+        r.digits[0] = 0;
+        r.digits[1] = 0;
+        r.digits[2] = 1;
+        r.len  = 3;
+        r.sign = 1;
+        rc_bigint b = rc_bigint_from_u64(1, &a);
+        rc_bigint_sub(&r, &b, &a);
+        ASSERT(r.len == 2);
+        ASSERT(r.digits[0] == UINT64_MAX);
+        ASSERT(r.digits[1] == UINT64_MAX);
+        ASSERT(r.sign == 1);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("bigint: self-sub (a -= a, result zero)");
+    {
+        rc_bigint r = rc_bigint_from_i64(42, &a);
+        rc_bigint_sub(&r, &r, &a);
+        ASSERT(rc_bigint_is_zero(&r));
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("bigint: sub3 no aliasing");
+    {
+        rc_bigint result = rc_bigint_make(0, &a);
+        rc_bigint b      = rc_bigint_from_i64(10, &a);
+        rc_bigint c      = rc_bigint_from_i64(3, &a);
+        rc_bigint_sub3(&result, &b, &c, &a);
+        ASSERT(rc_bigint_to_i64(&result) == 7);
+        ASSERT(rc_bigint_to_i64(&b) == 10);
+        ASSERT(rc_bigint_to_i64(&c) == 3);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("bigint: sub3 result == b");
+    {
+        rc_bigint result = rc_bigint_from_i64(10, &a);
+        rc_bigint c      = rc_bigint_from_i64(3, &a);
+        rc_bigint_sub3(&result, &result, &c, &a);
+        ASSERT(rc_bigint_to_i64(&result) == 7);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("bigint: sub3 result == c");
+    {
+        rc_bigint b      = rc_bigint_from_i64(10, &a);
+        rc_bigint result = rc_bigint_from_i64(3, &a);
+        rc_bigint_sub3(&result, &b, &result, &a);
+        ASSERT(rc_bigint_to_i64(&result) == 7);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("bigint: sub3 result negates when b < c");
+    {
+        rc_bigint result = rc_bigint_make(0, &a);
+        rc_bigint b      = rc_bigint_from_i64(3, &a);
+        rc_bigint c      = rc_bigint_from_i64(10, &a);
+        rc_bigint_sub3(&result, &b, &c, &a);
+        ASSERT(rc_bigint_to_i64(&result) == -7);
+    }
+    END_GROUP();
+
     rc_arena_destroy(&a);
 }
 
