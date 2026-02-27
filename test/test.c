@@ -254,6 +254,35 @@ typedef struct { int threshold; } ThreshCtx;
 #include "richc/template/none_of.h"
 /* defines: bool int_none_at_least(rc_view_int view, ThreshCtx *ctx) */
 
+/* ---- mismatch instantiations ---- */
+
+/* Plain int, default equality. */
+#define MISMATCH_T int
+#include "richc/template/mismatch.h"
+/* defines: uint32_t rc_mismatch_int(rc_view_int view1, rc_view_int view2) */
+
+/* Record: match when keys are equal. */
+#define MISMATCH_T            Record
+#define MISMATCH_PRED(a, b)   ((a).key == (b).key)
+#define MISMATCH_NAME         record_mismatch_by_key
+#include "richc/template/mismatch.h"
+/* defines: uint32_t record_mismatch_by_key(rc_view_Record v1, rc_view_Record v2) */
+
+/* Context: TolCtx reused from find instantiations — match within tolerance. */
+#define MISMATCH_T                int
+#define MISMATCH_CTX              TolCtx
+#define MISMATCH_PRED(ctx, a, b)  (((a) - (b)) <= (ctx)->tolerance && \
+                                   ((b) - (a)) <= (ctx)->tolerance)
+#define MISMATCH_NAME             int_mismatch_tol
+#include "richc/template/mismatch.h"
+/* defines: uint32_t int_mismatch_tol(rc_view_int v1, rc_view_int v2, TolCtx *ctx) */
+
+/* Default PRED with context: verifies the (void)ctx path compiles cleanly. */
+#define MISMATCH_T    int
+#define MISMATCH_CTX  TolCtx
+#define MISMATCH_NAME int_mismatch_default_ctx
+#include "richc/template/mismatch.h"
+
 /* ---- transform instantiations ---- */
 
 #define TRANSFORM_SRC_T   int
@@ -2419,6 +2448,162 @@ static void test_all_any_none_of(void)
     END_GROUP();
 }
 
+/* ---- mismatch ---- */
+
+static void test_mismatch(void)
+{
+    printf("mismatch\n");
+
+    BEGIN_GROUP("both empty: no overlap, returns 0");
+    {
+        rc_view_int v1 = {NULL, 0};
+        rc_view_int v2 = {NULL, 0};
+        ASSERT(rc_mismatch_int(v1, v2) == 0);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("one empty: no overlap, returns 0");
+    {
+        int data[] = {1, 2, 3};
+        rc_view_int v1 = RC_VIEW(data);
+        rc_view_int v2 = {NULL, 0};
+        ASSERT(rc_mismatch_int(v1, v2) == 0);
+        ASSERT(rc_mismatch_int(v2, v1) == 0);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("identical views: returns n");
+    {
+        int data[] = {1, 2, 3, 4};
+        rc_view_int v1 = RC_VIEW(data);
+        rc_view_int v2 = RC_VIEW(data);
+        ASSERT(rc_mismatch_int(v1, v2) == 4);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("mismatch at index 0");
+    {
+        int a[] = {9, 2, 3};
+        int b[] = {1, 2, 3};
+        rc_view_int v1 = RC_VIEW(a);
+        rc_view_int v2 = RC_VIEW(b);
+        ASSERT(rc_mismatch_int(v1, v2) == 0);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("mismatch at middle index");
+    {
+        int a[] = {1, 2, 9, 4};
+        int b[] = {1, 2, 3, 4};
+        rc_view_int v1 = RC_VIEW(a);
+        rc_view_int v2 = RC_VIEW(b);
+        ASSERT(rc_mismatch_int(v1, v2) == 2);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("mismatch at last index");
+    {
+        int a[] = {1, 2, 3, 9};
+        int b[] = {1, 2, 3, 4};
+        rc_view_int v1 = RC_VIEW(a);
+        rc_view_int v2 = RC_VIEW(b);
+        ASSERT(rc_mismatch_int(v1, v2) == 3);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("equal overlap, view1 longer: returns min length");
+    {
+        int a[] = {1, 2, 3, 4, 5};
+        int b[] = {1, 2, 3};
+        rc_view_int v1 = RC_VIEW(a);
+        rc_view_int v2 = RC_VIEW(b);
+        ASSERT(rc_mismatch_int(v1, v2) == 3);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("equal overlap, view2 longer: returns min length");
+    {
+        int a[] = {1, 2};
+        int b[] = {1, 2, 3, 4};
+        rc_view_int v1 = RC_VIEW(a);
+        rc_view_int v2 = RC_VIEW(b);
+        ASSERT(rc_mismatch_int(v1, v2) == 2);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("mismatch within shorter view");
+    {
+        int a[] = {1, 9, 3, 4, 5};
+        int b[] = {1, 2, 3};
+        rc_view_int v1 = RC_VIEW(a);
+        rc_view_int v2 = RC_VIEW(b);
+        ASSERT(rc_mismatch_int(v1, v2) == 1);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("single element: match");
+    {
+        int a[] = {7};
+        int b[] = {7};
+        rc_view_int v1 = RC_VIEW(a);
+        rc_view_int v2 = RC_VIEW(b);
+        ASSERT(rc_mismatch_int(v1, v2) == 1);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("single element: mismatch");
+    {
+        int a[] = {7};
+        int b[] = {8};
+        rc_view_int v1 = RC_VIEW(a);
+        rc_view_int v2 = RC_VIEW(b);
+        ASSERT(rc_mismatch_int(v1, v2) == 0);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("custom predicate: Record match by key");
+    {
+        Record a[] = {{1,0},{2,0},{3,0}};
+        Record b[] = {{1,9},{2,9},{4,9}};   /* key 3 vs 4 at index 2 */
+        rc_view_Record v1 = RC_VIEW(a);
+        rc_view_Record v2 = RC_VIEW(b);
+        ASSERT(record_mismatch_by_key(v1, v2) == 2);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("custom predicate: Record all keys match");
+    {
+        Record a[] = {{1,0},{2,0},{3,0}};
+        Record b[] = {{1,9},{2,9},{3,9}};
+        rc_view_Record v1 = RC_VIEW(a);
+        rc_view_Record v2 = RC_VIEW(b);
+        ASSERT(record_mismatch_by_key(v1, v2) == 3);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("context: tolerance=1, values within tolerance match");
+    {
+        int a[] = {10, 20, 30};
+        int b[] = {10, 21, 32};   /* 21-20=1 ok; 32-30=2 mismatch at index 2 */
+        rc_view_int v1 = RC_VIEW(a);
+        rc_view_int v2 = RC_VIEW(b);
+        TolCtx ctx = {1};
+        ASSERT(int_mismatch_tol(v1, v2, &ctx) == 2);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("context: tolerance=0 is exact equality");
+    {
+        int a[] = {1, 2, 3};
+        int b[] = {1, 2, 3};
+        rc_view_int v1 = RC_VIEW(a);
+        rc_view_int v2 = RC_VIEW(b);
+        TolCtx ctx = {0};
+        ASSERT(int_mismatch_tol(v1, v2, &ctx) == 3);
+    }
+    END_GROUP();
+}
+
 /* ---- accumulate ---- */
 
 static void test_accumulate(void)
@@ -3463,6 +3648,8 @@ int main(void)
     test_rotate();
     putchar('\n');
     test_all_any_none_of();
+    putchar('\n');
+    test_mismatch();
     putchar('\n');
     test_accumulate();
     putchar('\n');

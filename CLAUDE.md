@@ -331,6 +331,7 @@ Operation functions are named after `ARRAY_NAME`:
 | `all_of.h` | All-match predicate test | Returns `true` if every element matches (vacuously true for empty view) |
 | `any_of.h` | Any-match predicate test | Returns `true` if at least one element matches (false for empty view) |
 | `none_of.h` | No-match predicate test | Returns `true` if no element matches (vacuously true for empty view) |
+| `mismatch.h` | First mismatched index between two views | Returns index of first non-matching pair, or `min(n1, n2)` if overlap matches |
 | `remove.h` | In-place removal | Compacts matching elements out; updates `span->num`; returns count removed |
 | `rotate.h` | In-place rotation | Rotates span so element at index k moves to index 0; three-reversal algorithm |
 | `transform.h` | Map/filter into array | Appends to destination, returns start index |
@@ -387,6 +388,7 @@ include/richc/
     all_of.h                    — all-match predicate test template
     any_of.h                    — any-match predicate test template
     none_of.h                   — no-match predicate test template
+    mismatch.h                  — first mismatched element between two views template
     remove.h                    — in-place removal template
     rotate.h                    — in-place rotation template
     transform.h                 — map/filter template
@@ -402,7 +404,7 @@ src/
       rational.c                — rc_rational non-trivial operations (make, from_double, int_mul, mul, int_div, div, add, sub)
       bigint.c                  — rc_bigint non-trivial operations (make, from_u64/i64, copy, reserve, add, sub, mul, divmod, div, mod)
 test/
-  test.c                        — full test suite (~7,200 lines, ~2173 assertions)
+  test.c                        — full test suite (~7,400 lines, ~2189 assertions)
 ```
 
 All library headers are included as `#include "richc/..."` (the `include/` directory

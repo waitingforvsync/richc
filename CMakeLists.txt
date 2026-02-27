@@ -40,11 +40,20 @@ add_library(richc STATIC
     include/richc/math/vec3f.h
     include/richc/math/vec4f.h
     include/richc/template/accumulate.h
+    include/richc/template/all_of.h
+    include/richc/template/any_of.h
     include/richc/template/array.h
     include/richc/template/find.h
     include/richc/template/hash_map.h
+    include/richc/template/hash_set.h
     include/richc/template/hash_trie.h
     include/richc/template/lower_bound.h
+    include/richc/template/max_element.h
+    include/richc/template/min_element.h
+    include/richc/template/mismatch.h
+    include/richc/template/none_of.h
+    include/richc/template/remove.h
+    include/richc/template/rotate.h
     include/richc/template/sort.h
     include/richc/template/transform.h
     include/richc/template/upper_bound.h
