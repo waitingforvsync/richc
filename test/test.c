@@ -155,6 +155,17 @@ typedef struct { int threshold; } ThreshCtx;
 #include "richc/template/remove.h"
 /* defines: uint32_t int_remove_below(rc_span_int *span, ThreshCtx *ctx) */
 
+/* ---- rotate instantiations ---- */
+
+#define ROTATE_T int
+#include "richc/template/rotate.h"
+/* defines: void rc_rotate_int(rc_span_int span, uint32_t k) */
+
+#define ROTATE_T    Record
+#define ROTATE_NAME record_rotate
+#include "richc/template/rotate.h"
+/* defines: void record_rotate(rc_span_Record span, uint32_t k) */
+
 /* ---- transform instantiations ---- */
 
 #define TRANSFORM_SRC_T   int
@@ -1958,6 +1969,123 @@ static void test_remove(void)
     END_GROUP();
 }
 
+/* ---- rotate ---- */
+
+static void test_rotate(void)
+{
+    printf("rotate\n");
+
+    BEGIN_GROUP("empty span: no-op");
+    {
+        rc_span_int s = {0};
+        rc_rotate_int(s, 0);   /* k==0 on empty */
+        ASSERT(s.num == 0);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("single element: no-op");
+    {
+        int data[] = {42};
+        rc_span_int s = RC_SPAN(data);
+        rc_rotate_int(s, 0);
+        ASSERT(data[0] == 42);
+        rc_rotate_int(s, 1);   /* k >= num: no-op */
+        ASSERT(data[0] == 42);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("k == 0: no-op");
+    {
+        int data[] = {1, 2, 3, 4, 5};
+        rc_span_int s = RC_SPAN(data);
+        rc_rotate_int(s, 0);
+        for (int i = 0; i < 5; i++) ASSERT(data[i] == i + 1);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("k >= num: no-op");
+    {
+        int data[] = {1, 2, 3};
+        rc_span_int s = RC_SPAN(data);
+        rc_rotate_int(s, 3);
+        ASSERT(data[0] == 1 && data[1] == 2 && data[2] == 3);
+        rc_rotate_int(s, 99);
+        ASSERT(data[0] == 1 && data[1] == 2 && data[2] == 3);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("k == 1: shift all left by one");
+    {
+        int data[] = {1, 2, 3, 4, 5};
+        rc_span_int s = RC_SPAN(data);
+        rc_rotate_int(s, 1);
+        ASSERT(data[0] == 2);
+        ASSERT(data[1] == 3);
+        ASSERT(data[2] == 4);
+        ASSERT(data[3] == 5);
+        ASSERT(data[4] == 1);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("k == num-1: only last element moves to front");
+    {
+        int data[] = {1, 2, 3, 4, 5};
+        rc_span_int s = RC_SPAN(data);
+        rc_rotate_int(s, 4);
+        ASSERT(data[0] == 5);
+        ASSERT(data[1] == 1);
+        ASSERT(data[2] == 2);
+        ASSERT(data[3] == 3);
+        ASSERT(data[4] == 4);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("k == num/2: even-length split");
+    {
+        int data[] = {1, 2, 3, 4, 5, 6};
+        rc_span_int s = RC_SPAN(data);
+        rc_rotate_int(s, 3);
+        ASSERT(data[0] == 4);
+        ASSERT(data[1] == 5);
+        ASSERT(data[2] == 6);
+        ASSERT(data[3] == 1);
+        ASSERT(data[4] == 2);
+        ASSERT(data[5] == 3);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("two elements");
+    {
+        int data[] = {7, 9};
+        rc_span_int s = RC_SPAN(data);
+        rc_rotate_int(s, 1);
+        ASSERT(data[0] == 9 && data[1] == 7);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("rotate twice gives original when k1+k2==num");
+    {
+        int data[] = {1, 2, 3, 4, 5};
+        rc_span_int s = RC_SPAN(data);
+        rc_rotate_int(s, 2);
+        rc_rotate_int(s, 3);
+        for (int i = 0; i < 5; i++) ASSERT(data[i] == i + 1);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("custom type: Record elements");
+    {
+        Record data[] = {{10,0},{20,0},{30,0},{40,0}};
+        rc_span_Record s = RC_SPAN(data);
+        record_rotate(s, 2);
+        ASSERT(data[0].key == 30);
+        ASSERT(data[1].key == 40);
+        ASSERT(data[2].key == 10);
+        ASSERT(data[3].key == 20);
+    }
+    END_GROUP();
+}
+
 /* ---- accumulate ---- */
 
 static void test_accumulate(void)
@@ -2996,6 +3124,8 @@ int main(void)
     test_find();
     putchar('\n');
     test_remove();
+    putchar('\n');
+    test_rotate();
     putchar('\n');
     test_accumulate();
     putchar('\n');
