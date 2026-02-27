@@ -229,7 +229,7 @@ All inline functions carry an explicit type suffix to avoid Windows macro confli
 | `math/mat44f.h` | `rc_mat44f` | 4×4 column-major float matrix; `determinant`/`inverse` in `.c` |
 | `math/quatf.h` | `rc_quatf` | Unit quaternion; `{rc_vec3f xyz; float w}`; Hamilton convention |
 | `math/rational.h` | `rc_rational` | Rational arithmetic; `{int64_t num, denom}`; always canonical |
-| `math/bigint.h` | `rc_bigint` | Arbitrary-precision integer; sign-magnitude, arena-backed; add/sub share a unified kernel; trivial ops inline, rest in `bigint.c` |
+| `math/bigint.h` | `rc_bigint` | Arbitrary-precision integer; sign-magnitude, arena-backed; `uint32_t` limbs with `uint64_t` intermediates for carry/borrow/mul; 3-address API (result, b, c) for add/sub/mul/divmod/div/mod; `int64_t` shortcut variants (int_add/sub/mul/divmod/div/mod) build a transient stack-backed bigint and delegate; add/sub share a unified kernel; schoolbook O(m×n) mul uses scratch arena (by value) for temp buffer; division via single-limb fast path or Knuth Algorithm D (base 2³²); trivial ops inline, rest in `bigint.c` |
 
 Matrix storage is column-major throughout: `cx` is the first column, etc.
 The `make_transpose(rx, ry, rz, ...)` constructors accept *row* vectors and store
@@ -374,9 +374,9 @@ src/
     math/
       mat44f.c                  — rc_mat44f_determinant, rc_mat44f_inverse
       rational.c                — rc_rational non-trivial operations (make, from_double, int_mul, mul, int_div, div, add, sub)
-      bigint.c                  — rc_bigint non-trivial operations (make, from_u64/i64, copy, reserve, add, sub, add3, sub3)
+      bigint.c                  — rc_bigint non-trivial operations (make, from_u64/i64, copy, reserve, add, sub, mul, divmod, div, mod)
 test/
-  test.c                        — full test suite (~5,600 lines, 1731 assertions)
+  test.c                        — full test suite (~6,100 lines, ~1807 assertions)
 ```
 
 All library headers are included as `#include "richc/..."` (the `include/` directory
