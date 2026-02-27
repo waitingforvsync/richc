@@ -71,6 +71,26 @@
  *   int  NAME_contains(MAP_NAME *m, MAP_KEY_T key)
  *        Returns 1 if key is present, 0 if absent.
  *
+ *   uint32_t    NAME_next(const MAP_NAME *m, uint32_t pos)
+ *        Returns the smallest index >= pos that holds a live entry,
+ *        or m->cap if no such index exists.  Start iteration at pos=0;
+ *        advance with pos = NAME_next(m, i+1).
+ *
+ *   MAP_KEY_T   NAME_key_at(const MAP_NAME *m, uint32_t i)
+ *        Returns the key stored at slot i.  Only valid when slot i is
+ *        OCCUPIED (i.e. NAME_next returned i and i < m->cap).
+ *
+ *   MAP_VAL_T * NAME_val_at(MAP_NAME *m, uint32_t i)
+ *        Returns a pointer to the value stored at slot i.  Only valid
+ *        when slot i is OCCUPIED.  Invalidated by any add that rehashes.
+ *
+ * Iteration idiom:
+ *   for (uint32_t i = NAME_next(m, 0); i < m->cap; i = NAME_next(m, i+1)) {
+ *       MAP_KEY_T k = NAME_key_at(m, i);
+ *       MAP_VAL_T *v = NAME_val_at(m, i);
+ *       // use k, v
+ *   }
+ *
  * MAP_HASH conventions
  * --------------------
  *   MAP_HASH(key)    — no context; must expand to an integer type
@@ -153,6 +173,9 @@
 #define MAP_REMOVE_   RC_CONCAT(MAP_NAME, _remove)
 #define MAP_FIND_     RC_CONCAT(MAP_NAME, _find)
 #define MAP_CONTAINS_ RC_CONCAT(MAP_NAME, _contains)
+#define MAP_NEXT_     RC_CONCAT(MAP_NAME, _next)
+#define MAP_KEY_AT_   RC_CONCAT(MAP_NAME, _key_at)
+#define MAP_VAL_AT_   RC_CONCAT(MAP_NAME, _val_at)
 
 /* ---- generated types ---- */
 
@@ -382,6 +405,51 @@ static inline int MAP_CONTAINS_(MAP_NAME *map, MAP_KEY_T key)
     return MAP_FIND_(map, key) != NULL;
 }
 
+/* ---- public: next ---- */
+
+/*
+ * Returns the smallest index >= pos that holds a live (OCCUPIED) entry,
+ * or map->cap if no such index exists.
+ *
+ * Use pos=0 to begin iteration; advance with NAME_next(map, i+1).
+ * When map->data is NULL the map is empty and cap is 0, so the caller's
+ * loop condition (i < map->cap) is immediately false.
+ */
+static inline uint32_t MAP_NEXT_(const MAP_NAME *map, uint32_t pos)
+{
+    if (!map->data) return 0;
+    uint8_t *states = (uint8_t *)map->data;
+    while (pos < map->cap && states[pos] != 1)
+        pos++;
+    return pos;
+}
+
+/* ---- public: key_at ---- */
+
+/*
+ * Returns the key stored at slot i.
+ * Only valid when slot i is OCCUPIED (i.e. MAP_NEXT_ returned i and
+ * i < map->cap).
+ */
+static inline MAP_KEY_T MAP_KEY_AT_(const MAP_NAME *map, uint32_t i)
+{
+    MAP_KEY_T *keys = (MAP_KEY_T *)(map->data + MAP_KEYS_OFF_(map->cap));
+    return keys[i];
+}
+
+/* ---- public: val_at ---- */
+
+/*
+ * Returns a pointer to the value stored at slot i.
+ * Only valid when slot i is OCCUPIED.
+ * Invalidated by any subsequent add that causes a rehash.
+ */
+static inline MAP_VAL_T *MAP_VAL_AT_(MAP_NAME *map, uint32_t i)
+{
+    MAP_VAL_T *vals = (MAP_VAL_T *)(map->data + MAP_VALS_OFF_(map->cap));
+    return &vals[i];
+}
+
 /* ---- cleanup ---- */
 
 #undef MAP_KEYS_OFF_
@@ -393,6 +461,9 @@ static inline int MAP_CONTAINS_(MAP_NAME *map, MAP_KEY_T key)
 #undef MAP_REMOVE_
 #undef MAP_FIND_
 #undef MAP_CONTAINS_
+#undef MAP_NEXT_
+#undef MAP_KEY_AT_
+#undef MAP_VAL_AT_
 
 #undef MAP_EQUAL
 #undef MAP_NAME

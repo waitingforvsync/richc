@@ -2220,6 +2220,83 @@ static void test_hash_map(void)
         rc_arena_destroy(&a);
     }
     END_GROUP();
+
+    BEGIN_GROUP("next/key_at/val_at: iterate empty map");
+    {
+        rc_map_int m = {0};
+        uint32_t i = rc_map_int_next(&m, 0);
+        ASSERT(i == m.cap);   /* immediately at end (cap == 0) */
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("next/key_at/val_at: all entries visited exactly once");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_map_int m = {0};
+        for (int k = 0; k < 10; k++)
+            rc_map_int_add(&m, k, k * 10, &a);
+
+        /* Collect keys and values via iteration. */
+        int seen_keys[10] = {0};
+        int count = 0;
+        for (uint32_t i = rc_map_int_next(&m, 0); i < m.cap;
+             i = rc_map_int_next(&m, i + 1))
+        {
+            int k = rc_map_int_key_at(&m, i);
+            int *v = rc_map_int_val_at(&m, i);
+            ASSERT(k >= 0 && k < 10);
+            ASSERT(*v == k * 10);
+            seen_keys[k]++;
+            count++;
+        }
+        ASSERT(count == 10);
+        for (int k = 0; k < 10; k++)
+            ASSERT(seen_keys[k] == 1);   /* each key seen exactly once */
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("next/key_at/val_at: val_at pointer is mutable");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_map_int m = {0};
+        rc_map_int_add(&m, 1, 100, &a);
+        rc_map_int_add(&m, 2, 200, &a);
+
+        /* Double each value via val_at. */
+        for (uint32_t i = rc_map_int_next(&m, 0); i < m.cap;
+             i = rc_map_int_next(&m, i + 1))
+            *rc_map_int_val_at(&m, i) *= 2;
+
+        int *v1 = rc_map_int_find(&m, 1);
+        int *v2 = rc_map_int_find(&m, 2);
+        ASSERT(v1 != NULL && *v1 == 200);
+        ASSERT(v2 != NULL && *v2 == 400);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("next/key_at/val_at: tombstones skipped");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_map_int m = {0};
+        for (int k = 0; k < 5; k++)
+            rc_map_int_add(&m, k, k, &a);
+        rc_map_int_remove(&m, 1);
+        rc_map_int_remove(&m, 3);
+
+        int count = 0;
+        for (uint32_t i = rc_map_int_next(&m, 0); i < m.cap;
+             i = rc_map_int_next(&m, i + 1))
+        {
+            int k = rc_map_int_key_at(&m, i);
+            ASSERT(k != 1 && k != 3);   /* removed keys must not appear */
+            count++;
+        }
+        ASSERT(count == 3);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
 }
 
 /* ---- hash set ---- */
@@ -2352,6 +2429,60 @@ static void test_hash_set(void)
         ASSERT(s.count == 2);
         ASSERT(Record_set_remove(&s, r2) == 1);
         ASSERT(Record_set_contains(&s, r2) == 0);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("next/key_at: iterate empty set");
+    {
+        rc_set_int s = {0};
+        uint32_t i = rc_set_int_next(&s, 0);
+        ASSERT(i == s.cap);   /* immediately at end (cap == 0) */
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("next/key_at: all entries visited exactly once");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_set_int s = {0};
+        for (int k = 0; k < 10; k++)
+            rc_set_int_add(&s, k, &a);
+
+        int seen[10] = {0};
+        int count = 0;
+        for (uint32_t i = rc_set_int_next(&s, 0); i < s.cap;
+             i = rc_set_int_next(&s, i + 1))
+        {
+            int k = rc_set_int_key_at(&s, i);
+            ASSERT(k >= 0 && k < 10);
+            seen[k]++;
+            count++;
+        }
+        ASSERT(count == 10);
+        for (int k = 0; k < 10; k++)
+            ASSERT(seen[k] == 1);   /* each key seen exactly once */
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("next/key_at: tombstones skipped");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_set_int s = {0};
+        for (int k = 0; k < 5; k++)
+            rc_set_int_add(&s, k, &a);
+        rc_set_int_remove(&s, 1);
+        rc_set_int_remove(&s, 3);
+
+        int count = 0;
+        for (uint32_t i = rc_set_int_next(&s, 0); i < s.cap;
+             i = rc_set_int_next(&s, i + 1))
+        {
+            int k = rc_set_int_key_at(&s, i);
+            ASSERT(k != 1 && k != 3);   /* removed keys must not appear */
+            count++;
+        }
+        ASSERT(count == 3);
         rc_arena_destroy(&a);
     }
     END_GROUP();

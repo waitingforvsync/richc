@@ -257,7 +257,8 @@ Open-addressing with linear probing, Structure-of-Arrays layout.
 Default type name: `rc_map_T` (keyed on `MAP_KEY_T`).
 Tombstone deletion. Load factor < 3/4; capacity always power-of-two.
 Zero-initializable empty state.
-Operations: `add`, `remove`, `find`, `contains`, `reserve`.
+Operations: `add`, `remove`, `find`, `contains`, `reserve`, `next`, `key_at`, `val_at`.
+Iteration: `next(map, pos)` returns the next occupied slot index; `key_at(map, i)` and `val_at(map, i)` access the entry at that slot.
 
 ### Hash set
 Header: `hash_set.h`
@@ -265,7 +266,8 @@ Open-addressing with linear probing, Structure-of-Arrays layout (states + keys o
 Default type name: `rc_set_T` (keyed on `SET_KEY_T`).
 Tombstone deletion. Load factor < 3/4; capacity always power-of-two.
 Zero-initializable empty state.
-Operations: `add`, `remove`, `contains`, `reserve`.
+Operations: `add`, `remove`, `contains`, `reserve`, `next`, `key_at`.
+Iteration: `next(set, pos)` returns the next occupied slot index; `key_at(set, i)` accesses the key at that slot.
 
 ### Hash trie
 Header: `hash_trie.h`
@@ -385,7 +387,7 @@ src/
       rational.c                — rc_rational non-trivial operations (make, from_double, int_mul, mul, int_div, div, add, sub)
       bigint.c                  — rc_bigint non-trivial operations (make, from_u64/i64, copy, reserve, add, sub, mul, divmod, div, mod)
 test/
-  test.c                        — full test suite (~6,300 lines, ~1961 assertions)
+  test.c                        — full test suite (~6,500 lines, ~2025 assertions)
 ```
 
 All library headers are included as `#include "richc/..."` (the `include/` directory

@@ -61,6 +61,21 @@
  *   int  SET_NAME_contains(SET_NAME *s, SET_KEY_T key)
  *        Returns 1 if key is present, 0 if absent.
  *
+ *   uint32_t    SET_NAME_next(const SET_NAME *s, uint32_t pos)
+ *        Returns the smallest index >= pos that holds a live entry,
+ *        or s->cap if no such index exists.  Start iteration at pos=0;
+ *        advance with pos = NAME_next(s, i+1).
+ *
+ *   SET_KEY_T   SET_NAME_key_at(const SET_NAME *s, uint32_t i)
+ *        Returns the key stored at slot i.  Only valid when slot i is
+ *        OCCUPIED (i.e. NAME_next returned i and i < s->cap).
+ *
+ * Iteration idiom:
+ *   for (uint32_t i = NAME_next(s, 0); i < s->cap; i = NAME_next(s, i+1)) {
+ *       SET_KEY_T k = NAME_key_at(s, i);
+ *       // use k
+ *   }
+ *
  * SET_HASH conventions
  * --------------------
  *   SET_HASH(key)    — no context; must expand to an integer type
@@ -126,6 +141,8 @@
 #define SET_ADD_      RC_CONCAT(SET_NAME, _add)
 #define SET_REMOVE_   RC_CONCAT(SET_NAME, _remove)
 #define SET_CONTAINS_ RC_CONCAT(SET_NAME, _contains)
+#define SET_NEXT_     RC_CONCAT(SET_NAME, _next)
+#define SET_KEY_AT_   RC_CONCAT(SET_NAME, _key_at)
 
 /* ---- generated type ---- */
 
@@ -325,6 +342,38 @@ static inline int SET_CONTAINS_(SET_NAME *set, SET_KEY_T key)
     }
 }
 
+/* ---- public: next ---- */
+
+/*
+ * Returns the smallest index >= pos that holds a live (OCCUPIED) entry,
+ * or set->cap if no such index exists.
+ *
+ * Use pos=0 to begin iteration; advance with NAME_next(set, i+1).
+ * When set->data is NULL the set is empty and cap is 0, so the caller's
+ * loop condition (i < set->cap) is immediately false.
+ */
+static inline uint32_t SET_NEXT_(const SET_NAME *set, uint32_t pos)
+{
+    if (!set->data) return 0;
+    uint8_t *states = (uint8_t *)set->data;
+    while (pos < set->cap && states[pos] != 1)
+        pos++;
+    return pos;
+}
+
+/* ---- public: key_at ---- */
+
+/*
+ * Returns the key stored at slot i.
+ * Only valid when slot i is OCCUPIED (i.e. SET_NEXT_ returned i and
+ * i < set->cap).
+ */
+static inline SET_KEY_T SET_KEY_AT_(const SET_NAME *set, uint32_t i)
+{
+    SET_KEY_T *keys = (SET_KEY_T *)(set->data + SET_KEYS_OFF_(set->cap));
+    return keys[i];
+}
+
 /* ---- cleanup ---- */
 
 #undef SET_KEYS_OFF_
@@ -334,6 +383,8 @@ static inline int SET_CONTAINS_(SET_NAME *set, SET_KEY_T key)
 #undef SET_ADD_
 #undef SET_REMOVE_
 #undef SET_CONTAINS_
+#undef SET_NEXT_
+#undef SET_KEY_AT_
 
 #undef SET_EQUAL
 #undef SET_NAME
