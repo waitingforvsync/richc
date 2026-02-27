@@ -262,6 +262,25 @@ typedef struct { int weight; } WeightCtx;
 #include "richc/template/hash_map.h"
 /* defines: Record_int_Map, Record_int_Map_add, etc. */
 
+/*
+ * rc_set_int: int set, Knuth multiplicative hash, default equality.
+ */
+#define SET_KEY_T   int
+#define SET_HASH(k) ((size_t)(unsigned int)(k) * 2654435761u)
+#include "richc/template/hash_set.h"
+/* defines: rc_set_int, rc_set_int_add, rc_set_int_remove,
+ *          rc_set_int_contains, rc_set_int_reserve              */
+
+/*
+ * Record_set: Record set, custom hash and equality on .key field.
+ */
+#define SET_KEY_T         Record
+#define SET_HASH(k)       ((size_t)(unsigned int)((k).key) * 2654435761u)
+#define SET_EQUAL(a, b)   ((a).key == (b).key)
+#define SET_NAME          Record_set
+#include "richc/template/hash_set.h"
+/* defines: Record_set, Record_set_add, etc. */
+
 /* ---- minimal test framework ---- */
 
 static int g_failures = 0;
@@ -2203,6 +2222,141 @@ static void test_hash_map(void)
     END_GROUP();
 }
 
+/* ---- hash set ---- */
+
+static void test_hash_set(void)
+{
+    printf("hash set\n");
+
+    BEGIN_GROUP("zero-init: contains/remove safe");
+    {
+        rc_set_int s = {0};
+        ASSERT(rc_set_int_contains(&s, 42) == 0);
+        ASSERT(rc_set_int_remove(&s, 42)   == 0);
+        ASSERT(s.count == 0);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("add new key: returns 1, contains works");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_set_int s = {0};
+        ASSERT(rc_set_int_add(&s, 7, &a) == 1);    /* new key */
+        ASSERT(s.count == 1);
+        ASSERT(rc_set_int_contains(&s, 7)  == 1);
+        ASSERT(rc_set_int_contains(&s, 99) == 0);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("add existing key: returns 0, count unchanged");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_set_int s = {0};
+        ASSERT(rc_set_int_add(&s, 5, &a) == 1);
+        ASSERT(rc_set_int_add(&s, 5, &a) == 0);    /* already present */
+        ASSERT(s.count == 1);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("remove: key gone; absent key returns 0");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_set_int s = {0};
+        rc_set_int_add(&s, 3, &a);
+        rc_set_int_add(&s, 4, &a);
+        ASSERT(rc_set_int_remove(&s, 3)   == 1);   /* present */
+        ASSERT(s.count == 1);
+        ASSERT(rc_set_int_contains(&s, 3) == 0);
+        ASSERT(rc_set_int_contains(&s, 4) == 1);   /* other key intact */
+        ASSERT(rc_set_int_remove(&s, 3)   == 0);   /* already gone */
+        ASSERT(rc_set_int_remove(&s, 99)  == 0);   /* never existed */
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("multiple entries: 20 keys, all present");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_set_int s = {0};
+        for (int i = 0; i < 20; i++)
+            rc_set_int_add(&s, i, &a);
+        ASSERT(s.count == 20);
+        for (int i = 0; i < 20; i++)
+            ASSERT(rc_set_int_contains(&s, i) == 1);
+        ASSERT(rc_set_int_contains(&s, 20) == 0);  /* not inserted */
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("rehash: all entries survive growth");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_set_int s = {0};
+        for (int i = 0; i < 100; i++)
+            rc_set_int_add(&s, i, &a);
+        ASSERT(s.count == 100);
+        for (int i = 0; i < 100; i++)
+            ASSERT(rc_set_int_contains(&s, i) == 1);
+        for (int i = 100; i < 110; i++)
+            ASSERT(rc_set_int_contains(&s, i) == 0);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("remove then re-add: tombstone reuse");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_set_int s = {0};
+        rc_set_int_add(&s, 1, &a);
+        rc_set_int_add(&s, 2, &a);
+        rc_set_int_remove(&s, 1);
+        ASSERT(s.count == 1);
+        ASSERT(rc_set_int_add(&s, 1, &a) == 1);    /* re-insert into tombstone */
+        ASSERT(s.count == 2);
+        ASSERT(rc_set_int_contains(&s, 1) == 1);
+        ASSERT(rc_set_int_contains(&s, 2) == 1);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("reserve: pre-alloc avoids rehash");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_set_int s = {0};
+        rc_set_int_reserve(&s, 50, &a);
+        ASSERT(s.cap >= 64);
+        uint32_t cap_before = s.cap;
+        for (int i = 0; i < 40; i++)
+            rc_set_int_add(&s, i, &a);
+        ASSERT(s.cap == cap_before);   /* no rehash needed */
+        ASSERT(s.count == 40);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("custom key type: Record_set with .key equality");
+    {
+        rc_arena a = rc_arena_make_default();
+        Record_set s = {0};
+        Record r1 = {10, 0};
+        Record r2 = {20, 0};
+        Record r3 = {10, 99};  /* same .key as r1, different .val */
+        ASSERT(Record_set_add(&s, r1, &a) == 1);
+        ASSERT(Record_set_add(&s, r2, &a) == 1);
+        ASSERT(s.count == 2);
+        ASSERT(Record_set_contains(&s, r1) == 1);
+        ASSERT(Record_set_contains(&s, r2) == 1);
+        ASSERT(Record_set_add(&s, r3, &a) == 0);  /* same .key as r1 */
+        ASSERT(s.count == 2);
+        ASSERT(Record_set_remove(&s, r2) == 1);
+        ASSERT(Record_set_contains(&s, r2) == 0);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+}
+
 /* ---- hash trie ---- */
 
 static void test_hash_trie(void)
@@ -2519,6 +2673,8 @@ int main(void)
     test_accumulate();
     putchar('\n');
     test_hash_map();
+    putchar('\n');
+    test_hash_set();
     putchar('\n');
     test_hash_trie();
     putchar('\n');

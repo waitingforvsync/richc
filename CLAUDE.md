@@ -259,6 +259,14 @@ Tombstone deletion. Load factor < 3/4; capacity always power-of-two.
 Zero-initializable empty state.
 Operations: `add`, `remove`, `find`, `contains`, `reserve`.
 
+### Hash set
+Header: `hash_set.h`
+Open-addressing with linear probing, Structure-of-Arrays layout (states + keys only; no values).
+Default type name: `rc_set_T` (keyed on `SET_KEY_T`).
+Tombstone deletion. Load factor < 3/4; capacity always power-of-two.
+Zero-initializable empty state.
+Operations: `add`, `remove`, `contains`, `reserve`.
+
 ### Hash trie
 Header: `hash_trie.h`
 16-way (4 bits per level) radix trie over hash values.
@@ -358,6 +366,7 @@ include/richc/
   template/
     array.h                     — View + Span + Array template (main container header)
     hash_map.h                  — open-addressing hash map template
+    hash_set.h                  — open-addressing hash set template
     hash_trie.h                 — 16-way hash trie template
     sort.h                      — introsort template
     lower_bound.h               — lower_bound template
@@ -376,7 +385,7 @@ src/
       rational.c                — rc_rational non-trivial operations (make, from_double, int_mul, mul, int_div, div, add, sub)
       bigint.c                  — rc_bigint non-trivial operations (make, from_u64/i64, copy, reserve, add, sub, mul, divmod, div, mod)
 test/
-  test.c                        — full test suite (~6,100 lines, ~1807 assertions)
+  test.c                        — full test suite (~6,300 lines, ~1961 assertions)
 ```
 
 All library headers are included as `#include "richc/..."` (the `include/` directory

@@ -52,6 +52,7 @@ Custom type names can be supplied via optional macros (`ARRAY_NAME`, `ARRAY_VIEW
 | `mstr.h` | `rc_mstr` | Arena-backed growable string; always null-terminated |
 | `template/array.h` | `rc_array_T` | Growable arena-backed array; also generates `rc_view_T` and `rc_span_T` |
 | `template/hash_map.h` | `rc_map_T` | Open-addressing hash map with tombstone deletion; SoA layout |
+| `template/hash_set.h` | `rc_set_T` | Open-addressing hash set with tombstone deletion; SoA layout |
 | `template/hash_trie.h` | `rc_trie_T` | 16-way radix trie over hash values; arena-backed node pool |
 | `bytes.h` | `rc_view/span/array_bytes` | `uint8_t` array family |
 
