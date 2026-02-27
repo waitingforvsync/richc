@@ -1,7 +1,7 @@
 /*
  * math/vec2i.h - 2D integer vector (rc_vec2i).
  *
- * All operations are branchless arithmetic; no heap allocation.
+ * All operations are inline; no heap allocation.
  *
  * Type
  * ----
@@ -22,8 +22,14 @@
  * Arithmetic
  * ----------
  *   add, add3, add4, sub, scalar_mul, scalar_div, component_mul,
- *   component_min, component_max, dot, wedge, perp,
- *   lengthsqr, negate, is_equal
+ *   component_min, component_max, perp, negate, is_equal
+ *
+ * Scalar results (int64_t, assert no overflow)
+ * --------------------------------------------
+ *   dot, wedge, lengthsqr
+ *
+ * Note: length is not provided because the exact integer result cannot be
+ * represented in general.
  */
 
 #ifndef RC_MATH_VEC2I_H_
@@ -31,6 +37,8 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "richc/debug.h"
+#include "richc/math/math.h"
 
 /* ---- type ---- */
 
@@ -120,16 +128,22 @@ static inline rc_vec2i rc_vec2i_component_max(rc_vec2i a, rc_vec2i b)
     };
 }
 
-/* Dot product. */
-static inline int32_t rc_vec2i_dot(rc_vec2i a, rc_vec2i b)
+/* Dot product.  Asserts that the result does not overflow int64_t. */
+static inline int64_t rc_vec2i_dot(rc_vec2i a, rc_vec2i b)
 {
-    return a.x * b.x + a.y * b.y;
+    int64_t p0 = (int64_t)a.x * b.x;
+    int64_t p1 = (int64_t)a.y * b.y;
+    RC_ASSERT(!rc_add_overflows_i64(p0, p1));
+    return p0 + p1;
 }
 
-/* 2D wedge (cross) product: ax*by - bx*ay. */
-static inline int32_t rc_vec2i_wedge(rc_vec2i a, rc_vec2i b)
+/* 2D wedge (cross) product: ax*by - bx*ay.  Asserts no int64_t overflow. */
+static inline int64_t rc_vec2i_wedge(rc_vec2i a, rc_vec2i b)
 {
-    return a.x * b.y - b.x * a.y;
+    int64_t p0 = (int64_t)a.x * b.y;
+    int64_t p1 = (int64_t)b.x * a.y;
+    RC_ASSERT(!rc_sub_overflows_i64(p0, p1));
+    return p0 - p1;
 }
 
 /* Counter-clockwise perpendicular: (-y, x). */
@@ -138,8 +152,8 @@ static inline rc_vec2i rc_vec2i_perp(rc_vec2i a)
     return (rc_vec2i) {-a.y, a.x};
 }
 
-/* Squared length. */
-static inline int32_t rc_vec2i_lengthsqr(rc_vec2i a)
+/* Squared length.  Asserts that the result does not overflow int64_t. */
+static inline int64_t rc_vec2i_lengthsqr(rc_vec2i a)
 {
     return rc_vec2i_dot(a, a);
 }

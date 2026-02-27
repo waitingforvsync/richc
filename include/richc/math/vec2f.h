@@ -31,9 +31,6 @@
  *   lengthsqr, length, normalize (asserts non-zero), normalize_safe,
  *   negate, is_nearly_equal, is_equal
  *
- * Container types (generated via array.h template)
- * -------------------------------------------------
- *   rc_view_vec2f, rc_span_vec2f, rc_array_vec2f
  */
 
 #ifndef RC_MATH_VEC2F_H_
@@ -231,13 +228,5 @@ static inline bool rc_vec2f_is_equal(rc_vec2f a, rc_vec2f b)
 {
     return a.x == b.x && a.y == b.y;
 }
-
-/* ---- container types ---- */
-
-#define ARRAY_T    rc_vec2f
-#define ARRAY_NAME rc_array_vec2f
-#define ARRAY_VIEW rc_view_vec2f
-#define ARRAY_SPAN rc_span_vec2f
-#include "richc/template/array.h"
 
 #endif /* RC_MATH_VEC2F_H_ */

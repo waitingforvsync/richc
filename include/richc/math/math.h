@@ -2,7 +2,7 @@
  * math/math.h - scalar math utilities.
  *
  * Provides degree-to-radian conversion, integer min/max/sign, GCD,
- * count-leading-zeros, and unsigned 64-bit overflow checks.
+ * count-leading-zeros, and signed/unsigned 64-bit overflow checks.
  *
  * Naming
  * ------
@@ -91,6 +91,34 @@ static inline bool rc_mul_overflows_u64(uint64_t a, uint64_t b)
 static inline bool rc_add_overflows_u64(uint64_t a, uint64_t b)
 {
     return b > UINT64_MAX - a;
+}
+
+/* ---- signed 64-bit overflow checks ---- */
+
+/* True if a + b would overflow int64_t. */
+static inline bool rc_add_overflows_i64(int64_t a, int64_t b)
+{
+    if (b > 0) return a > INT64_MAX - b;
+    if (b < 0) return a < INT64_MIN - b;
+    return false;
+}
+
+/* True if a - b would overflow int64_t. */
+static inline bool rc_sub_overflows_i64(int64_t a, int64_t b)
+{
+    if (b < 0) return a > INT64_MAX + b;
+    if (b > 0) return a < INT64_MIN + b;
+    return false;
+}
+
+/* True if a * b would overflow int64_t. */
+static inline bool rc_mul_overflows_i64(int64_t a, int64_t b)
+{
+    if (a == 0 || b == 0) return false;
+    if (a > 0 && b > 0) return a > INT64_MAX / b;
+    if (a < 0 && b < 0) return a < INT64_MAX / b;
+    if (a > 0)          return b < INT64_MIN / a;  /* a > 0, b < 0 */
+    return              a < INT64_MIN / b;          /* a < 0, b > 0 */
 }
 
 #endif /* RC_MATH_MATH_H_ */

@@ -211,12 +211,14 @@ All inline functions carry an explicit type suffix to avoid Windows macro confli
 
 | Header | Type | Notes |
 |--------|------|-------|
-| `math/math.h` | — | `rc_deg_to_rad`, `rc_min/max/sgn_i32/i64`, `rc_gcd_i32/i64`, `rc_clz_u32/u64`, `rc_mul/add_overflows_u64` |
-| `math/vec2i.h` | `rc_vec2i` | 2D integer vector; `{int32_t x, y}` |
-| `math/vec2f.h` | `rc_vec2f` | 2D float vector; also emits `rc_view/span/array_vec2f` |
-| `math/vec3f.h` | `rc_vec3f` | 3D float vector; also emits `rc_view/span/array_vec3f` |
-| `math/vec4f.h` | `rc_vec4f` | 4D float vector; also emits `rc_view/span/array_vec4f` |
-| `math/aabb2f.h` | `rc_aabb2f` | 2D axis-aligned bounding box `{rc_vec2f min, max}` |
+| `math/math.h` | — | `rc_deg_to_rad`, `rc_min/max/sgn_i32/i64`, `rc_gcd_i32/i64`, `rc_clz_u32/u64`, `rc_mul/add_overflows_u64`, `rc_add/sub/mul_overflows_i64` |
+| `math/vec2i.h` | `rc_vec2i` | 2D integer vector; `{int32_t x, y}`; `dot`/`wedge`/`lengthsqr` return `int64_t` |
+| `math/vec3i.h` | `rc_vec3i` | 3D integer vector; `{int32_t x, y, z}`; `dot`/`lengthsqr` return `int64_t`; `cross` asserts result fits in `int32_t` |
+| `math/vec2f.h` | `rc_vec2f` | 2D float vector |
+| `math/vec3f.h` | `rc_vec3f` | 3D float vector; includes `from_vec3i` |
+| `math/vec4f.h` | `rc_vec4f` | 4D float vector |
+| `math/aabb2f.h` | `rc_aabb2f` | 2D float axis-aligned bounding box `{rc_vec2f min, max}` |
+| `math/aabb2i.h` | `rc_aabb2i` | 2D integer axis-aligned bounding box `{rc_vec2i min, max}` |
 | `math/mat22f.h` | `rc_mat22f` | 2×2 column-major float matrix; `{rc_vec2f cx, cy}` |
 | `math/mat23f.h` | `rc_mat23f` | 2D affine transform; `{rc_mat22f m; rc_vec2f t}` |
 | `math/mat33f.h` | `rc_mat33f` | 3×3 column-major float matrix; `{rc_vec3f cx, cy, cz}` |
@@ -237,8 +239,13 @@ them transposed — useful for specifying a matrix row-by-row.
 `rc_quatf_vec3f_transform` uses the Rodrigues formula (no matrix allocation needed).
 
 `rc_rational` is always in canonical form: `denom > 0`, `gcd(|num|, denom) == 1`.
-`rc_rational_make(n, 0)` → invalid `{0, 0}`.  All arithmetic routes through
-`rc_rational_make` so the invariant is preserved.
+`rc_rational_make(n, 0)` → invalid `{0, 0}`.  Arithmetic operations use GCD
+pre-reduction to keep intermediate values small: `int_mul`/`mul` apply cross-GCD
+reduction and yield directly canonical results; `add`/`sub` use the AHU algorithm
+(`gcd(t, d)` where `d = gcd(denoms)` rather than `gcd(t, lcm)`); `int_div`/`div`
+pre-reduce then call `rc_rational_make` only for sign normalisation.
+Comparison (`compare`, `is_less_than`, `is_greater_than`) delegate to
+`rc_rational_sub` so no non-standard types are needed.
 
 ### Hash map
 Header: `hash_map.h`
@@ -311,7 +318,7 @@ All algorithm templates support an optional context pointer for custom
 comparators/predicates.
 
 ## Test suite
-Single file: `test.c` (~1,900 lines).
+Single file: `test.c` (~4,870 lines).
 Covers: all containers, all algorithms, multiple element types (`int`, custom
 `Record` struct), context-aware variants, edge cases.
 
@@ -329,18 +336,20 @@ include/richc/
   template_util.h               — RC_CONCAT, RC_STRINGIFY preprocessor helpers
   math/
     math.h                      — scalar utilities (deg_to_rad, min/max/sgn/gcd/clz/overflow)
-    vec2i.h                     — rc_vec2i (2D integer vector)
-    vec2f.h                     — rc_vec2f (2D float vector) + array types
-    vec3f.h                     — rc_vec3f (3D float vector) + array types
-    vec4f.h                     — rc_vec4f (4D float vector) + array types
-    aabb2f.h                    — rc_aabb2f (2D axis-aligned bounding box)
+    vec2i.h                     — rc_vec2i (2D integer vector; dot/wedge/lengthsqr → int64_t)
+    vec3i.h                     — rc_vec3i (3D integer vector; dot/lengthsqr → int64_t; cross asserts int32_t range)
+    vec2f.h                     — rc_vec2f (2D float vector)
+    vec3f.h                     — rc_vec3f (3D float vector; from_vec3i)
+    vec4f.h                     — rc_vec4f (4D float vector)
+    aabb2f.h                    — rc_aabb2f (2D float axis-aligned bounding box)
+    aabb2i.h                    — rc_aabb2i (2D integer axis-aligned bounding box)
     mat22f.h                    — rc_mat22f (2×2 column-major matrix)
     mat23f.h                    — rc_mat23f (2D affine transform)
     mat33f.h                    — rc_mat33f (3×3 column-major matrix)
     mat34f.h                    — rc_mat34f (3D affine transform, lookat)
     mat44f.h                    — rc_mat44f (4×4, ortho/perspective; det+inv in .c)
     quatf.h                     — rc_quatf (unit quaternion, Hamilton convention)
-    rational.h                  — rc_rational (rational arithmetic, always canonical)
+    rational.h                  — rc_rational (rational arithmetic, always canonical; trivial ops inline, rest in rational.c)
   template/
     array.h                     — View + Span + Array template (main container header)
     hash_map.h                  — open-addressing hash map template
@@ -364,3 +373,99 @@ test/
 
 All library headers are included as `#include "richc/..."` (the `include/` directory
 is the include root, exposed as a PUBLIC target include directory by CMake).
+
+## Design notes: async file I/O (not yet implemented)
+
+### Agreed approach
+- **Arena strategy**: allocate the result buffer (and the future object) on the
+  calling thread before dispatching. The background thread only writes into the
+  pre-allocated buffer and completes the future — it never touches the arena.
+  This sidesteps arena thread-safety entirely for now. A thread-safe arena (via a
+  mutex allocated as the first item in the arena) is a separate future idea.
+- **Sync primitives**: use C23 `<threads.h>` (`mtx_t`, `cnd_t`) — no platform-
+  specific code needed.
+- **Thread pool**: a simple `rc_thread_pool` with a fixed number of worker threads;
+  the async file functions take a `rc_thread_pool *` parameter.
+
+### Typed future template (`template/future.h`)
+Follows the same define-then-include pattern as `array.h`.
+
+Control macros:
+```c
+#define FUTURE_T    rc_load_text_result   /* required: the result type */
+#define FUTURE_NAME rc_future_load_text   /* optional: default rc_future_FUTURE_T */
+#include "richc/template/future.h"
+```
+
+Generated types:
+```c
+/* Arena-allocated object — never moved after creation. */
+typedef struct {
+    FUTURE_T value;
+    mtx_t    mtx;
+    cnd_t    cnd;
+    bool     ready;
+} rc_future_load_text_obj;
+
+/* By-value handle — cheap to copy and pass around. */
+typedef struct {
+    rc_future_load_text_obj *ptr;
+} rc_future_load_text;
+```
+
+Generated functions:
+```c
+rc_future_load_text rc_future_load_text_make(rc_arena *a);
+void                rc_future_load_text_complete(rc_future_load_text f,
+                                                  rc_load_text_result value);
+rc_load_text_result rc_future_load_text_wait(rc_future_load_text f);
+bool                rc_future_load_text_poll(rc_future_load_text f);
+void                rc_future_load_text_destroy(rc_future_load_text f);
+```
+
+`complete` is called by the producer thread; `wait`/`poll` by the consumer.
+`destroy` calls `mtx_destroy`/`cnd_destroy` — callers should call it when done,
+but omitting it (relying on arena teardown) is harmless on all real targets.
+
+### Async load sequence
+```
+main thread:
+  1. open file, fseek/ftell → size
+  2. rc_arena_alloc(a, size + 1)      ← buffer in caller's arena
+  3. rc_future_load_text_make(a)      ← future object in caller's arena
+  4. allocate work-item struct in arena, store { FILE*, buf, size, future }
+  5. rc_thread_pool_submit(pool, work_fn, work_item)
+  6. return future handle
+
+background thread (work_fn):
+  7. fread into pre-allocated buffer
+  8. buf[size] = '\0'
+  9. rc_future_load_text_complete(future, { rc_str{buf, size}, RC_FILE_OK })
+     — or complete with error on fread failure (buffer remains in arena, wasted
+        until arena reset, which is acceptable)
+```
+
+### Thread pool sketch
+```c
+typedef struct rc_thread_pool rc_thread_pool;   /* opaque */
+
+rc_thread_pool *rc_thread_pool_make(uint32_t num_threads, rc_arena *a);
+void            rc_thread_pool_destroy(rc_thread_pool *p);
+/* internal use by async file functions: */
+void            rc_thread_pool_submit(rc_thread_pool *p,
+                                       void (*fn)(void *), void *arg);
+```
+
+### Public async API (sketch)
+```c
+rc_future_load_text  rc_load_text_async (const char *filename, rc_arena *a,
+                                          rc_thread_pool *pool);
+rc_future_load_text  rc_load_binary_async(const char *filename, rc_arena *a,
+                                           rc_thread_pool *pool);
+/* save variants don't need arena allocation on the main thread */
+rc_future_file_error rc_save_text_async (const char *filename, rc_str text,
+                                          rc_thread_pool *pool);
+rc_future_file_error rc_save_binary_async(const char *filename,
+                                           rc_view_bytes data,
+                                           rc_thread_pool *pool);
+```

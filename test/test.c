@@ -17,10 +17,12 @@
 #include "richc/mstr.h"
 #include "richc/math/math.h"
 #include "richc/math/vec2i.h"
+#include "richc/math/vec3i.h"
 #include "richc/math/vec2f.h"
 #include "richc/math/vec3f.h"
 #include "richc/math/vec4f.h"
 #include "richc/math/aabb2f.h"
+#include "richc/math/aabb2i.h"
 #include "richc/math/mat22f.h"
 #include "richc/math/mat23f.h"
 #include "richc/math/mat33f.h"
@@ -3724,6 +3726,73 @@ static void test_math(void)
     }
     END_GROUP();
 
+    /* ---- vec3i ---- */
+
+    BEGIN_GROUP("vec3i: construction and equality");
+    {
+        rc_vec3i a = rc_vec3i_make(1, -2, 3);
+        ASSERT(rc_vec3i_is_equal(a, rc_vec3i_make(1, -2, 3)));
+        ASSERT(!rc_vec3i_is_equal(a, rc_vec3i_make_zero()));
+        ASSERT(rc_vec3i_is_equal(rc_vec3i_make_unitx(), rc_vec3i_make(1, 0, 0)));
+        ASSERT(rc_vec3i_is_equal(rc_vec3i_make_unity(), rc_vec3i_make(0, 1, 0)));
+        ASSERT(rc_vec3i_is_equal(rc_vec3i_make_unitz(), rc_vec3i_make(0, 0, 1)));
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("vec3i: arithmetic");
+    {
+        rc_vec3i a = rc_vec3i_make(1, 2, 3);
+        rc_vec3i b = rc_vec3i_make(4, 5, 6);
+        ASSERT(rc_vec3i_is_equal(rc_vec3i_add(a, b), rc_vec3i_make(5, 7, 9)));
+        ASSERT(rc_vec3i_is_equal(rc_vec3i_sub(a, b), rc_vec3i_make(-3, -3, -3)));
+        ASSERT(rc_vec3i_is_equal(rc_vec3i_scalar_mul(a, 3), rc_vec3i_make(3, 6, 9)));
+        ASSERT(rc_vec3i_is_equal(rc_vec3i_scalar_div(rc_vec3i_make(6, 9, 12), 3), rc_vec3i_make(2, 3, 4)));
+        ASSERT(rc_vec3i_is_equal(rc_vec3i_scalar_div(rc_vec3i_make(7, 9, 11), 3), rc_vec3i_make(2, 3, 3))); /* truncates */
+        ASSERT(rc_vec3i_is_equal(rc_vec3i_negate(a), rc_vec3i_make(-1, -2, -3)));
+        ASSERT(rc_vec3i_dot(a, b) == 32);       /* 4+10+18 */
+        ASSERT(rc_vec3i_lengthsqr(a) == 14);    /* 1+4+9 */
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("vec3i: cross product");
+    {
+        rc_vec3i x = rc_vec3i_make_unitx();
+        rc_vec3i y = rc_vec3i_make_unity();
+        rc_vec3i z = rc_vec3i_make_unitz();
+        ASSERT(rc_vec3i_is_equal(rc_vec3i_cross(x, y), z));
+        ASSERT(rc_vec3i_is_equal(rc_vec3i_cross(y, z), x));
+        ASSERT(rc_vec3i_is_equal(rc_vec3i_cross(z, x), y));
+        /* anti-commutativity: a × b == -(b × a) */
+        rc_vec3i a = rc_vec3i_make(1, 2, 3);
+        rc_vec3i b = rc_vec3i_make(4, 5, 6);
+        ASSERT(rc_vec3i_is_equal(rc_vec3i_cross(a, b),
+                                 rc_vec3i_negate(rc_vec3i_cross(b, a))));
+        /* self-cross is zero */
+        ASSERT(rc_vec3i_is_equal(rc_vec3i_cross(a, a), rc_vec3i_make_zero()));
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("vec3i: component min/max");
+    {
+        rc_vec3i a = rc_vec3i_make(1, 5, 3);
+        rc_vec3i b = rc_vec3i_make(4, 2, 6);
+        ASSERT(rc_vec3i_is_equal(rc_vec3i_component_min(a, b), rc_vec3i_make(1, 2, 3)));
+        ASSERT(rc_vec3i_is_equal(rc_vec3i_component_max(a, b), rc_vec3i_make(4, 5, 6)));
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("vec3i: from/as arrays");
+    {
+        int32_t arr[] = {7, -3, 5};
+        rc_vec3i v = rc_vec3i_from_i32s(arr);
+        ASSERT(v.x == 7 && v.y == -3 && v.z == 5);
+        ASSERT(rc_vec3i_as_i32s(&v) == &v.x);
+        /* from_vec2i */
+        rc_vec3i e = rc_vec3i_from_vec2i(rc_vec2i_make(1, 2), 3);
+        ASSERT(rc_vec3i_is_equal(e, rc_vec3i_make(1, 2, 3)));
+    }
+    END_GROUP();
+
     /* ---- vec2f ---- */
 
     BEGIN_GROUP("vec2f: construction");
@@ -3790,6 +3859,13 @@ static void test_math(void)
     END_GROUP();
 
     /* ---- vec3f ---- */
+
+    BEGIN_GROUP("vec3f: from_vec3i");
+    {
+        rc_vec3f v = rc_vec3f_from_vec3i(rc_vec3i_make(1, -2, 3));
+        ASSERT(NEARLY(v.x, 1.0f) && NEARLY(v.y, -2.0f) && NEARLY(v.z, 3.0f));
+    }
+    END_GROUP();
 
     BEGIN_GROUP("vec3f: arithmetic");
     {
@@ -3891,6 +3967,67 @@ static void test_math(void)
         ASSERT(NEARLY(u.max.x, 6.0f) && NEARLY(u.max.y, 6.0f));
         rc_aabb2f e = rc_aabb2f_expand(a, rc_vec2f_make(10.0f, -1.0f));
         ASSERT(NEARLY(e.min.y, -1.0f) && NEARLY(e.max.x, 10.0f));
+    }
+    END_GROUP();
+
+    /* ---- aabb2i ---- */
+
+    BEGIN_GROUP("aabb2i: make sorts corners");
+    {
+        rc_aabb2i box = rc_aabb2i_make(
+            rc_vec2i_make(5, 3),
+            rc_vec2i_make(1, 7));
+        ASSERT(box.min.x == 1 && box.min.y == 3);
+        ASSERT(box.max.x == 5 && box.max.y == 7);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("aabb2i: make_with_margin");
+    {
+        rc_aabb2i box = rc_aabb2i_make_with_margin(
+            rc_vec2i_make(2, 2),
+            rc_vec2i_make(8, 8), 1);
+        ASSERT(box.min.x == 1 && box.min.y == 1);
+        ASSERT(box.max.x == 9 && box.max.y == 9);
+        /* zero margin is identity */
+        rc_aabb2i base = rc_aabb2i_make(rc_vec2i_make(3, 3), rc_vec2i_make(7, 7));
+        rc_aabb2i same = rc_aabb2i_make_with_margin(rc_vec2i_make(3, 3), rc_vec2i_make(7, 7), 0);
+        ASSERT(same.min.x == base.min.x && same.min.y == base.min.y);
+        ASSERT(same.max.x == base.max.x && same.max.y == base.max.y);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("aabb2i: contains / intersects / contains_point");
+    {
+        rc_aabb2i outer    = rc_aabb2i_make(rc_vec2i_make(0,0),   rc_vec2i_make(10,10));
+        rc_aabb2i inner    = rc_aabb2i_make(rc_vec2i_make(2,2),   rc_vec2i_make(5,5));
+        rc_aabb2i other    = rc_aabb2i_make(rc_vec2i_make(8,8),   rc_vec2i_make(12,12));
+        rc_aabb2i away     = rc_aabb2i_make(rc_vec2i_make(20,20), rc_vec2i_make(30,30));
+        /* Half-open [min, max): adjacent box sharing an edge does NOT intersect */
+        rc_aabb2i adjacent = rc_aabb2i_make(rc_vec2i_make(10,0),  rc_vec2i_make(20,10));
+        ASSERT( rc_aabb2i_contains(outer, inner));
+        ASSERT(!rc_aabb2i_contains(inner, outer));
+        ASSERT( rc_aabb2i_intersects(outer, other));
+        ASSERT(!rc_aabb2i_intersects(outer, away));
+        ASSERT(!rc_aabb2i_intersects(outer, adjacent));   /* touching edge, not overlapping */
+        /* contains_point: min inclusive, max exclusive */
+        ASSERT( rc_aabb2i_contains_point(outer, rc_vec2i_make(0, 0)));    /* min corner: inside */
+        ASSERT( rc_aabb2i_contains_point(outer, rc_vec2i_make(5, 5)));    /* interior */
+        ASSERT(!rc_aabb2i_contains_point(outer, rc_vec2i_make(10, 10)));  /* max corner: outside */
+        ASSERT(!rc_aabb2i_contains_point(outer, rc_vec2i_make(10, 5)));   /* on max edge: outside */
+        ASSERT(!rc_aabb2i_contains_point(outer, rc_vec2i_make(11, 5)));   /* beyond max: outside */
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("aabb2i: union / expand");
+    {
+        rc_aabb2i a = rc_aabb2i_make(rc_vec2i_make(0,0), rc_vec2i_make(3,3));
+        rc_aabb2i b = rc_aabb2i_make(rc_vec2i_make(2,2), rc_vec2i_make(6,6));
+        rc_aabb2i u = rc_aabb2i_union(a, b);
+        ASSERT(u.min.x == 0 && u.min.y == 0);
+        ASSERT(u.max.x == 6 && u.max.y == 6);
+        rc_aabb2i e = rc_aabb2i_expand(a, rc_vec2i_make(10, -1));
+        ASSERT(e.min.y == -1 && e.max.x == 10);
     }
     END_GROUP();
 
@@ -4201,6 +4338,48 @@ static void test_math(void)
     }
     END_GROUP();
 
+    BEGIN_GROUP("rational: from_double");
+    {
+        /* Zero and integers. */
+        rc_rational r0 = rc_rational_from_double(0.0, 0.001);
+        ASSERT(r0.num == 0 && r0.denom == 1);
+        rc_rational r1 = rc_rational_from_double(3.0, 0.001);
+        ASSERT(r1.num == 3 && r1.denom == 1);
+
+        /* Simple fractions. */
+        rc_rational r2 = rc_rational_from_double(0.5, 0.001);
+        ASSERT(r2.num == 1 && r2.denom == 2);
+        rc_rational r3 = rc_rational_from_double(1.0 / 3.0, 1e-6);
+        ASSERT(r3.num == 1 && r3.denom == 3);
+
+        /* Negative values. */
+        rc_rational r4 = rc_rational_from_double(-0.5, 0.001);
+        ASSERT(r4.num == -1 && r4.denom == 2);
+        rc_rational r5 = rc_rational_from_double(-1.0 / 3.0, 1e-6);
+        ASSERT(r5.num == -1 && r5.denom == 3);
+
+        /*
+         * π: first convergent inside each tolerance band.
+         * |π - 22/7|   ≈ 0.00126 < 0.002  → {22, 7}
+         * |π - 333/106| ≈ 0.0000832 < 0.001 → {333, 106}
+         */
+        double pi = 3.14159265358979323846;
+        rc_rational rpi1 = rc_rational_from_double(pi, 0.002);
+        ASSERT(rpi1.num == 22 && rpi1.denom == 7);
+        rc_rational rpi2 = rc_rational_from_double(pi, 0.001);
+        ASSERT(rpi2.num == 333 && rpi2.denom == 106);
+
+        /* Wide threshold accepts the integer part alone. */
+        rc_rational r6 = rc_rational_from_double(3.14, 0.5);
+        ASSERT(r6.num == 3 && r6.denom == 1);
+
+        /* threshold = 0 still finds a compact representation for exact
+         * machine fractions (0.5 is exactly 1/2 in IEEE 754). */
+        rc_rational r7 = rc_rational_from_double(0.5, 0.0);
+        ASSERT(r7.num == 1 && r7.denom == 2);
+    }
+    END_GROUP();
+
     BEGIN_GROUP("rational: mul and int_mul");
     {
         rc_rational a = rc_rational_make(1, 2);
@@ -4282,6 +4461,214 @@ static void test_math(void)
         /* Raw non-canonical struct: GCD(2,4)=2 != 1 → invalid. */
         ASSERT(!rc_rational_is_valid((rc_rational) {2, 4}));
         ASSERT(!rc_rational_is_valid((rc_rational) {0, 0}));
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("rational: predicates");
+    {
+        rc_rational zero     = rc_rational_from_i64(0);
+        rc_rational pos      = rc_rational_make(3, 4);
+        rc_rational neg      = rc_rational_make(-3, 4);
+        rc_rational integer  = rc_rational_from_i64(5);
+
+        ASSERT( rc_rational_is_zero(zero));
+        ASSERT(!rc_rational_is_zero(pos));
+
+        ASSERT( rc_rational_is_integer(zero));
+        ASSERT( rc_rational_is_integer(integer));
+        ASSERT(!rc_rational_is_integer(pos));
+
+        ASSERT( rc_rational_is_positive(pos));
+        ASSERT(!rc_rational_is_positive(zero));
+        ASSERT(!rc_rational_is_positive(neg));
+
+        ASSERT( rc_rational_is_negative(neg));
+        ASSERT(!rc_rational_is_negative(zero));
+        ASSERT(!rc_rational_is_negative(pos));
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("rational: negate, abs, reciprocal");
+    {
+        rc_rational a = rc_rational_make(3, 4);
+
+        rc_rational neg = rc_rational_negate(a);
+        ASSERT(neg.num == -3 && neg.denom == 4);
+        /* Negate twice → original. */
+        rc_rational back = rc_rational_negate(neg);
+        ASSERT(back.num == 3 && back.denom == 4);
+
+        /* abs of positive is unchanged. */
+        rc_rational abspos = rc_rational_abs(a);
+        ASSERT(abspos.num == 3 && abspos.denom == 4);
+        /* abs of negative flips sign. */
+        rc_rational absneg = rc_rational_abs(rc_rational_make(-5, 7));
+        ASSERT(absneg.num == 5 && absneg.denom == 7);
+
+        /* reciprocal of positive: swap num and denom. */
+        rc_rational rp = rc_rational_reciprocal(a);
+        ASSERT(rp.num == 4 && rp.denom == 3);
+        /* reciprocal of negative: sign stays in numerator. */
+        rc_rational rn = rc_rational_reciprocal(rc_rational_make(-2, 5));
+        ASSERT(rn.num == -5 && rn.denom == 2);
+        /* reciprocal of integer: 1/n */
+        rc_rational ri = rc_rational_reciprocal(rc_rational_from_i64(3));
+        ASSERT(ri.num == 1 && ri.denom == 3);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("rational: compare, is_equal, is_less_than, is_greater_than");
+    {
+        rc_rational a = rc_rational_make(1, 3);
+        rc_rational b = rc_rational_make(1, 2);
+        rc_rational c = rc_rational_make(1, 3);
+
+        ASSERT(rc_rational_compare(a, b) == -1);
+        ASSERT(rc_rational_compare(b, a) ==  1);
+        ASSERT(rc_rational_compare(a, c) ==  0);
+
+        ASSERT( rc_rational_is_equal(a, c));
+        ASSERT(!rc_rational_is_equal(a, b));
+
+        ASSERT( rc_rational_is_less_than(a, b));
+        ASSERT(!rc_rational_is_less_than(b, a));
+        ASSERT(!rc_rational_is_less_than(a, c));
+
+        ASSERT( rc_rational_is_greater_than(b, a));
+        ASSERT(!rc_rational_is_greater_than(a, b));
+        ASSERT(!rc_rational_is_greater_than(a, c));
+
+        /* Negative vs positive. */
+        rc_rational neg = rc_rational_make(-1, 2);
+        ASSERT(rc_rational_is_less_than(neg, a));
+        ASSERT(rc_rational_compare(neg, a) == -1);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("rational: min and max");
+    {
+        rc_rational a = rc_rational_make(1, 4);
+        rc_rational b = rc_rational_make(3, 4);
+
+        rc_rational lo = rc_rational_min(a, b);
+        ASSERT(lo.num == 1 && lo.denom == 4);
+        rc_rational hi = rc_rational_max(a, b);
+        ASSERT(hi.num == 3 && hi.denom == 4);
+
+        /* Equal inputs: min and max both return the same value. */
+        rc_rational same = rc_rational_min(a, a);
+        ASSERT(same.num == 1 && same.denom == 4);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("rational: to_double");
+    {
+        double d1 = rc_rational_to_double(rc_rational_make(1, 4));
+        ASSERT(d1 == 0.25);
+        double d2 = rc_rational_to_double(rc_rational_make(-1, 2));
+        ASSERT(d2 == -0.5);
+        double d3 = rc_rational_to_double(rc_rational_from_i64(3));
+        ASSERT(d3 == 3.0);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("rational: int_mul pre-reduction exercises gcd(denom, b)");
+    {
+        /* g = gcd(6, 3) = 3: result = {1*1, 2} not {3*1, 6} */
+        rc_rational r = rc_rational_int_mul(rc_rational_make(1, 6), 3);
+        ASSERT(r.num == 1 && r.denom == 2);
+        /* Negative b: {3,4} * (-2) = {-3, 2}; g = gcd(4,2) = 2 */
+        rc_rational r2 = rc_rational_int_mul(rc_rational_make(3, 4), -2);
+        ASSERT(r2.num == -3 && r2.denom == 2);
+        /* Multiply by zero → {0, 1}. */
+        rc_rational r3 = rc_rational_int_mul(rc_rational_make(5, 7), 0);
+        ASSERT(r3.num == 0 && r3.denom == 1);
+        /*
+         * Large value that would overflow int64_t without pre-reduction:
+         * {922337203685477581, 10} * 10.
+         * Without reduction: 922337203685477581 * 10 > INT64_MAX.
+         * With:  g = gcd(10, 10) = 10, result = {922337203685477581 * 1, 1}.
+         */
+        rc_rational big = rc_rational_make(922337203685477581LL, 10);
+        rc_rational r4 = rc_rational_int_mul(big, 10);
+        ASSERT(r4.num == 922337203685477581LL && r4.denom == 1);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("rational: mul cross-GCD pre-reduction");
+    {
+        /* {2,9} * {3,4}: g1=gcd(2,4)=2, g2=gcd(3,9)=3 → {1,6} */
+        rc_rational r = rc_rational_mul(rc_rational_make(2, 9), rc_rational_make(3, 4));
+        ASSERT(r.num == 1 && r.denom == 6);
+        /* Negative numerator: {-2,9} * {3,4} = {-1,6} */
+        rc_rational r2 = rc_rational_mul(rc_rational_make(-2, 9), rc_rational_make(3, 4));
+        ASSERT(r2.num == -1 && r2.denom == 6);
+        /* Multiply by zero rational → {0, 1}. */
+        rc_rational r3 = rc_rational_mul(rc_rational_make(5, 7),
+                                         rc_rational_from_i64(0));
+        ASSERT(r3.num == 0 && r3.denom == 1);
+        /*
+         * Large values that would overflow without cross-GCD reduction:
+         * {7, 2000000000000000000} * {2000000000000000000, 7}.
+         * Without reduction: 7 * 2e18 = 14e18 > INT64_MAX.
+         * With: g1=gcd(7,7)=7, g2=gcd(2e18,2e18)=2e18 → {1, 1}.
+         */
+        rc_rational a = rc_rational_make(7,                 2000000000000000000LL);
+        rc_rational b = rc_rational_make(2000000000000000000LL, 7);
+        rc_rational r4 = rc_rational_mul(a, b);
+        ASSERT(r4.num == 1 && r4.denom == 1);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("rational: int_div pre-reduction exercises gcd(num, b)");
+    {
+        /* g = gcd(6, 3) = 3: {6,7} / 3 = {2, 7} */
+        rc_rational r = rc_rational_int_div(rc_rational_make(6, 7), 3);
+        ASSERT(r.num == 2 && r.denom == 7);
+        /* Negative b: {6,7} / (-3) = {-2, 7} */
+        rc_rational r2 = rc_rational_int_div(rc_rational_make(6, 7), -3);
+        ASSERT(r2.num == -2 && r2.denom == 7);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("rational: div cross-GCD pre-reduction");
+    {
+        /* {4,9} / {8,3}: g1=gcd(4,8)=4, g2=gcd(9,3)=3 → {1,6} */
+        rc_rational r = rc_rational_div(rc_rational_make(4, 9), rc_rational_make(8, 3));
+        ASSERT(r.num == 1 && r.denom == 6);
+        /* Division by a negative-numerator rational: {2,3} / {-4,5} = {-5,6} */
+        rc_rational r2 = rc_rational_div(rc_rational_make(2, 3),
+                                          rc_rational_make(-4, 5));
+        ASSERT(r2.num == -5 && r2.denom == 6);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("rational: add AHU — second GCD step reduces result further");
+    {
+        /*
+         * {5,6} + {1,10}: d=gcd(6,10)=2, t=5*5+1*3=28, g=gcd(28,2)=2
+         * result = {14, 3 * (10/2)} = {14, 15}.
+         * Without the second gcd(t,d) step we'd pass 28/30 to
+         * rc_rational_make instead of directly returning {14,15}.
+         */
+        rc_rational r = rc_rational_add(rc_rational_make(5, 6), rc_rational_make(1, 10));
+        ASSERT(r.num == 14 && r.denom == 15);
+        /* Additive inverse → {0, 1}. */
+        rc_rational r2 = rc_rational_add(rc_rational_make(1, 4),
+                                          rc_rational_make(-1, 4));
+        ASSERT(r2.num == 0 && r2.denom == 1);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("rational: sub AHU — second GCD step reduces result further");
+    {
+        /* {5,6} - {1,10} = 22/30 = 11/15 */
+        rc_rational r = rc_rational_sub(rc_rational_make(5, 6), rc_rational_make(1, 10));
+        ASSERT(r.num == 11 && r.denom == 15);
+        /* Result equals addend → {0, 1}. */
+        rc_rational r2 = rc_rational_sub(rc_rational_make(3, 7),
+                                          rc_rational_make(3, 7));
+        ASSERT(r2.num == 0 && r2.denom == 1);
     }
     END_GROUP();
 }

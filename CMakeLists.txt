@@ -13,6 +13,7 @@ add_library(richc STATIC
     src/mstr.c
     src/file.c
     src/math/mat44f.c
+    src/math/rational.c
     include/richc/arena.h
     include/richc/bytes.h
     include/richc/file.h
@@ -22,6 +23,7 @@ add_library(richc STATIC
     include/richc/str.h
     include/richc/template_util.h
     include/richc/math/aabb2f.h
+    include/richc/math/aabb2i.h
     include/richc/math/mat22f.h
     include/richc/math/mat23f.h
     include/richc/math/mat33f.h
@@ -32,6 +34,7 @@ add_library(richc STATIC
     include/richc/math/rational.h
     include/richc/math/vec2f.h
     include/richc/math/vec2i.h
+    include/richc/math/vec3i.h
     include/richc/math/vec3f.h
     include/richc/math/vec4f.h
     include/richc/template/accumulate.h

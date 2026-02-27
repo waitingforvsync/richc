@@ -14,6 +14,7 @@
  *   rc_vec3f_make_unitx/y/z()  — axis unit vectors
  *   rc_vec3f_from_floats(p)    — from float[3]
  *   rc_vec3f_from_vec2f(v, z)  — extend 2D vector
+ *   rc_vec3f_from_vec3i(v)     — cast from rc_vec3i
  *
  * Conversion
  * ----------
@@ -27,15 +28,13 @@
  *   normalize (asserts non-zero), normalize_safe,
  *   negate, is_nearly_equal, is_equal
  *
- * Container types (generated via array.h template)
- * -------------------------------------------------
- *   rc_view_vec3f, rc_span_vec3f, rc_array_vec3f
  */
 
 #ifndef RC_MATH_VEC3F_H_
 #define RC_MATH_VEC3F_H_
 
 #include "richc/math/vec2f.h"
+#include "richc/math/vec3i.h"
 
 /* ---- type ---- */
 
@@ -67,6 +66,12 @@ static inline rc_vec3f rc_vec3f_from_floats(const float *f)
 static inline rc_vec3f rc_vec3f_from_vec2f(rc_vec2f v, float z)
 {
     return (rc_vec3f) {v.x, v.y, z};
+}
+
+/* Cast integer vector to float. */
+static inline rc_vec3f rc_vec3f_from_vec3i(rc_vec3i v)
+{
+    return (rc_vec3f) {(float)v.x, (float)v.y, (float)v.z};
 }
 
 /* ---- conversion ---- */
@@ -217,13 +222,5 @@ static inline bool rc_vec3f_is_equal(rc_vec3f a, rc_vec3f b)
 {
     return a.x == b.x && a.y == b.y && a.z == b.z;
 }
-
-/* ---- container types ---- */
-
-#define ARRAY_T    rc_vec3f
-#define ARRAY_NAME rc_array_vec3f
-#define ARRAY_VIEW rc_view_vec3f
-#define ARRAY_SPAN rc_span_vec3f
-#include "richc/template/array.h"
 
 #endif /* RC_MATH_VEC3F_H_ */
