@@ -325,6 +325,8 @@ Operation functions are named after `ARRAY_NAME`:
 | `sort.h` | Introsort | Quicksort + heapsort fallback + insertion sort (n≤16) |
 | `lower_bound.h` | First index where `arr[i] >= key` | Matches C++ `std::lower_bound` |
 | `upper_bound.h` | First index where `arr[i] > key` | Matches C++ `std::upper_bound` |
+| `min_element.h` | Index of first minimum element | Returns `RC_INDEX_NONE` if empty; optional context comparator |
+| `max_element.h` | Index of first maximum element | Returns `RC_INDEX_NONE` if empty; optional context comparator |
 | `find.h` | Linear search | Returns `UINT32_MAX` (`RC_INDEX_NONE`) if not found |
 | `remove.h` | In-place removal | Compacts matching elements out; updates `span->num`; returns count removed |
 | `rotate.h` | In-place rotation | Rotates span so element at index k moves to index 0; three-reversal algorithm |
@@ -376,6 +378,8 @@ include/richc/
     sort.h                      — introsort template
     lower_bound.h               — lower_bound template
     upper_bound.h               — upper_bound template
+    min_element.h               — index of first minimum element template
+    max_element.h               — index of first maximum element template
     find.h                      — linear find template
     remove.h                    — in-place removal template
     rotate.h                    — in-place rotation template
@@ -392,7 +396,7 @@ src/
       rational.c                — rc_rational non-trivial operations (make, from_double, int_mul, mul, int_div, div, add, sub)
       bigint.c                  — rc_bigint non-trivial operations (make, from_u64/i64, copy, reserve, add, sub, mul, divmod, div, mod)
 test/
-  test.c                        — full test suite (~7,100 lines, ~2114 assertions)
+  test.c                        — full test suite (~7,100 lines, ~2140 assertions)
 ```
 
 All library headers are included as `#include "richc/..."` (the `include/` directory

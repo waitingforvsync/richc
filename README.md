@@ -65,6 +65,8 @@ All algorithm templates support an optional context pointer for custom comparato
 | `template/sort.h` | Introsort (quicksort + heapsort fallback + insertion sort for n ≤ 16) |
 | `template/lower_bound.h` | First index where `arr[i] >= key` |
 | `template/upper_bound.h` | First index where `arr[i] > key` |
+| `template/min_element.h` | Index of first minimum element; returns `RC_INDEX_NONE` if empty |
+| `template/max_element.h` | Index of first maximum element; returns `RC_INDEX_NONE` if empty |
 | `template/find.h` | Linear search; returns `RC_INDEX_NONE` if not found |
 | `template/remove.h` | In-place removal by predicate; compacts span, returns count removed |
 | `template/rotate.h` | In-place rotation; element at index k moves to index 0 |

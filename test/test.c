@@ -101,6 +101,51 @@ typedef struct { int ascending; } IntCmpCtx;
 #define SORT_NAME int_sort_default_ctx
 #include "richc/template/sort.h"
 
+/* ---- min_element / max_element instantiations ---- */
+
+#define MIN_ELEMENT_T int
+#include "richc/template/min_element.h"
+/* defines: uint32_t rc_min_element_int(rc_view_int view) */
+
+#define MAX_ELEMENT_T int
+#include "richc/template/max_element.h"
+/* defines: uint32_t rc_max_element_int(rc_view_int view) */
+
+/* Record: compare by .key field */
+#define MIN_ELEMENT_T               Record
+#define MIN_ELEMENT_CMP(a, b)       ((a).key < (b).key)
+#define MIN_ELEMENT_NAME            record_min_element
+#include "richc/template/min_element.h"
+
+#define MAX_ELEMENT_T               Record
+#define MAX_ELEMENT_CMP(a, b)       ((a).key < (b).key)
+#define MAX_ELEMENT_NAME            record_max_element
+#include "richc/template/max_element.h"
+
+/* Context-aware: reuse IntCmpCtx (ascending/descending toggle) */
+#define MIN_ELEMENT_T               int
+#define MIN_ELEMENT_CTX             IntCmpCtx
+#define MIN_ELEMENT_CMP(ctx, a, b)  ((ctx)->ascending ? (a) < (b) : (b) < (a))
+#define MIN_ELEMENT_NAME            int_min_element_ctx
+#include "richc/template/min_element.h"
+
+#define MAX_ELEMENT_T               int
+#define MAX_ELEMENT_CTX             IntCmpCtx
+#define MAX_ELEMENT_CMP(ctx, a, b)  ((ctx)->ascending ? (a) < (b) : (b) < (a))
+#define MAX_ELEMENT_NAME            int_max_element_ctx
+#include "richc/template/max_element.h"
+
+/* Default CMP with context: verify the (void)ctx path compiles cleanly. */
+#define MIN_ELEMENT_T    int
+#define MIN_ELEMENT_CTX  IntCmpCtx
+#define MIN_ELEMENT_NAME int_min_element_default_ctx
+#include "richc/template/min_element.h"
+
+#define MAX_ELEMENT_T    int
+#define MAX_ELEMENT_CTX  IntCmpCtx
+#define MAX_ELEMENT_NAME int_max_element_default_ctx
+#include "richc/template/max_element.h"
+
 /* ---- find instantiations ---- */
 
 #define FIND_T int
@@ -498,6 +543,132 @@ static void test_upper_bound(void)
 
         lo = rc_lower_bound_int(v, 10); hi = rc_upper_bound_int(v, 10);
         ASSERT(lo == hi && lo == 7);
+    }
+    END_GROUP();
+}
+
+/* ---- min_element / max_element ---- */
+
+static void test_min_max_element(void)
+{
+    printf("min_element / max_element\n");
+
+    BEGIN_GROUP("empty view: returns RC_INDEX_NONE");
+    {
+        rc_view_int v = {NULL, 0};
+        ASSERT(rc_min_element_int(v) == RC_INDEX_NONE);
+        ASSERT(rc_max_element_int(v) == RC_INDEX_NONE);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("single element: index 0");
+    {
+        int arr[] = {42};
+        rc_view_int v = RC_VIEW(arr);
+        ASSERT(rc_min_element_int(v) == 0);
+        ASSERT(rc_max_element_int(v) == 0);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("two elements: ascending");
+    {
+        int arr[] = {3, 7};
+        rc_view_int v = RC_VIEW(arr);
+        ASSERT(rc_min_element_int(v) == 0);
+        ASSERT(rc_max_element_int(v) == 1);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("two elements: descending");
+    {
+        int arr[] = {7, 3};
+        rc_view_int v = RC_VIEW(arr);
+        ASSERT(rc_min_element_int(v) == 1);
+        ASSERT(rc_max_element_int(v) == 0);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("min/max at beginning and end");
+    {
+        int arr[] = {1, 5, 3, 9, 2};
+        rc_view_int v = RC_VIEW(arr);
+        ASSERT(rc_min_element_int(v) == 0);   /* 1 at index 0 */
+        ASSERT(rc_max_element_int(v) == 3);   /* 9 at index 3 */
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("min/max in middle");
+    {
+        int arr[] = {4, 1, 6, 2, 5};
+        rc_view_int v = RC_VIEW(arr);
+        ASSERT(rc_min_element_int(v) == 1);   /* 1 at index 1 */
+        ASSERT(rc_max_element_int(v) == 2);   /* 6 at index 2 */
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("all equal: returns index 0 (first)");
+    {
+        int arr[] = {5, 5, 5, 5};
+        rc_view_int v = RC_VIEW(arr);
+        ASSERT(rc_min_element_int(v) == 0);
+        ASSERT(rc_max_element_int(v) == 0);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("duplicate extremes: returns first occurrence");
+    {
+        int arr[] = {3, 1, 5, 1, 5};
+        rc_view_int v = RC_VIEW(arr);
+        ASSERT(rc_min_element_int(v) == 1);   /* first 1 at index 1 */
+        ASSERT(rc_max_element_int(v) == 2);   /* first 5 at index 2 */
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("negative values");
+    {
+        int arr[] = {-3, -1, -7, -2};
+        rc_view_int v = RC_VIEW(arr);
+        ASSERT(rc_min_element_int(v) == 2);   /* -7 at index 2 */
+        ASSERT(rc_max_element_int(v) == 1);   /* -1 at index 1 */
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("custom type: Record compared by .key");
+    {
+        Record arr[] = {{5,0},{2,0},{8,0},{1,0},{6,0}};
+        rc_view_Record v = RC_VIEW(arr);
+        ASSERT(record_min_element(v) == 3);   /* key=1 at index 3 */
+        ASSERT(record_max_element(v) == 2);   /* key=8 at index 2 */
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("context: ascending order");
+    {
+        int arr[] = {4, 1, 7, 2};
+        rc_view_int v = RC_VIEW(arr);
+        IntCmpCtx ctx = {1};
+        ASSERT(int_min_element_ctx(v, &ctx) == 1);   /* 1 at index 1 */
+        ASSERT(int_max_element_ctx(v, &ctx) == 2);   /* 7 at index 2 */
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("context: descending order (inverted comparator)");
+    {
+        int arr[] = {4, 1, 7, 2};
+        rc_view_int v = RC_VIEW(arr);
+        IntCmpCtx ctx = {0};   /* descending: b < a means a is "less" */
+        ASSERT(int_min_element_ctx(v, &ctx) == 2);   /* 7 is min under desc */
+        ASSERT(int_max_element_ctx(v, &ctx) == 1);   /* 1 is max under desc */
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("default CMP with context: (void)ctx path");
+    {
+        int arr[] = {3, 1, 4, 1, 5};
+        rc_view_int v = RC_VIEW(arr);
+        IntCmpCtx ctx = {1};
+        ASSERT(int_min_element_default_ctx(v, &ctx) == 1);
+        ASSERT(int_max_element_default_ctx(v, &ctx) == 4);
     }
     END_GROUP();
 }
@@ -3104,6 +3275,8 @@ int main(void)
     test_lower_bound();
     putchar('\n');
     test_upper_bound();
+    putchar('\n');
+    test_min_max_element();
     putchar('\n');
     test_sort_int();
     putchar('\n');
