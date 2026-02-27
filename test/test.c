@@ -211,6 +211,49 @@ typedef struct { int threshold; } ThreshCtx;
 #include "richc/template/rotate.h"
 /* defines: void record_rotate(rc_span_Record span, uint32_t k) */
 
+/* ---- all_of / any_of / none_of instantiations ---- */
+
+/* Plain int, no context. */
+#define ALL_OF_T       int
+#define ALL_OF_PRED(e) ((e) > 0)
+#define ALL_OF_NAME    int_all_positive
+#include "richc/template/all_of.h"
+/* defines: bool int_all_positive(rc_view_int view) */
+
+#define ANY_OF_T       int
+#define ANY_OF_PRED(e) ((e) > 0)
+#define ANY_OF_NAME    int_any_positive
+#include "richc/template/any_of.h"
+/* defines: bool int_any_positive(rc_view_int view) */
+
+#define NONE_OF_T       int
+#define NONE_OF_PRED(e) ((e) > 0)
+#define NONE_OF_NAME    int_none_positive
+#include "richc/template/none_of.h"
+/* defines: bool int_none_positive(rc_view_int view) */
+
+/* Context: ThreshCtx reused from remove instantiations above. */
+#define ALL_OF_T               int
+#define ALL_OF_CTX             ThreshCtx
+#define ALL_OF_PRED(ctx, e)    ((e) >= (ctx)->threshold)
+#define ALL_OF_NAME            int_all_at_least
+#include "richc/template/all_of.h"
+/* defines: bool int_all_at_least(rc_view_int view, ThreshCtx *ctx) */
+
+#define ANY_OF_T               int
+#define ANY_OF_CTX             ThreshCtx
+#define ANY_OF_PRED(ctx, e)    ((e) >= (ctx)->threshold)
+#define ANY_OF_NAME            int_any_at_least
+#include "richc/template/any_of.h"
+/* defines: bool int_any_at_least(rc_view_int view, ThreshCtx *ctx) */
+
+#define NONE_OF_T               int
+#define NONE_OF_CTX             ThreshCtx
+#define NONE_OF_PRED(ctx, e)    ((e) >= (ctx)->threshold)
+#define NONE_OF_NAME            int_none_at_least
+#include "richc/template/none_of.h"
+/* defines: bool int_none_at_least(rc_view_int view, ThreshCtx *ctx) */
+
 /* ---- transform instantiations ---- */
 
 #define TRANSFORM_SRC_T   int
@@ -2257,6 +2300,125 @@ static void test_rotate(void)
     END_GROUP();
 }
 
+/* ---- all_of / any_of / none_of ---- */
+
+static void test_all_any_none_of(void)
+{
+    printf("all_of / any_of / none_of\n");
+
+    BEGIN_GROUP("empty view: all=true, any=false, none=true");
+    {
+        rc_view_int v = {NULL, 0};
+        ASSERT(int_all_positive(v) == true);
+        ASSERT(int_any_positive(v) == false);
+        ASSERT(int_none_positive(v) == true);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("all match: all=true, any=true, none=false");
+    {
+        int data[] = {1, 2, 3, 4};
+        rc_view_int v = RC_VIEW(data);
+        ASSERT(int_all_positive(v) == true);
+        ASSERT(int_any_positive(v) == true);
+        ASSERT(int_none_positive(v) == false);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("none match: all=false, any=false, none=true");
+    {
+        int data[] = {-1, -2, -3};
+        rc_view_int v = RC_VIEW(data);
+        ASSERT(int_all_positive(v) == false);
+        ASSERT(int_any_positive(v) == false);
+        ASSERT(int_none_positive(v) == true);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("some match (not all): all=false, any=true, none=false");
+    {
+        int data[] = {-1, 2, -3, 4};
+        rc_view_int v = RC_VIEW(data);
+        ASSERT(int_all_positive(v) == false);
+        ASSERT(int_any_positive(v) == true);
+        ASSERT(int_none_positive(v) == false);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("single element matching");
+    {
+        int data[] = {5};
+        rc_view_int v = RC_VIEW(data);
+        ASSERT(int_all_positive(v) == true);
+        ASSERT(int_any_positive(v) == true);
+        ASSERT(int_none_positive(v) == false);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("single element not matching");
+    {
+        int data[] = {-5};
+        rc_view_int v = RC_VIEW(data);
+        ASSERT(int_all_positive(v) == false);
+        ASSERT(int_any_positive(v) == false);
+        ASSERT(int_none_positive(v) == true);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("match at first element only");
+    {
+        int data[] = {3, -1, -2};
+        rc_view_int v = RC_VIEW(data);
+        ASSERT(int_all_positive(v) == false);
+        ASSERT(int_any_positive(v) == true);
+        ASSERT(int_none_positive(v) == false);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("match at last element only");
+    {
+        int data[] = {-1, -2, 3};
+        rc_view_int v = RC_VIEW(data);
+        ASSERT(int_all_positive(v) == false);
+        ASSERT(int_any_positive(v) == true);
+        ASSERT(int_none_positive(v) == false);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("context: all at least threshold");
+    {
+        int data[] = {5, 6, 7};
+        rc_view_int v = RC_VIEW(data);
+        ThreshCtx ctx = {5};
+        ASSERT(int_all_at_least(v, &ctx) == true);
+        ASSERT(int_any_at_least(v, &ctx) == true);
+        ASSERT(int_none_at_least(v, &ctx) == false);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("context: none at least threshold");
+    {
+        int data[] = {1, 2, 3};
+        rc_view_int v = RC_VIEW(data);
+        ThreshCtx ctx = {10};
+        ASSERT(int_all_at_least(v, &ctx) == false);
+        ASSERT(int_any_at_least(v, &ctx) == false);
+        ASSERT(int_none_at_least(v, &ctx) == true);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("context: some at least threshold");
+    {
+        int data[] = {1, 10, 2, 20};
+        rc_view_int v = RC_VIEW(data);
+        ThreshCtx ctx = {5};
+        ASSERT(int_all_at_least(v, &ctx) == false);
+        ASSERT(int_any_at_least(v, &ctx) == true);
+        ASSERT(int_none_at_least(v, &ctx) == false);
+    }
+    END_GROUP();
+}
+
 /* ---- accumulate ---- */
 
 static void test_accumulate(void)
@@ -3299,6 +3461,8 @@ int main(void)
     test_remove();
     putchar('\n');
     test_rotate();
+    putchar('\n');
+    test_all_any_none_of();
     putchar('\n');
     test_accumulate();
     putchar('\n');

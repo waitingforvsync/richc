@@ -328,6 +328,9 @@ Operation functions are named after `ARRAY_NAME`:
 | `min_element.h` | Index of first minimum element | Returns `RC_INDEX_NONE` if empty; optional context comparator |
 | `max_element.h` | Index of first maximum element | Returns `RC_INDEX_NONE` if empty; optional context comparator |
 | `find.h` | Linear search | Returns `UINT32_MAX` (`RC_INDEX_NONE`) if not found |
+| `all_of.h` | All-match predicate test | Returns `true` if every element matches (vacuously true for empty view) |
+| `any_of.h` | Any-match predicate test | Returns `true` if at least one element matches (false for empty view) |
+| `none_of.h` | No-match predicate test | Returns `true` if no element matches (vacuously true for empty view) |
 | `remove.h` | In-place removal | Compacts matching elements out; updates `span->num`; returns count removed |
 | `rotate.h` | In-place rotation | Rotates span so element at index k moves to index 0; three-reversal algorithm |
 | `transform.h` | Map/filter into array | Appends to destination, returns start index |
@@ -381,6 +384,9 @@ include/richc/
     min_element.h               — index of first minimum element template
     max_element.h               — index of first maximum element template
     find.h                      — linear find template
+    all_of.h                    — all-match predicate test template
+    any_of.h                    — any-match predicate test template
+    none_of.h                   — no-match predicate test template
     remove.h                    — in-place removal template
     rotate.h                    — in-place rotation template
     transform.h                 — map/filter template
@@ -396,7 +402,7 @@ src/
       rational.c                — rc_rational non-trivial operations (make, from_double, int_mul, mul, int_div, div, add, sub)
       bigint.c                  — rc_bigint non-trivial operations (make, from_u64/i64, copy, reserve, add, sub, mul, divmod, div, mod)
 test/
-  test.c                        — full test suite (~7,100 lines, ~2140 assertions)
+  test.c                        — full test suite (~7,200 lines, ~2173 assertions)
 ```
 
 All library headers are included as `#include "richc/..."` (the `include/` directory
