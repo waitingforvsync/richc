@@ -14,6 +14,7 @@ add_library(richc STATIC
     src/file.c
     src/math/mat44f.c
     src/math/rational.c
+    src/math/bigint.c
     include/richc/arena.h
     include/richc/bytes.h
     include/richc/file.h
@@ -31,6 +32,7 @@ add_library(richc STATIC
     include/richc/math/mat44f.h
     include/richc/math/math.h
     include/richc/math/quatf.h
+    include/richc/math/bigint.h
     include/richc/math/rational.h
     include/richc/math/vec2f.h
     include/richc/math/vec2i.h

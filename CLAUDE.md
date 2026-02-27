@@ -90,6 +90,9 @@ times for different types, so they must **not** have an include guard.
 ## Architecture
 
 ### Memory model
+**Arenas are the only allocation primitive.**  The library never calls `malloc`,
+`realloc`, or `free` directly.  All dynamic allocation goes through `rc_arena`.
+
 All allocating operations accept an `rc_arena *` parameter.
 - `arena.h` / `arena.c` — virtual-memory-backed bump allocator (`rc_arena`);
   reserves 256 MB of VA space upfront, commits pages on demand.
@@ -226,6 +229,7 @@ All inline functions carry an explicit type suffix to avoid Windows macro confli
 | `math/mat44f.h` | `rc_mat44f` | 4×4 column-major float matrix; `determinant`/`inverse` in `.c` |
 | `math/quatf.h` | `rc_quatf` | Unit quaternion; `{rc_vec3f xyz; float w}`; Hamilton convention |
 | `math/rational.h` | `rc_rational` | Rational arithmetic; `{int64_t num, denom}`; always canonical |
+| `math/bigint.h` | `rc_bigint` | Arbitrary-precision integer; sign-magnitude, arena-backed; trivial ops inline, rest in `bigint.c` |
 
 Matrix storage is column-major throughout: `cx` is the first column, etc.
 The `make_transpose(rx, ry, rz, ...)` constructors accept *row* vectors and store
@@ -350,6 +354,7 @@ include/richc/
     mat44f.h                    — rc_mat44f (4×4, ortho/perspective; det+inv in .c)
     quatf.h                     — rc_quatf (unit quaternion, Hamilton convention)
     rational.h                  — rc_rational (rational arithmetic, always canonical; trivial ops inline, rest in rational.c)
+    bigint.h                    — rc_bigint (arbitrary-precision integer; sign-magnitude, arena-backed)
   template/
     array.h                     — View + Span + Array template (main container header)
     hash_map.h                  — open-addressing hash map template
@@ -366,9 +371,12 @@ src/
   mstr.c                        — rc_mstr function implementations
   file.c                        — rc_load_text, rc_save_text, rc_load_binary, rc_load_binary_array, rc_save_binary
   math/
-    mat44f.c                    — rc_mat44f_determinant, rc_mat44f_inverse
+    math/
+      mat44f.c                  — rc_mat44f_determinant, rc_mat44f_inverse
+      rational.c                — rc_rational non-trivial operations (make, from_double, int_mul, mul, int_div, div, add, sub)
+      bigint.c                  — rc_bigint non-trivial operations (make, from_u64/i64, copy, reserve, add, add3)
 test/
-  test.c                        — full test suite (~3650 lines, 1500 assertions)
+  test.c                        — full test suite (~5,400 lines, 1709 assertions)
 ```
 
 All library headers are included as `#include "richc/..."` (the `include/` directory
