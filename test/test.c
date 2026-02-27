@@ -2767,6 +2767,61 @@ static void test_hash_trie(void)
         rc_arena_destroy(&a);
     }
     END_GROUP();
+
+    BEGIN_GROUP("pool_reserve: no-op when min_blocks == 0");
+    {
+        rc_arena a = rc_arena_make_default();
+        U64IntTrie_pool pool = {0};
+        U64IntTrie_pool_reserve(&pool, 0, &a);
+        ASSERT(pool.cap == 0);
+        ASSERT(pool.num == 0);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("pool_reserve: pre-allocates backing array");
+    {
+        rc_arena a = rc_arena_make_default();
+        U64IntTrie_pool pool = {0};
+        U64IntTrie_pool_reserve(&pool, 10, &a);
+        ASSERT(pool.cap >= 160);   /* 10 blocks * 16 nodes */
+        ASSERT(pool.num == 0);     /* no blocks allocated yet */
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("pool_reserve: no-op when already sufficient");
+    {
+        rc_arena a = rc_arena_make_default();
+        U64IntTrie_pool pool = {0};
+        U64IntTrie_pool_reserve(&pool, 10, &a);
+        uint32_t cap_after_first = pool.cap;
+        U64IntTrie_pool_reserve(&pool, 5, &a);    /* smaller request */
+        ASSERT(pool.cap == cap_after_first);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("pool_reserve: add() does not realloc within reserved capacity");
+    {
+        rc_arena a = rc_arena_make_default();
+        U64IntTrie_pool pool = {0};
+        /* Reserve enough for 20 blocks (320 nodes); create() uses 1 block. */
+        U64IntTrie_pool_reserve(&pool, 20, &a);
+        uint32_t cap_before = pool.cap;
+        U64IntTrie t = U64IntTrie_create(&pool, &a);
+        /* Each add() may allocate at most one new block per level of descent.
+         * 10 distinct keys with no hash collisions consume at most 11 blocks. */
+        for (int i = 0; i < 10; i++)
+            U64IntTrie_add(&t, (uint64_t)i, i, &a);
+        ASSERT(pool.cap == cap_before);   /* backing array was not reallocated */
+        for (int i = 0; i < 10; i++) {
+            int *v = U64IntTrie_find(&t, (uint64_t)i);
+            ASSERT(v != NULL && *v == i);
+        }
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
 }
 
 static void test_str(void);

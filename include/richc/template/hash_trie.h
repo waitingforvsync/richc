@@ -104,6 +104,14 @@
  *        Remove key.  Returns 1 if present, 0 if absent.  No arena needed.
  *        t->pool must not be NULL.
  *
+ *   void NAME_pool_reserve(TRIE_NAME_pool *pool, uint32_t min_blocks, rc_arena *a)
+ *        Ensure the pool's backing array has room for at least min_blocks
+ *        16-node blocks without reallocating.  No-op when capacity is
+ *        already sufficient.  Capacity grows by doubling from the initial
+ *        64-node floor, consistent with the internal growth strategy.
+ *        Does not allocate any blocks; pool->num is unchanged.
+ *
+ *
  * Example:
  *   #define TRIE_KEY_T  uint64_t
  *   #define TRIE_VAL_T  int
@@ -154,10 +162,11 @@
 
 /* ---- public function name macros ---- */
 
-#define TRIE_CREATE_   RC_CONCAT(TRIE_NAME, _create)
-#define TRIE_FIND_     RC_CONCAT(TRIE_NAME, _find)
-#define TRIE_ADD_      RC_CONCAT(TRIE_NAME, _add)
-#define TRIE_DELETE_   RC_CONCAT(TRIE_NAME, _delete)
+#define TRIE_CREATE_       RC_CONCAT(TRIE_NAME, _create)
+#define TRIE_FIND_         RC_CONCAT(TRIE_NAME, _find)
+#define TRIE_ADD_          RC_CONCAT(TRIE_NAME, _add)
+#define TRIE_DELETE_       RC_CONCAT(TRIE_NAME, _delete)
+#define TRIE_POOL_RESERVE_ RC_CONCAT(TRIE_NAME, _pool_reserve)
 
 /* ---- once-only helper ---- */
 
@@ -449,6 +458,42 @@ static inline int TRIE_DELETE_(TRIE_NAME *t, TRIE_KEY_T key)
     return TRIE_DEL_FROM_(t->pool, t->root, key, 0, &became_empty);
 }
 
+/* ---- public: pool_reserve ---- */
+
+/*
+ * Ensure the pool's backing array has capacity for at least min_blocks
+ * 16-node blocks (i.e. pool->cap >= min_blocks * 16) without reallocating
+ * during subsequent add() calls.
+ *
+ * Capacity grows by doubling from 64 (the internal floor), so the pool
+ * remains in a state where TRIE_ALLOC_BLOCK_ will not immediately realloc.
+ * pool->num is not changed; no blocks are pre-populated.
+ */
+static inline void TRIE_POOL_RESERVE_(TRIE_POOL_T_ *pool, uint32_t min_blocks,
+                                       rc_arena *a)
+{
+    if (min_blocks == 0) return;
+    RC_ASSERT(a != NULL && "hash trie: arena must not be NULL");
+    RC_ASSERT(min_blocks <= UINT32_MAX / 16 &&
+                 "hash trie: pool reserve overflow");
+
+    uint32_t need    = min_blocks * 16;
+    if (need <= pool->cap) return;
+
+    uint32_t new_cap = pool->cap ? pool->cap : 64;
+    while (new_cap < need) {
+        RC_ASSERT(new_cap <= UINT32_MAX / 2 &&
+                     "hash trie: pool capacity overflow");
+        new_cap *= 2;
+    }
+
+    pool->data = rc_arena_realloc(a, pool->data,
+                                   (uint32_t)((size_t)pool->cap * sizeof(TRIE_NODE_T_)),
+                                   (uint32_t)((size_t)new_cap * sizeof(TRIE_NODE_T_)));
+    RC_ASSERT(pool->data != NULL && "hash trie: pool OOM");
+    pool->cap = new_cap;
+}
+
 /* ---- cleanup ---- */
 
 #undef TRIE_NODE_T_
@@ -460,6 +505,7 @@ static inline int TRIE_DELETE_(TRIE_NAME *t, TRIE_KEY_T key)
 #undef TRIE_FIND_
 #undef TRIE_ADD_
 #undef TRIE_DELETE_
+#undef TRIE_POOL_RESERVE_
 
 #undef TRIE_EQUAL
 #undef TRIE_NAME

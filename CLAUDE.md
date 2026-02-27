@@ -275,7 +275,8 @@ Header: `hash_trie.h`
 Default type name: `rc_trie_T` (keyed on `TRIE_KEY_T`);
 pool type `rc_trie_T_pool`, node type `rc_trie_T_node`.
 Flat arena-backed node pool; multiple tries can share one pool.
-Operations: `create`, `find`, `add`, `delete`.
+Operations: `create`, `find`, `add`, `delete`, `pool_reserve`.
+`pool_reserve(pool, min_blocks, arena)` pre-allocates the pool's backing array for at least `min_blocks` 16-node blocks without populating them.
 
 ## File I/O
 
@@ -387,7 +388,7 @@ src/
       rational.c                — rc_rational non-trivial operations (make, from_double, int_mul, mul, int_div, div, add, sub)
       bigint.c                  — rc_bigint non-trivial operations (make, from_u64/i64, copy, reserve, add, sub, mul, divmod, div, mod)
 test/
-  test.c                        — full test suite (~6,500 lines, ~2025 assertions)
+  test.c                        — full test suite (~6,600 lines, ~2041 assertions)
 ```
 
 All library headers are included as `#include "richc/..."` (the `include/` directory
