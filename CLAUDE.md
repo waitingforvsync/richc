@@ -326,6 +326,7 @@ Operation functions are named after `ARRAY_NAME`:
 | `lower_bound.h` | First index where `arr[i] >= key` | Matches C++ `std::lower_bound` |
 | `upper_bound.h` | First index where `arr[i] > key` | Matches C++ `std::upper_bound` |
 | `find.h` | Linear search | Returns `UINT32_MAX` (`RC_INDEX_NONE`) if not found |
+| `remove.h` | In-place removal | Compacts matching elements out; updates `span->num`; returns count removed |
 | `transform.h` | Map/filter into array | Appends to destination, returns start index |
 | `accumulate.h` | Fold view to scalar | `ACCUM_T` + `ACCUM_RESULT_T`; default func is addition |
 
@@ -375,6 +376,7 @@ include/richc/
     lower_bound.h               — lower_bound template
     upper_bound.h               — upper_bound template
     find.h                      — linear find template
+    remove.h                    — in-place removal template
     transform.h                 — map/filter template
     accumulate.h                — fold/reduce template
 src/
@@ -388,7 +390,7 @@ src/
       rational.c                — rc_rational non-trivial operations (make, from_double, int_mul, mul, int_div, div, add, sub)
       bigint.c                  — rc_bigint non-trivial operations (make, from_u64/i64, copy, reserve, add, sub, mul, divmod, div, mod)
 test/
-  test.c                        — full test suite (~6,600 lines, ~2041 assertions)
+  test.c                        — full test suite (~6,900 lines, ~2078 assertions)
 ```
 
 All library headers are included as `#include "richc/..."` (the `include/` directory

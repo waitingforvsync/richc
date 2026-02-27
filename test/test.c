@@ -1,7 +1,7 @@
 /*
  * test.c - correctness tests for lower_bound, upper_bound, sort,
  *          bounds-checked access, platform virtual memory, rc_arena, array,
- *          transform, find, hash_map, hash_trie, accumulate, and str.
+ *          transform, find, remove, hash_map, hash_trie, accumulate, and str.
  *
  * array.h is the combined header: one inclusion defines the rc_view, rc_span, and
  * Array types for a given element type, and also provides RC_VIEW_AT / RC_SPAN_AT
@@ -128,6 +128,32 @@ typedef struct { int tolerance; } TolCtx;
 #define FIND_CTX  TolCtx
 #define FIND_NAME int_find_default_ctx
 #include "richc/template/find.h"
+
+/* ---- remove instantiations ---- */
+
+/* Remove negative ints; no context. */
+#define REMOVE_T       int
+#define REMOVE_PRED(e) ((e) < 0)
+#define REMOVE_NAME    int_remove_negative
+#include "richc/template/remove.h"
+/* defines: uint32_t int_remove_negative(rc_span_int *span) */
+
+/* Remove Records with even key; no context. */
+#define REMOVE_T            Record
+#define REMOVE_PRED(e)      (((e).key % 2) == 0)
+#define REMOVE_NAME         record_remove_even_key
+#include "richc/template/remove.h"
+/* defines: uint32_t record_remove_even_key(rc_span_Record *span) */
+
+/* Remove ints below a threshold supplied via context. */
+typedef struct { int threshold; } ThreshCtx;
+
+#define REMOVE_T            int
+#define REMOVE_CTX          ThreshCtx
+#define REMOVE_PRED(ctx, e) ((e) < (ctx)->threshold)
+#define REMOVE_NAME         int_remove_below
+#include "richc/template/remove.h"
+/* defines: uint32_t int_remove_below(rc_span_int *span, ThreshCtx *ctx) */
 
 /* ---- transform instantiations ---- */
 
@@ -1819,6 +1845,119 @@ static void test_find(void)
     END_GROUP();
 }
 
+/* ---- remove ---- */
+
+static void test_remove(void)
+{
+    printf("remove\n");
+
+    BEGIN_GROUP("empty span: no-op, returns 0");
+    {
+        rc_span_int s = {0};
+        ASSERT(int_remove_negative(&s) == 0);
+        ASSERT(s.num == 0);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("no elements match: span unchanged, returns 0");
+    {
+        int data[] = {1, 2, 3, 4, 5};
+        rc_span_int s = RC_SPAN(data);
+        ASSERT(int_remove_negative(&s) == 0);
+        ASSERT(s.num == 5);
+        for (int i = 0; i < 5; i++)
+            ASSERT(data[i] == i + 1);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("all elements match: num becomes 0, returns n");
+    {
+        int data[] = {-1, -2, -3};
+        rc_span_int s = RC_SPAN(data);
+        ASSERT(int_remove_negative(&s) == 3);
+        ASSERT(s.num == 0);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("mixed: negatives removed, positives kept in order");
+    {
+        int data[] = {1, -2, 3, -4, 5};
+        rc_span_int s = RC_SPAN(data);
+        ASSERT(int_remove_negative(&s) == 2);
+        ASSERT(s.num == 3);
+        ASSERT(data[0] == 1);
+        ASSERT(data[1] == 3);
+        ASSERT(data[2] == 5);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("remove head and tail, keep middle");
+    {
+        int data[] = {-1, 2, 3, -4};
+        rc_span_int s = RC_SPAN(data);
+        ASSERT(int_remove_negative(&s) == 2);
+        ASSERT(s.num == 2);
+        ASSERT(data[0] == 2);
+        ASSERT(data[1] == 3);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("single element kept");
+    {
+        int data[] = {-1, -2, 7, -3};
+        rc_span_int s = RC_SPAN(data);
+        ASSERT(int_remove_negative(&s) == 3);
+        ASSERT(s.num == 1);
+        ASSERT(data[0] == 7);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("custom type: Record, remove even keys");
+    {
+        Record data[] = {{1,0},{2,0},{3,0},{4,0},{5,0}};
+        rc_span_Record s = RC_SPAN(data);
+        ASSERT(record_remove_even_key(&s) == 2);
+        ASSERT(s.num == 3);
+        ASSERT(data[0].key == 1);
+        ASSERT(data[1].key == 3);
+        ASSERT(data[2].key == 5);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("context: remove ints below threshold");
+    {
+        int data[] = {5, 1, 8, 2, 9, 3};
+        rc_span_int s = RC_SPAN(data);
+        ThreshCtx ctx = {4};
+        ASSERT(int_remove_below(&s, &ctx) == 3);
+        ASSERT(s.num == 3);
+        ASSERT(data[0] == 5);
+        ASSERT(data[1] == 8);
+        ASSERT(data[2] == 9);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("context: threshold above all elements removes all");
+    {
+        int data[] = {1, 2, 3};
+        rc_span_int s = RC_SPAN(data);
+        ThreshCtx ctx = {100};
+        ASSERT(int_remove_below(&s, &ctx) == 3);
+        ASSERT(s.num == 0);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("context: threshold below all elements removes none");
+    {
+        int data[] = {10, 20, 30};
+        rc_span_int s = RC_SPAN(data);
+        ThreshCtx ctx = {0};
+        ASSERT(int_remove_below(&s, &ctx) == 0);
+        ASSERT(s.num == 3);
+    }
+    END_GROUP();
+}
+
 /* ---- accumulate ---- */
 
 static void test_accumulate(void)
@@ -2855,6 +2994,8 @@ int main(void)
     test_transform();
     putchar('\n');
     test_find();
+    putchar('\n');
+    test_remove();
     putchar('\n');
     test_accumulate();
     putchar('\n');

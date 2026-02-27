@@ -66,6 +66,7 @@ All algorithm templates support an optional context pointer for custom comparato
 | `template/lower_bound.h` | First index where `arr[i] >= key` |
 | `template/upper_bound.h` | First index where `arr[i] > key` |
 | `template/find.h` | Linear search; returns `RC_INDEX_NONE` if not found |
+| `template/remove.h` | In-place removal by predicate; compacts span, returns count removed |
 | `template/transform.h` | Map/filter into an array; appends to destination |
 | `template/accumulate.h` | Fold a view to a scalar |
 
