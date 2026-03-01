@@ -17,8 +17,9 @@ add_library(richc STATIC
     src/math/bigint.c
     include/richc/arena.h
     include/richc/bytes.h
-    include/richc/file.h
     include/richc/debug.h
+    include/richc/file.h
+    include/richc/hash.h
     include/richc/mstr.h
     include/richc/platform.h
     include/richc/str.h

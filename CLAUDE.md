@@ -256,6 +256,32 @@ pre-reduce then call `rc_rational_make` only for sign normalisation.
 Comparison (`compare`, `is_less_than`, `is_greater_than`) delegate to
 `rc_rational_sub` so no non-standard types are needed.
 
+### Hash functions
+Header: `hash.h` (not a template; include once).
+
+`static inline` functions returning `uint32_t`, suitable for use as `MAP_HASH` /
+`SET_HASH` expressions in the hash_map and hash_set templates.
+
+| Function | Input | Algorithm |
+|----------|-------|-----------|
+| `rc_hash_u32` | `uint32_t` | Murmur3 32-bit finalizer |
+| `rc_hash_i32` | `int32_t` | → `rc_hash_u32` |
+| `rc_hash_u64` | `uint64_t` | splitmix64 finalizer, XOR-folded to 32 bits |
+| `rc_hash_i64` | `int64_t` | → `rc_hash_u64` |
+| `rc_hash_f32` | `float` | bit-pattern → `rc_hash_u32`; −0/+0 normalised |
+| `rc_hash_f64` | `double` | bit-pattern → `rc_hash_u64`; −0/+0 normalised |
+| `rc_hash_ptr` | `const void *` | → `rc_hash_u64` |
+| `rc_hash_bytes` | `const void *, uint32_t len` | FNV-1a 32-bit |
+| `rc_hash_str` | `rc_str` | → `rc_hash_bytes`; NULL/invalid string safe |
+| `rc_hash_vec2i` | `rc_vec2i` | combine(hash_i32(x), hash_i32(y)) |
+| `rc_hash_vec3i` | `rc_vec3i` | combine chain over x, y, z |
+| `rc_hash_vec2f` | `rc_vec2f` | combine(hash_f32(x), hash_f32(y)) |
+| `rc_hash_vec3f` | `rc_vec3f` | combine chain over x, y, z |
+| `rc_hash_vec4f` | `rc_vec4f` | combine chain over x, y, z, w |
+| `rc_hash_combine` | `uint32_t seed, uint32_t hash` | Boost hash_combine formula |
+
+`rc_hash_combine` is the building block for hashing structs field by field.
+
 ### Hash map
 Header: `hash_map.h`
 Open-addressing with linear probing, Structure-of-Arrays layout.
@@ -380,6 +406,8 @@ include/richc/
     rational.h                  — rc_rational (rational arithmetic, always canonical; trivial ops inline, rest in rational.c)
     bigint.h                    — rc_bigint (arbitrary-precision integer; sign-magnitude, arena-backed)
   template/
+    hash.h                      — hash functions for built-in types, rc_str, vector types; rc_hash_combine
+  template/
     array.h                     — View + Span + Array template (main container header)
     hash_map.h                  — open-addressing hash map template
     hash_set.h                  — open-addressing hash set template
@@ -409,7 +437,7 @@ src/
       rational.c                — rc_rational non-trivial operations (make, from_double, int_mul, mul, int_div, div, add, sub)
       bigint.c                  — rc_bigint non-trivial operations (make, from_u64/i64, copy, reserve, add, sub, mul, divmod, div, mod)
 test/
-  test.c                        — full test suite (~7,400 lines, ~2189 assertions)
+  test.c                        — full test suite (~7,700 lines, ~2231 assertions)
 ```
 
 All library headers are included as `#include "richc/..."` (the `include/` directory

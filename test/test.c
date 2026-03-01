@@ -13,6 +13,7 @@
 #include <math.h>
 #include "richc/platform.h"
 #include "richc/arena.h"
+#include "richc/hash.h"
 #include "richc/str.h"
 #include "richc/mstr.h"
 #include "richc/math/math.h"
@@ -383,11 +384,11 @@ typedef struct { int weight; } WeightCtx;
 /* ---- hash map instantiations ---- */
 
 /*
- * rc_map_int: int → int, Knuth multiplicative hash, default equality.
+ * rc_map_int: int → int.
  */
 #define MAP_KEY_T   int
 #define MAP_VAL_T   int
-#define MAP_HASH(k) ((size_t)(unsigned int)(k) * 2654435761u)
+#define MAP_HASH(k) rc_hash_i32(k)
 #include "richc/template/hash_map.h"
 /* defines: rc_map_int, rc_map_int_add, rc_map_int_remove, rc_map_int_find,
  *          rc_map_int_contains, rc_map_int_reserve                    */
@@ -399,7 +400,7 @@ typedef struct { int weight; } WeightCtx;
  */
 #define MAP_KEY_T   int
 #define MAP_VAL_T   Record
-#define MAP_HASH(k) ((size_t)(unsigned int)(k) * 2654435761u)
+#define MAP_HASH(k) rc_hash_i32(k)
 #define MAP_NAME    int_Record_Map
 #include "richc/template/hash_map.h"
 /* defines: int_Record_Map, int_Record_Map_add, etc. */
@@ -410,17 +411,17 @@ typedef struct { int weight; } WeightCtx;
 #undef MAP_NAME
 #define MAP_KEY_T         Record
 #define MAP_VAL_T         int
-#define MAP_HASH(k)       ((size_t)(unsigned int)((k).key) * 2654435761u)
+#define MAP_HASH(k)       rc_hash_i32((k).key)
 #define MAP_EQUAL(a, b)   ((a).key == (b).key)
 #define MAP_NAME          Record_int_Map
 #include "richc/template/hash_map.h"
 /* defines: Record_int_Map, Record_int_Map_add, etc. */
 
 /*
- * rc_set_int: int set, Knuth multiplicative hash, default equality.
+ * rc_set_int: int set.
  */
 #define SET_KEY_T   int
-#define SET_HASH(k) ((size_t)(unsigned int)(k) * 2654435761u)
+#define SET_HASH(k) rc_hash_i32(k)
 #include "richc/template/hash_set.h"
 /* defines: rc_set_int, rc_set_int_add, rc_set_int_remove,
  *          rc_set_int_contains, rc_set_int_reserve              */
@@ -429,7 +430,7 @@ typedef struct { int weight; } WeightCtx;
  * Record_set: Record set, custom hash and equality on .key field.
  */
 #define SET_KEY_T         Record
-#define SET_HASH(k)       ((size_t)(unsigned int)((k).key) * 2654435761u)
+#define SET_HASH(k)       rc_hash_i32((k).key)
 #define SET_EQUAL(a, b)   ((a).key == (b).key)
 #define SET_NAME          Record_set
 #include "richc/template/hash_set.h"
@@ -2831,6 +2832,174 @@ static void test_accumulate(void)
     END_GROUP();
 }
 
+/* ---- hash ---- */
+
+static void test_hash(void)
+{
+    printf("hash\n");
+
+    BEGIN_GROUP("u32: same input same output");
+    {
+        ASSERT(rc_hash_u32(0)    == rc_hash_u32(0));
+        ASSERT(rc_hash_u32(1)    == rc_hash_u32(1));
+        ASSERT(rc_hash_u32(UINT32_MAX) == rc_hash_u32(UINT32_MAX));
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("u32: different inputs produce different hashes");
+    {
+        ASSERT(rc_hash_u32(0) != rc_hash_u32(1));
+        ASSERT(rc_hash_u32(1) != rc_hash_u32(2));
+        ASSERT(rc_hash_u32(0) != rc_hash_u32(UINT32_MAX));
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("i32: negative values hash consistently");
+    {
+        ASSERT(rc_hash_i32(-1)  == rc_hash_i32(-1));
+        ASSERT(rc_hash_i32(-1)  != rc_hash_i32(1));
+        ASSERT(rc_hash_i32(INT32_MIN) == rc_hash_i32(INT32_MIN));
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("u64: same input same output");
+    {
+        ASSERT(rc_hash_u64(0)              == rc_hash_u64(0));
+        ASSERT(rc_hash_u64(UINT64_MAX)     == rc_hash_u64(UINT64_MAX));
+        ASSERT(rc_hash_u64(0) != rc_hash_u64(1));
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("u64: high bits affect output");
+    {
+        /* Values that differ only in high 32 bits must hash differently. */
+        ASSERT(rc_hash_u64(UINT64_C(1) << 32) != rc_hash_u64(1));
+        ASSERT(rc_hash_u64(UINT64_C(1) << 32) != rc_hash_u64(0));
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("f32: -0.0f and +0.0f hash identically");
+    {
+        ASSERT(rc_hash_f32(-0.0f) == rc_hash_f32(+0.0f));
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("f32: distinct values hash differently");
+    {
+        ASSERT(rc_hash_f32(1.0f)  != rc_hash_f32(2.0f));
+        ASSERT(rc_hash_f32(-1.0f) != rc_hash_f32(1.0f));
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("f64: -0.0 and +0.0 hash identically");
+    {
+        ASSERT(rc_hash_f64(-0.0) == rc_hash_f64(+0.0));
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("bytes: empty input is consistent");
+    {
+        ASSERT(rc_hash_bytes(NULL, 0) == rc_hash_bytes(NULL, 0));
+        uint8_t buf[] = {0};
+        ASSERT(rc_hash_bytes(buf, 0)  == rc_hash_bytes(NULL, 0));
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("bytes: single byte differs from empty and from other bytes");
+    {
+        uint8_t a = 'A', b = 'B';
+        ASSERT(rc_hash_bytes(&a, 1) != rc_hash_bytes(NULL, 0));
+        ASSERT(rc_hash_bytes(&a, 1) != rc_hash_bytes(&b, 1));
+        ASSERT(rc_hash_bytes(&a, 1) == rc_hash_bytes(&a, 1));
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("bytes: byte order matters");
+    {
+        uint8_t ab[] = {'A', 'B'};
+        uint8_t ba[] = {'B', 'A'};
+        ASSERT(rc_hash_bytes(ab, 2) != rc_hash_bytes(ba, 2));
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("str: consistent for same string");
+    {
+        ASSERT(rc_hash_str(RC_STR("hello")) == rc_hash_str(RC_STR("hello")));
+        ASSERT(rc_hash_str(RC_STR(""))      == rc_hash_str(RC_STR("")));
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("str: different strings hash differently");
+    {
+        ASSERT(rc_hash_str(RC_STR("hello")) != rc_hash_str(RC_STR("world")));
+        ASSERT(rc_hash_str(RC_STR("ab"))    != rc_hash_str(RC_STR("ba")));
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("str: empty string same as invalid (NULL, 0)");
+    {
+        rc_str invalid = {0};
+        ASSERT(rc_hash_str(RC_STR("")) == rc_hash_str(invalid));
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("combine: same inputs same output");
+    {
+        ASSERT(rc_hash_combine(0, 0)             == rc_hash_combine(0, 0));
+        ASSERT(rc_hash_combine(42, 17)           == rc_hash_combine(42, 17));
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("combine: order matters");
+    {
+        ASSERT(rc_hash_combine(1, 2) != rc_hash_combine(2, 1));
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("combine: composing two fields differs from either alone");
+    {
+        uint32_t hx = rc_hash_i32(3);
+        uint32_t hy = rc_hash_i32(7);
+        uint32_t hxy = rc_hash_combine(hx, hy);
+        ASSERT(hxy != hx);
+        ASSERT(hxy != hy);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("vec2i: consistent and field-sensitive");
+    {
+        rc_vec2i a = {1, 2}, b = {2, 1}, c = {1, 2};
+        ASSERT(rc_hash_vec2i(a) == rc_hash_vec2i(c));
+        ASSERT(rc_hash_vec2i(a) != rc_hash_vec2i(b));
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("vec3i: consistent and field-sensitive");
+    {
+        rc_vec3i a = {1, 2, 3}, b = {1, 3, 2}, c = {1, 2, 3};
+        ASSERT(rc_hash_vec3i(a) == rc_hash_vec3i(c));
+        ASSERT(rc_hash_vec3i(a) != rc_hash_vec3i(b));
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("vec2f: consistent; -0/+0 components treated equally");
+    {
+        rc_vec2f a = {-0.0f, 1.0f}, b = {+0.0f, 1.0f};
+        ASSERT(rc_hash_vec2f(a) == rc_hash_vec2f(b));
+        rc_vec2f c = {1.0f, 2.0f}, d = {2.0f, 1.0f};
+        ASSERT(rc_hash_vec2f(c) != rc_hash_vec2f(d));
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("vec4f: consistent and field-sensitive");
+    {
+        rc_vec4f a = {1,2,3,4}, b = {1,2,3,5}, c = {1,2,3,4};
+        ASSERT(rc_hash_vec4f(a) == rc_hash_vec4f(c));
+        ASSERT(rc_hash_vec4f(a) != rc_hash_vec4f(b));
+    }
+    END_GROUP();
+}
+
 /* ---- hash map ---- */
 
 static void test_hash_map(void)
@@ -3652,6 +3821,8 @@ int main(void)
     test_mismatch();
     putchar('\n');
     test_accumulate();
+    putchar('\n');
+    test_hash();
     putchar('\n');
     test_hash_map();
     putchar('\n');
