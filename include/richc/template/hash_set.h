@@ -30,9 +30,9 @@
  *
  * keys_off = align_up(N, alignof(KEY))
  *
- * State encoding: see rc_hash_slot_state (RC_SLOT_EMPTY, RC_SLOT_OCCUPIED,
- * RC_SLOT_TOMBSTONE).  Only the states portion of each block is zeroed on
- * allocation; keys are only read when state == RC_SLOT_OCCUPIED.
+ * State encoding: see rc_hash_slot_state (RC_HASH_SET_SLOT_EMPTY, RC_HASH_SET_SLOT_OCCUPIED,
+ * RC_HASH_SET_SLOT_TOMBSTONE).  Only the states portion of each block is zeroed on
+ * allocation; keys are only read when state == RC_HASH_SET_SLOT_OCCUPIED.
  *
  * Generated types
  * ---------------
@@ -93,10 +93,7 @@
  *   //          rc_set_int_contains, rc_set_int_reserve
  */
 
-#include <stdint.h>
-#include <string.h>
 #include "richc/template_util.h"
-#include "richc/arena.h"
 
 #ifndef SET_KEY_T
 #  error "SET_KEY_T must be defined before including hash_set.h"
@@ -117,17 +114,16 @@
 
 #ifndef RC_HASH_SET_H_
 #define RC_HASH_SET_H_
+#include <stdint.h>
+#include <string.h>
+#include "richc/arena.h"
 /* Round n up to the nearest multiple of a; a must be a power of two. */
 #define RC_SET_ALIGN_UP_(n, a) (((size_t)(n) + (a) - 1) & ~((a) - 1))
-#endif
-
-#ifndef RC_HASH_SLOT_STATE_H_
-#define RC_HASH_SLOT_STATE_H_
 typedef enum : uint8_t {
-    RC_SLOT_EMPTY     = 0,
-    RC_SLOT_OCCUPIED  = 1,
-    RC_SLOT_TOMBSTONE = 2
-} rc_hash_slot_state;
+    RC_HASH_SET_SLOT_EMPTY     = 0,
+    RC_HASH_SET_SLOT_OCCUPIED  = 1,
+    RC_HASH_SET_SLOT_TOMBSTONE = 2
+} rc_hash_set_slot_state;
 #endif
 
 /* ---- per-type layout macros ---- */
@@ -194,7 +190,7 @@ static inline void SET_REHASH_(SET_NAME *set, uint32_t new_cap, rc_arena *a)
     char *new_data = rc_arena_alloc(a, (uint32_t)block_size);
     RC_ASSERT(new_data != NULL && "hash set: arena OOM");
 
-    /* Zero only the states array; keys are only read when state == RC_SLOT_OCCUPIED. */
+    /* Zero only the states array; keys are only read when state == RC_HASH_SET_SLOT_OCCUPIED. */
     memset(new_data, 0, new_cap);
 
     uint8_t   *new_states = (uint8_t *)new_data;
@@ -206,10 +202,10 @@ static inline void SET_REHASH_(SET_NAME *set, uint32_t new_cap, rc_arena *a)
         SET_KEY_T *old_keys   = (SET_KEY_T *)(set->data + SET_KEYS_OFF_(set->cap));
 
         for (uint32_t i = 0; i < set->cap; i++) {
-            if (old_states[i] != RC_SLOT_OCCUPIED) continue;   /* skip EMPTY / TOMBSTONE */
+            if (old_states[i] != RC_HASH_SET_SLOT_OCCUPIED) continue;   /* skip EMPTY / TOMBSTONE */
             uint32_t j = (uint32_t)SET_HASH(old_keys[i]) & mask;
-            while (new_states[j] == RC_SLOT_OCCUPIED) j = (j + 1) & mask;
-            new_states[j] = RC_SLOT_OCCUPIED;
+            while (new_states[j] == RC_HASH_SET_SLOT_OCCUPIED) j = (j + 1) & mask;
+            new_states[j] = RC_HASH_SET_SLOT_OCCUPIED;
             new_keys[j]   = old_keys[i];
         }
     }
@@ -268,10 +264,10 @@ static inline int SET_ADD_(SET_NAME *set, SET_KEY_T key, rc_arena *a)
 
         for (;;) {
             uint8_t s = states[i];
-            if (s == RC_SLOT_OCCUPIED && SET_EQUAL(keys[i], key))
+            if (s == RC_HASH_SET_SLOT_OCCUPIED && SET_EQUAL(keys[i], key))
                 return 0;              /* already present */
-            if (s == RC_SLOT_TOMBSTONE && tomb == set->cap) tomb = i;
-            if (s == RC_SLOT_EMPTY) break;   /* EMPTY: key not in set */
+            if (s == RC_HASH_SET_SLOT_TOMBSTONE && tomb == set->cap) tomb = i;
+            if (s == RC_HASH_SET_SLOT_EMPTY) break;   /* EMPTY: key not in set */
             i = (i + 1) & mask;
         }
 
@@ -280,7 +276,7 @@ static inline int SET_ADD_(SET_NAME *set, SET_KEY_T key, rc_arena *a)
 
         if (tomb != set->cap) {
             /* Reuse tombstone: used count unchanged, count increases. */
-            states[tomb] = RC_SLOT_OCCUPIED;
+            states[tomb] = RC_HASH_SET_SLOT_OCCUPIED;
             keys[tomb]   = key;
             set->count++;
             return 1;
@@ -289,7 +285,7 @@ static inline int SET_ADD_(SET_NAME *set, SET_KEY_T key, rc_arena *a)
         /* Would consume an EMPTY slot.  Check load-factor threshold.
          * Written as used+1 <= cap - cap/4 to avoid uint32_t overflow. */
         if (set->used + 1 <= set->cap - set->cap / 4) {
-            states[i] = RC_SLOT_OCCUPIED;
+            states[i] = RC_HASH_SET_SLOT_OCCUPIED;
             keys[i]   = key;
             set->count++;
             set->used++;
@@ -321,9 +317,9 @@ static inline int SET_REMOVE_(SET_NAME *set, SET_KEY_T key)
 
     for (;;) {
         uint8_t s = states[i];
-        if (s == RC_SLOT_EMPTY) return 0;   /* EMPTY: not in set */
-        if (s == RC_SLOT_OCCUPIED && SET_EQUAL(keys[i], key)) {
-            states[i] = RC_SLOT_TOMBSTONE;  /* mark TOMBSTONE */
+        if (s == RC_HASH_SET_SLOT_EMPTY) return 0;   /* EMPTY: not in set */
+        if (s == RC_HASH_SET_SLOT_OCCUPIED && SET_EQUAL(keys[i], key)) {
+            states[i] = RC_HASH_SET_SLOT_TOMBSTONE;  /* mark TOMBSTONE */
             set->count--;
             return 1;
         }
@@ -345,8 +341,8 @@ static inline int SET_CONTAINS_(SET_NAME *set, SET_KEY_T key)
 
     for (;;) {
         uint8_t s = states[i];
-        if (s == RC_SLOT_EMPTY) return 0;
-        if (s == RC_SLOT_OCCUPIED && SET_EQUAL(keys[i], key)) return 1;
+        if (s == RC_HASH_SET_SLOT_EMPTY) return 0;
+        if (s == RC_HASH_SET_SLOT_OCCUPIED && SET_EQUAL(keys[i], key)) return 1;
         i = (i + 1) & mask;
     }
 }
@@ -365,7 +361,7 @@ static inline uint32_t SET_NEXT_(const SET_NAME *set, uint32_t pos)
 {
     if (!set->data) return 0;
     uint8_t *states = (uint8_t *)set->data;
-    while (pos < set->cap && states[pos] != RC_SLOT_OCCUPIED)
+    while (pos < set->cap && states[pos] != RC_HASH_SET_SLOT_OCCUPIED)
         pos++;
     return pos;
 }

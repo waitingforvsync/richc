@@ -35,9 +35,9 @@
  * keys_off = align_up(N,          alignof(KEY))
  * vals_off = align_up(keys_off + N*K, alignof(VAL))
  *
- * State encoding: see rc_hash_slot_state (RC_SLOT_EMPTY, RC_SLOT_OCCUPIED,
- * RC_SLOT_TOMBSTONE).  Only the states portion of each block is zeroed on
- * allocation; keys and vals are only read when state == RC_SLOT_OCCUPIED.
+ * State encoding: see rc_hash_slot_state (RC_HASH_MAP_SLOT_EMPTY, RC_HASH_MAP_SLOT_OCCUPIED,
+ * RC_HASH_MAP_SLOT_TOMBSTONE).  Only the states portion of each block is zeroed on
+ * allocation; keys and vals are only read when state == RC_HASH_MAP_SLOT_OCCUPIED.
  *
  * Generated types
  * ---------------
@@ -109,10 +109,7 @@
  *   //          rc_map_int_find, rc_map_int_contains, rc_map_int_reserve
  */
 
-#include <stdint.h>
-#include <string.h>
 #include "richc/template_util.h"
-#include "richc/arena.h"
 
 #ifndef MAP_KEY_T
 #  error "MAP_KEY_T must be defined before including hash_map.h"
@@ -140,17 +137,16 @@
 
 #ifndef RC_HASH_MAP_H_
 #define RC_HASH_MAP_H_
+#include <stdint.h>
+#include <string.h>
+#include "richc/arena.h"
 /* Round n up to the nearest multiple of a; a must be a power of two. */
 #define RC_MAP_ALIGN_UP_(n, a) (((size_t)(n) + (a) - 1) & ~((a) - 1))
-#endif
-
-#ifndef RC_HASH_SLOT_STATE_H_
-#define RC_HASH_SLOT_STATE_H_
 typedef enum : uint8_t {
-    RC_SLOT_EMPTY     = 0,
-    RC_SLOT_OCCUPIED  = 1,
-    RC_SLOT_TOMBSTONE = 2
-} rc_hash_slot_state;
+    RC_HASH_MAP_SLOT_EMPTY     = 0,
+    RC_HASH_MAP_SLOT_OCCUPIED  = 1,
+    RC_HASH_MAP_SLOT_TOMBSTONE = 2
+} rc_hash_map_slot_state;
 #endif
 
 /* ---- per-type layout macros ---- */
@@ -234,7 +230,7 @@ static inline void MAP_REHASH_(MAP_NAME *map, uint32_t new_cap, rc_arena *a)
     char *new_data = rc_arena_alloc(a, (uint32_t)block_size);
     RC_ASSERT(new_data != NULL && "hash map: arena OOM");
 
-    /* Zero only the states array; keys/vals are only read when state == RC_SLOT_OCCUPIED. */
+    /* Zero only the states array; keys/vals are only read when state == RC_HASH_MAP_SLOT_OCCUPIED. */
     memset(new_data, 0, new_cap);
 
     uint8_t   *new_states = (uint8_t *)new_data;
@@ -248,10 +244,10 @@ static inline void MAP_REHASH_(MAP_NAME *map, uint32_t new_cap, rc_arena *a)
         MAP_VAL_T *old_vals   = (MAP_VAL_T *)(map->data + MAP_VALS_OFF_(map->cap));
 
         for (uint32_t i = 0; i < map->cap; i++) {
-            if (old_states[i] != RC_SLOT_OCCUPIED) continue;   /* skip EMPTY / TOMBSTONE */
+            if (old_states[i] != RC_HASH_MAP_SLOT_OCCUPIED) continue;   /* skip EMPTY / TOMBSTONE */
             uint32_t j = (uint32_t)MAP_HASH(old_keys[i]) & mask;
-            while (new_states[j] == RC_SLOT_OCCUPIED) j = (j + 1) & mask;
-            new_states[j] = RC_SLOT_OCCUPIED;
+            while (new_states[j] == RC_HASH_MAP_SLOT_OCCUPIED) j = (j + 1) & mask;
+            new_states[j] = RC_HASH_MAP_SLOT_OCCUPIED;
             new_keys[j]   = old_keys[i];
             new_vals[j]   = old_vals[i];
         }
@@ -314,12 +310,12 @@ static inline int MAP_ADD_(MAP_NAME *map, MAP_KEY_T key, MAP_VAL_T val,
 
         for (;;) {
             uint8_t s = states[i];
-            if (s == RC_SLOT_OCCUPIED && MAP_EQUAL(keys[i], key)) {
+            if (s == RC_HASH_MAP_SLOT_OCCUPIED && MAP_EQUAL(keys[i], key)) {
                 vals[i] = val;   /* update existing entry */
                 return 0;
             }
-            if (s == RC_SLOT_TOMBSTONE && tomb == map->cap) tomb = i;
-            if (s == RC_SLOT_EMPTY) break;   /* EMPTY: key not in map */
+            if (s == RC_HASH_MAP_SLOT_TOMBSTONE && tomb == map->cap) tomb = i;
+            if (s == RC_HASH_MAP_SLOT_EMPTY) break;   /* EMPTY: key not in map */
             i = (i + 1) & mask;
         }
 
@@ -328,7 +324,7 @@ static inline int MAP_ADD_(MAP_NAME *map, MAP_KEY_T key, MAP_VAL_T val,
 
         if (tomb != map->cap) {
             /* Reuse tombstone: used count unchanged, count increases. */
-            states[tomb] = RC_SLOT_OCCUPIED;
+            states[tomb] = RC_HASH_MAP_SLOT_OCCUPIED;
             keys[tomb]   = key;
             vals[tomb]   = val;
             map->count++;
@@ -338,7 +334,7 @@ static inline int MAP_ADD_(MAP_NAME *map, MAP_KEY_T key, MAP_VAL_T val,
         /* Would consume an EMPTY slot.  Check load-factor threshold.
          * Written as used+1 <= cap - cap/4 to avoid uint32_t overflow. */
         if (map->used + 1 <= map->cap - map->cap / 4) {
-            states[i] = RC_SLOT_OCCUPIED;
+            states[i] = RC_HASH_MAP_SLOT_OCCUPIED;
             keys[i]   = key;
             vals[i]   = val;
             map->count++;
@@ -371,9 +367,9 @@ static inline int MAP_REMOVE_(MAP_NAME *map, MAP_KEY_T key)
 
     for (;;) {
         uint8_t s = states[i];
-        if (s == RC_SLOT_EMPTY) return 0;   /* EMPTY: not in map */
-        if (s == RC_SLOT_OCCUPIED && MAP_EQUAL(keys[i], key)) {
-            states[i] = RC_SLOT_TOMBSTONE;  /* mark TOMBSTONE */
+        if (s == RC_HASH_MAP_SLOT_EMPTY) return 0;   /* EMPTY: not in map */
+        if (s == RC_HASH_MAP_SLOT_OCCUPIED && MAP_EQUAL(keys[i], key)) {
+            states[i] = RC_HASH_MAP_SLOT_TOMBSTONE;  /* mark TOMBSTONE */
             map->count--;
             return 1;
         }
@@ -399,8 +395,8 @@ static inline MAP_VAL_T *MAP_FIND_(MAP_NAME *map, MAP_KEY_T key)
 
     for (;;) {
         uint8_t s = states[i];
-        if (s == RC_SLOT_EMPTY) return NULL;
-        if (s == RC_SLOT_OCCUPIED && MAP_EQUAL(keys[i], key))
+        if (s == RC_HASH_MAP_SLOT_EMPTY) return NULL;
+        if (s == RC_HASH_MAP_SLOT_OCCUPIED && MAP_EQUAL(keys[i], key))
             return &vals[i];
         i = (i + 1) & mask;
     }
@@ -428,7 +424,7 @@ static inline uint32_t MAP_NEXT_(const MAP_NAME *map, uint32_t pos)
 {
     if (!map->data) return 0;
     uint8_t *states = (uint8_t *)map->data;
-    while (pos < map->cap && states[pos] != RC_SLOT_OCCUPIED)
+    while (pos < map->cap && states[pos] != RC_HASH_MAP_SLOT_OCCUPIED)
         pos++;
     return pos;
 }

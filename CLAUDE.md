@@ -63,10 +63,9 @@ times for different types, so they must **not** have an include guard.
   `RC_DEBUG_BREAK_`, `RC_ARRAY_ONCE_`, `RC_TRIE_ONCE_`.
 - **Once-only sections in template headers** use the header-guard naming
   convention (`RC_<FILENAME>_H_`) rather than a bespoke `_ONCE_` suffix.
-  Examples: `RC_HASH_MAP_H_` (guards `RC_MAP_ALIGN_UP_` in `hash_map.h`),
-  `RC_HASH_SET_H_` (guards `RC_SET_ALIGN_UP_` in `hash_set.h`),
-  `RC_HASH_SLOT_STATE_H_` (guards the `rc_hash_slot_state` enum, shared
-  between `hash_map.h` and `hash_set.h`).
+  Examples: `RC_HASH_MAP_H_` (guards `RC_MAP_ALIGN_UP_` and the
+  `rc_hash_map_slot_state` enum in `hash_map.h`), `RC_HASH_SET_H_` (guards
+  `RC_SET_ALIGN_UP_` and the `rc_hash_set_slot_state` enum in `hash_set.h`).
 - **Template control macros** (`ARRAY_T`, `SORT_CMP`, `FIND_PRED`, etc.) are
   *consumed* at include-time and leave no compiled trace. They stay unprefixed
   ALL_CAPS — adding `RC_` would only add noise at every instantiation site.
