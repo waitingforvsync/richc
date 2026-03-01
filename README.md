@@ -56,6 +56,34 @@ Custom type names can be supplied via optional macros (`ARRAY_NAME`, `ARRAY_VIEW
 | `template/hash_trie.h` | `rc_trie_T` | 16-way radix trie over hash values; arena-backed node pool |
 | `bytes.h` | `rc_view/span/array_bytes` | `uint8_t` array family |
 
+### Hashing
+
+`hash.h` provides `static inline uint32_t` hash functions for all common richc types, suitable for use directly as `MAP_HASH` / `SET_HASH` expressions in the hash_map and hash_set templates.
+
+| Function | Input |
+|----------|-------|
+| `rc_hash_u32` / `rc_hash_i32` | `uint32_t` / `int32_t` |
+| `rc_hash_u64` / `rc_hash_i64` | `uint64_t` / `int64_t` |
+| `rc_hash_f32` / `rc_hash_f64` | `float` / `double` (−0 and +0 hash identically) |
+| `rc_hash_ptr` | `const void *` |
+| `rc_hash_bytes` | `const void *, uint32_t len` |
+| `rc_hash_str` | `rc_str` (NULL/invalid safe) |
+| `rc_hash_vec2i` / `rc_hash_vec3i` | `rc_vec2i` / `rc_vec3i` |
+| `rc_hash_vec2f` / `rc_hash_vec3f` / `rc_hash_vec4f` | `rc_vec2f` / `rc_vec3f` / `rc_vec4f` |
+| `rc_hash_combine(seed, hash)` | Mix a hash into a running seed (Boost formula) |
+
+```c
+// Hashing a struct field by field
+uint32_t h = rc_hash_i32(point.x);
+h = rc_hash_combine(h, rc_hash_i32(point.y));
+
+// Using with hash_map
+#define MAP_KEY_T   rc_str
+#define MAP_HASH(k) rc_hash_str(k)
+#define MAP_EQUAL(a, b) rc_str_is_equal(a, b)
+#include "richc/template/hash_map.h"
+```
+
 ### Algorithms
 
 All algorithm templates support an optional context pointer for custom comparators and predicates.
