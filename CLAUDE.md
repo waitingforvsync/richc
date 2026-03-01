@@ -481,15 +481,66 @@ background thread (work_fn):
         until arena reset, which is acceptable)
 ```
 
-### Thread pool sketch
+### Thread pool design notes (not yet implemented)
+
+#### Singleton vs. instantiation
+The async file API already takes `rc_thread_pool *` as an explicit parameter
+(see public async API sketch below), so the pool must be an instantiatable
+type even if only one instance is ever created in practice.  This is
+consistent with the library's zero-global-state design: the caller creates
+one pool in `main` and passes it where needed, exactly like `rc_arena`.
+
+Revisit when a concrete use-case exists that would benefit from a pool —
+that will clarify the right API ergonomics.
+
+#### Queue algorithm (open question)
+Three candidates, in ascending complexity:
+- **Mutex + ring buffer**: one mutex, two condition variables (`not_empty`,
+  `not_full`), fixed circular buffer of `{fn, arg}` pairs.  Easy to reason
+  about; every submit/consume acquires the mutex.
+- **Lock-free MPMC ring buffer** (Dmitry Vyukov design): each slot carries
+  an `_Atomic uint32_t` sequence counter; producers and consumers CAS-claim
+  slots with no mutex on the hot path.  ~50 lines; excellent in practice.
+- **Chase-Lev work-stealing deque** (one per thread): local push/pop is LIFO
+  and contention-free; idle threads steal FIFO from others.  Best for
+  irregular recursive task graphs; probably overkill for I/O workloads.
+
+Lean towards the MPMC ring buffer if performance matters; mutex + ring buffer
+if simplicity is paramount.
+
+#### Task memory (open question)
+Options, from simplest to most flexible:
+- **Embedded ring buffer**: pool struct contains an array of `{fn, arg}` pairs
+  allocated at `make` time.  Submit copies fn and arg by value; caller owns
+  the arg lifetime.  No per-task allocation.
+- **Intrusive task struct**: caller arena-allocates a `rc_pool_task` (which
+  embeds `void (*fn)(rc_pool_task *)` and `rc_pool_task *next`), then submits
+  the pointer.  Pool never allocates; task payload follows the struct.
+  Pattern mirrors Linux `work_struct`.
+- **Pool-private arena + free-list**: pool has its own arena for task nodes;
+  free-list recycles them.  Adds complexity without clear benefit over the
+  intrusive approach.
+
+#### Submit-when-full behaviour (open question)
+- Block until a slot is free (safe default, can cause deadlock if workers
+  submit work themselves).
+- Assert/panic (caller is responsible for not overfilling; simpler).
+
+#### Shutdown
+`destroy` should drain (finish all queued tasks) then join threads.
+Abandon-on-shutdown requires tasks to cooperate via a cancellation flag and
+is deferred.
+
+#### Sketch API
 ```c
 typedef struct rc_thread_pool rc_thread_pool;   /* opaque */
 
-rc_thread_pool *rc_thread_pool_make(uint32_t num_threads, rc_arena *a);
-void            rc_thread_pool_destroy(rc_thread_pool *p);
-/* internal use by async file functions: */
+rc_thread_pool *rc_thread_pool_make(uint32_t num_threads, uint32_t queue_cap,
+                                     rc_arena *a);
+void            rc_thread_pool_destroy(rc_thread_pool *p);  /* drain + join */
 void            rc_thread_pool_submit(rc_thread_pool *p,
                                        void (*fn)(void *), void *arg);
+void            rc_thread_pool_wait_all(rc_thread_pool *p); /* barrier */
 ```
 
 ### Public async API (sketch)
