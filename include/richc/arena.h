@@ -54,10 +54,23 @@
 #ifndef RC_ARENA_H_
 #define RC_ARENA_H_
 
+#include <stdalign.h>
 #include <stddef.h>
 #include <stdint.h>
 #include "richc/debug.h"
 #include "richc/platform.h"
+
+/*
+ * RC_MAX_ALIGN: alignment in bytes suitable for any standard C object.
+ * Equals alignof(max_align_t) on platforms that provide it.  MSVC does not
+ * expose max_align_t in C mode, so we hardcode 16, which matches the actual
+ * value on x86-64 Windows (largest standard-type alignment: long double / __m128).
+ */
+#if defined(_MSC_VER)
+#  define RC_MAX_ALIGN 16u
+#else
+#  define RC_MAX_ALIGN ((uint32_t)alignof(max_align_t))
+#endif
 
 /* ---- struct ---- */
 
@@ -72,7 +85,7 @@
  */
 typedef struct {
     char     *base;      /* base of reserved VA region; first allocation address  */
-    uint32_t  top;       /* offset of next free byte; always alignof(max_align_t)-aligned */
+    uint32_t  top;       /* offset of next free byte; always RC_MAX_ALIGN-aligned */
     uint32_t  committed; /* offset of one past the last committed (accessible) byte */
     uint32_t  reserved;  /* total reserved bytes; needed by rc_platform_release on POSIX */
 } rc_arena;

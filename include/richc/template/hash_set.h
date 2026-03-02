@@ -114,12 +114,13 @@
 
 #ifndef RC_HASH_SET_H_
 #define RC_HASH_SET_H_
+#include <stdalign.h>
 #include <stdint.h>
 #include <string.h>
 #include "richc/arena.h"
 /* Round n up to the nearest multiple of a; a must be a power of two. */
 #define RC_SET_ALIGN_UP_(n, a) (((size_t)(n) + (a) - 1) & ~((a) - 1))
-typedef enum : uint8_t {
+typedef enum {
     RC_HASH_SET_SLOT_EMPTY     = 0,
     RC_HASH_SET_SLOT_OCCUPIED  = 1,
     RC_HASH_SET_SLOT_TOMBSTONE = 2

@@ -54,12 +54,6 @@
 #include <stdint.h>
 #include "richc/template_util.h"
 
-/* RC_INDEX_NONE: sentinel returned when the view is empty.
- * Protected by #ifndef so multiple inclusions emit it only once. */
-#ifndef RC_INDEX_NONE
-#  define RC_INDEX_NONE ((uint32_t)-1)
-#endif
-
 #ifndef MAX_ELEMENT_T
 #  error "MAX_ELEMENT_T must be defined before including max_element.h"
 #endif

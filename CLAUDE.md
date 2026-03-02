@@ -28,7 +28,7 @@ times for different types, so they must **not** have an include guard.
   ```
 
 ## Ground rules
-- **Language standard: C23** — compile with `-std=c23`
+- **Language standard: C17** — compile with `-std=c17`
 - **Compiler: clang 20** — `C:\clang\bin\clang.exe`
 - **Build tools** (all discovered under the VS 2022 install):
   - CMake 3.31: `C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe`

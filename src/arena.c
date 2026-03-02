@@ -7,7 +7,7 @@
 
 static uint32_t rc_arena_align_up_(uint32_t n)
 {
-    uint32_t align = (uint32_t)alignof(max_align_t);
+    uint32_t align = RC_MAX_ALIGN;
     return (n + align - 1) & ~(align - 1);
 }
 

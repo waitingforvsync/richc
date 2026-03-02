@@ -34,7 +34,7 @@
  * Return value
  * ------------
  * RC_INDEX_NONE — (uint32_t)-1 == UINT32_MAX — returned when no element matches.
- * Defined once on the first inclusion of this header.
+ * Defined in template_util.h.
  *
  * Example (no context, default equality):
  *   #define FIND_T int
@@ -60,12 +60,6 @@
 
 #include <stdint.h>
 #include "richc/template_util.h"
-
-/* RC_INDEX_NONE: sentinel returned when no element is found.
- * Protected by #ifndef so multiple inclusions emit it only once. */
-#ifndef RC_INDEX_NONE
-#  define RC_INDEX_NONE ((uint32_t)-1)
-#endif
 
 #ifndef FIND_T
 #  error "FIND_T must be defined before including find.h"

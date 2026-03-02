@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 project(richc C)
 
-set(CMAKE_C_STANDARD 23)
+set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
@@ -46,6 +46,7 @@ add_library(richc STATIC
     include/richc/template/array.h
     include/richc/template/find.h
     include/richc/template/hash_map.h
+    include/richc/template/hash_multimap.h
     include/richc/template/hash_set.h
     include/richc/template/hash_trie.h
     include/richc/template/lower_bound.h
@@ -62,7 +63,15 @@ add_library(richc STATIC
 
 target_include_directories(richc PUBLIC include)
 
-target_compile_options(richc PRIVATE -Wall -Wextra)
+# Suppress MSVC CRT deprecation warnings for standard POSIX functions (fopen etc.)
+# when building with clang on Windows against the MSVC runtime headers.
+target_compile_definitions(richc PRIVATE _CRT_SECURE_NO_WARNINGS)
+
+if(MSVC)
+    target_compile_options(richc PRIVATE /W3)
+else()
+    target_compile_options(richc PRIVATE -Wall -Wextra)
+endif()
 
 # ---- test executable ----
 
@@ -70,7 +79,13 @@ add_executable(richc_test test/test.c)
 
 target_link_libraries(richc_test PRIVATE richc)
 
-target_compile_options(richc_test PRIVATE -Wall -Wextra)
+target_compile_definitions(richc_test PRIVATE _CRT_SECURE_NO_WARNINGS)
+
+if(MSVC)
+    target_compile_options(richc_test PRIVATE /W3)
+else()
+    target_compile_options(richc_test PRIVATE -Wall -Wextra)
+endif()
 
 # ---- run tests as a post-build step ----
 

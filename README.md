@@ -1,6 +1,6 @@
 # richc
 
-A C23 library of generic data structures, algorithms, math types, and utilities. Pure C, no external dependencies. Designed for performance: arena allocation, cache-friendly layouts, and compile-time code generation via the C preprocessor.
+A C17 library of generic data structures, algorithms, math types, and utilities. Pure C, no external dependencies. Designed for performance: arena allocation, cache-friendly layouts, and compile-time code generation via the C preprocessor.
 
 ## Core concepts
 
@@ -188,7 +188,7 @@ Add `include/` to your include path and link against the library. All headers ar
 
 ## Building
 
-Requires **clang** and **CMake + Ninja**. The build compiles as C23.
+Requires **clang** and **CMake + Ninja**. The build compiles as C17.
 
 ```sh
 cmake -B build -G Ninja -DCMAKE_C_COMPILER=clang

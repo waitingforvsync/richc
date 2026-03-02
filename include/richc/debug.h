@@ -34,7 +34,7 @@
 #ifndef RC_DEBUG_H_
 #define RC_DEBUG_H_
 
-/* ---- debug break intrinsic ---- */
+/* ---- debug break intrinsic (RC_ASSERT: pauses in debugger) ---- */
 
 #if defined(_MSC_VER)
 #  define RC_DEBUG_BREAK_() __debugbreak()
@@ -42,6 +42,14 @@
 #  define RC_DEBUG_BREAK_() __builtin_debugtrap()
 #else
 #  define RC_DEBUG_BREAK_() __builtin_trap()
+#endif
+
+/* ---- unconditional trap intrinsic (RC_PANIC: always terminates) ---- */
+
+#if defined(_MSC_VER)
+#  define RC_TRAP_() __debugbreak()
+#else
+#  define RC_TRAP_() __builtin_trap()
 #endif
 
 /* ---- RC_ASSERT ---- */
@@ -56,6 +64,6 @@
 /* ---- RC_PANIC ---- */
 
 #define RC_PANIC(cond) \
-    ((cond) ? (void)0 : (__builtin_trap(), (void)0))
+    ((cond) ? (void)0 : (RC_TRAP_(), (void)0))
 
 #endif /* RC_DEBUG_H_ */

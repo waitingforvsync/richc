@@ -436,6 +436,22 @@ typedef struct { int weight; } WeightCtx;
 #include "richc/template/hash_set.h"
 /* defines: Record_set, Record_set_add, etc. */
 
+/* ---- hash multimap instantiations ---- */
+
+/*
+ * rc_mmap_int: int → int.
+ */
+#define MMAP_KEY_T   int
+#define MMAP_VAL_T   int
+#define MMAP_HASH(k) rc_hash_i32(k)
+#include "richc/template/hash_multimap.h"
+/* defines: rc_mmap_int, rc_mmap_int_pool, rc_mmap_int_node,
+ *          rc_mmap_int_pool_make, rc_mmap_int_make,
+ *          rc_mmap_int_add, rc_mmap_int_remove_all, rc_mmap_int_find_head,
+ *          rc_mmap_int_contains, rc_mmap_int_reserve, rc_mmap_int_pool_reserve,
+ *          rc_mmap_int_next, rc_mmap_int_key_at, rc_mmap_int_head_at,
+ *          rc_mmap_int_node_val, rc_mmap_int_node_next               */
+
 /* ---- minimal test framework ---- */
 
 static int g_failures = 0;
@@ -1144,11 +1160,11 @@ static void test_arena(void)
     BEGIN_GROUP("alignment");
     {
         rc_arena  a     = rc_arena_make(RC_ARENA_DEFAULT_RESERVE);
-        size_t align = alignof(max_align_t);
+        size_t align = RC_MAX_ALIGN;
 
         /* Allocate odd sizes; every returned pointer must be aligned. */
         for (size_t sz = 1; sz <= 33; sz++) {
-            void *p = rc_arena_alloc(&a, sz);
+            void *p = rc_arena_alloc(&a, (uint32_t)sz);
             ASSERT(p != NULL);
             ASSERT(((uintptr_t)p % align) == 0);
         }
@@ -1168,7 +1184,7 @@ static void test_arena(void)
         uint32_t committed_before = a.committed;
 
         /* Allocate just over one page to force a second commit. */
-        void *p = rc_arena_alloc(&a, page + 1);
+        void *p = rc_arena_alloc(&a, (uint32_t)(page + 1));
         ASSERT(p != NULL);
         ASSERT(a.committed > committed_before);
 
@@ -1228,7 +1244,7 @@ static void test_arena(void)
         uint32_t committed_before = a.committed;
 
         /* Force several extra pages to be committed. */
-        ASSERT(rc_arena_alloc(&a, page * 4) != NULL);
+        ASSERT(rc_arena_alloc(&a, (uint32_t)(page * 4)) != NULL);
         ASSERT(a.committed > committed_before);
 
         rc_arena_reset(&a);
@@ -3000,6 +3016,304 @@ static void test_hash(void)
     END_GROUP();
 }
 
+/* ---- hash multimap ---- */
+
+static void test_multimap(void)
+{
+    printf("hash multimap\n");
+
+    BEGIN_GROUP("pool_make / make: initial state");
+    {
+        rc_mmap_int_pool pool = rc_mmap_int_pool_make();
+        ASSERT(pool.len == 0 && pool.cap == 0 && pool.nodes == NULL);
+        ASSERT(pool.free_head == 0);
+        rc_mmap_int m = rc_mmap_int_make(&pool);
+        ASSERT(m.count == 0 && m.cap == 0 && m.data == NULL);
+        ASSERT(m.pool == &pool);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("empty map: find/contains/remove safe");
+    {
+        rc_mmap_int_pool pool = rc_mmap_int_pool_make();
+        rc_mmap_int m = rc_mmap_int_make(&pool);
+        ASSERT(!rc_mmap_int_contains(&m, 42));
+        ASSERT(rc_mmap_int_find_head(&m, 42) == RC_INDEX_NONE);
+        ASSERT(rc_mmap_int_next(&m, 0) == m.cap);
+        ASSERT(!rc_mmap_int_remove_all(&m, 42));
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("add new key: returns 1, chain has one node");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_mmap_int_pool pool = rc_mmap_int_pool_make();
+        rc_mmap_int m = rc_mmap_int_make(&pool);
+        ASSERT(rc_mmap_int_add(&m, 1, 100, &a) == 1);
+        ASSERT(m.count == 1);
+        ASSERT(pool.len == 1);
+        ASSERT(rc_mmap_int_contains(&m, 1));
+        uint32_t h = rc_mmap_int_find_head(&m, 1);
+        ASSERT(h != RC_INDEX_NONE);
+        ASSERT(*rc_mmap_int_node_val(&m, h) == 100);
+        ASSERT(rc_mmap_int_node_next(&m, h) == RC_INDEX_NONE);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("add existing key: returns 0, value prepended");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_mmap_int_pool pool = rc_mmap_int_pool_make();
+        rc_mmap_int m = rc_mmap_int_make(&pool);
+        rc_mmap_int_add(&m, 1, 100, &a);
+        ASSERT(rc_mmap_int_add(&m, 1, 200, &a) == 0);
+        ASSERT(m.count == 1);
+        ASSERT(pool.len == 2);
+        uint32_t h  = rc_mmap_int_find_head(&m, 1);
+        uint32_t h2 = rc_mmap_int_node_next(&m, h);
+        ASSERT(*rc_mmap_int_node_val(&m, h)  == 200);   /* newest first */
+        ASSERT(*rc_mmap_int_node_val(&m, h2) == 100);
+        ASSERT(rc_mmap_int_node_next(&m, h2) == RC_INDEX_NONE);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("three values for one key: chain order correct");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_mmap_int_pool pool = rc_mmap_int_pool_make();
+        rc_mmap_int m = rc_mmap_int_make(&pool);
+        rc_mmap_int_add(&m, 1, 100, &a);
+        rc_mmap_int_add(&m, 1, 200, &a);
+        ASSERT(rc_mmap_int_add(&m, 1, 300, &a) == 0);
+        uint32_t h  = rc_mmap_int_find_head(&m, 1);
+        uint32_t h2 = rc_mmap_int_node_next(&m, h);
+        uint32_t h3 = rc_mmap_int_node_next(&m, h2);
+        ASSERT(*rc_mmap_int_node_val(&m, h)  == 300);
+        ASSERT(*rc_mmap_int_node_val(&m, h2) == 200);
+        ASSERT(*rc_mmap_int_node_val(&m, h3) == 100);
+        ASSERT(rc_mmap_int_node_next(&m, h3) == RC_INDEX_NONE);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("multiple keys: count and contains correct");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_mmap_int_pool pool = rc_mmap_int_pool_make();
+        rc_mmap_int m = rc_mmap_int_make(&pool);
+        ASSERT(rc_mmap_int_add(&m, 1, 10, &a) == 1);
+        ASSERT(rc_mmap_int_add(&m, 2, 20, &a) == 1);
+        ASSERT(rc_mmap_int_add(&m, 3, 30, &a) == 1);
+        ASSERT(m.count == 3);
+        ASSERT(rc_mmap_int_contains(&m, 1));
+        ASSERT(rc_mmap_int_contains(&m, 2));
+        ASSERT(rc_mmap_int_contains(&m, 3));
+        ASSERT(!rc_mmap_int_contains(&m, 4));
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("next/key_at/head_at: all keys visited exactly once");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_mmap_int_pool pool = rc_mmap_int_pool_make();
+        rc_mmap_int m = rc_mmap_int_make(&pool);
+        rc_mmap_int_add(&m, 1, 100, &a);
+        rc_mmap_int_add(&m, 1, 200, &a);
+        rc_mmap_int_add(&m, 2, 300, &a);
+        uint32_t key_count = 0;
+        int val_sum = 0;
+        for (uint32_t i = rc_mmap_int_next(&m, 0); i < m.cap; i = rc_mmap_int_next(&m, i + 1)) {
+            key_count++;
+            for (uint32_t j = rc_mmap_int_head_at(&m, i); j != RC_INDEX_NONE; j = rc_mmap_int_node_next(&m, j))
+                val_sum += *rc_mmap_int_node_val(&m, j);
+        }
+        ASSERT(key_count == 2);
+        ASSERT(val_sum == 100 + 200 + 300);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("remove_all: key gone, nodes freed, absent returns 0");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_mmap_int_pool pool = rc_mmap_int_pool_make();
+        rc_mmap_int m = rc_mmap_int_make(&pool);
+        rc_mmap_int_add(&m, 1, 100, &a);
+        rc_mmap_int_add(&m, 1, 200, &a);
+        rc_mmap_int_add(&m, 1, 300, &a);
+        rc_mmap_int_add(&m, 2, 400, &a);
+        ASSERT(rc_mmap_int_remove_all(&m, 1) == 1);
+        ASSERT(m.count == 1);
+        ASSERT(!rc_mmap_int_contains(&m, 1));
+        ASSERT(pool.free_head != 0);   /* three nodes on free-list */
+        ASSERT(!rc_mmap_int_remove_all(&m, 1)); /* already absent */
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("free-list reuse: pool.len stable after remove+add");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_mmap_int_pool pool = rc_mmap_int_pool_make();
+        rc_mmap_int m = rc_mmap_int_make(&pool);
+        rc_mmap_int_add(&m, 1, 100, &a);
+        rc_mmap_int_add(&m, 1, 200, &a);
+        rc_mmap_int_remove_all(&m, 1);
+        uint32_t len_before = pool.len;
+        rc_mmap_int_add(&m, 1, 999, &a);   /* new key; should reuse free-list */
+        ASSERT(pool.len == len_before);
+        uint32_t h = rc_mmap_int_find_head(&m, 1);
+        ASSERT(*rc_mmap_int_node_val(&m, h) == 999);
+        ASSERT(rc_mmap_int_node_next(&m, h) == RC_INDEX_NONE);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("tombstone reuse: remove_all then re-add same key");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_mmap_int_pool pool = rc_mmap_int_pool_make();
+        rc_mmap_int m = rc_mmap_int_make(&pool);
+        rc_mmap_int_add(&m, 1, 10, &a);
+        rc_mmap_int_add(&m, 2, 20, &a);
+        uint32_t used_before = m.used;
+        rc_mmap_int_remove_all(&m, 1);
+        ASSERT(m.count == 1);
+        ASSERT(m.used == used_before);       /* tombstone: used unchanged */
+        rc_mmap_int_add(&m, 1, 777, &a);    /* reuses tombstone slot */
+        ASSERT(m.count == 2);
+        ASSERT(m.used == used_before);       /* slot recycled, used still same */
+        ASSERT(rc_mmap_int_contains(&m, 1));
+        ASSERT(*rc_mmap_int_node_val(&m, rc_mmap_int_find_head(&m, 1)) == 777);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("reserve: pre-allocates hash table slots");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_mmap_int_pool pool = rc_mmap_int_pool_make();
+        rc_mmap_int m = rc_mmap_int_make(&pool);
+        rc_mmap_int_reserve(&m, 100, &a);
+        ASSERT(m.cap >= 128);   /* smallest power-of-two s.t. floor(cap*3/4)>=100 */
+        ASSERT(m.count == 0);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("pool_reserve: pre-allocates pool nodes");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_mmap_int_pool pool = rc_mmap_int_pool_make();
+        rc_mmap_int_pool_reserve(&pool, 64, &a);
+        ASSERT(pool.cap >= 64);
+        ASSERT(pool.len == 0);   /* no nodes allocated, just capacity reserved */
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("shared pool: two maps draw from and return to same pool");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_mmap_int_pool shared = rc_mmap_int_pool_make();
+        rc_mmap_int ma = rc_mmap_int_make(&shared);
+        rc_mmap_int mb = rc_mmap_int_make(&shared);
+        rc_mmap_int_add(&ma, 10, 1, &a);
+        rc_mmap_int_add(&mb, 20, 2, &a);
+        ASSERT(shared.len == 2);
+        ASSERT( rc_mmap_int_contains(&ma, 10) && !rc_mmap_int_contains(&ma, 20));
+        ASSERT( rc_mmap_int_contains(&mb, 20) && !rc_mmap_int_contains(&mb, 10));
+        rc_mmap_int_remove_all(&ma, 10);
+        uint32_t len_before = shared.len;
+        rc_mmap_int_add(&mb, 30, 3, &a);
+        ASSERT(shared.len == len_before);   /* mb recycled the node freed by ma */
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("rehash: 200 keys, all data survives growth");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_mmap_int_pool pool = rc_mmap_int_pool_make();
+        rc_mmap_int m = rc_mmap_int_make(&pool);
+        for (int k = 0; k < 200; k++)
+            rc_mmap_int_add(&m, k, k * 10, &a);
+        ASSERT(m.count == 200);
+        int ok = 1;
+        for (int k = 0; k < 200; k++) {
+            if (!rc_mmap_int_contains(&m, k)) { ok = 0; break; }
+            uint32_t h = rc_mmap_int_find_head(&m, k);
+            if (*rc_mmap_int_node_val(&m, h) != k * 10) { ok = 0; break; }
+        }
+        ASSERT(ok);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("multiple values per key after rehash: chains intact");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_mmap_int_pool pool = rc_mmap_int_pool_make();
+        rc_mmap_int m = rc_mmap_int_make(&pool);
+        for (int k = 0; k < 200; k++)
+            rc_mmap_int_add(&m, k, k * 10, &a);
+        for (int k = 0; k < 200; k++)
+            rc_mmap_int_add(&m, k, k * 20, &a);
+        ASSERT(m.count == 200);
+        int ok = 1;
+        for (int k = 0; k < 200; k++) {
+            uint32_t h  = rc_mmap_int_find_head(&m, k);
+            uint32_t h2 = rc_mmap_int_node_next(&m, h);
+            if (*rc_mmap_int_node_val(&m, h)  != k * 20) { ok = 0; break; }
+            if (*rc_mmap_int_node_val(&m, h2) != k * 10) { ok = 0; break; }
+            if (rc_mmap_int_node_next(&m, h2) != RC_INDEX_NONE) { ok = 0; break; }
+        }
+        ASSERT(ok);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("remove_all half of keys: count and iteration correct");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_mmap_int_pool pool = rc_mmap_int_pool_make();
+        rc_mmap_int m = rc_mmap_int_make(&pool);
+        for (int k = 0; k < 200; k++)
+            rc_mmap_int_add(&m, k, k * 10, &a);
+        for (int k = 0; k < 100; k++)
+            ASSERT(rc_mmap_int_remove_all(&m, k) == 1);
+        ASSERT(m.count == 100);
+        int ok = 1;
+        for (int k = 0; k < 100; k++)
+            if (rc_mmap_int_contains(&m, k)) { ok = 0; break; }
+        for (int k = 100; k < 200; k++)
+            if (!rc_mmap_int_contains(&m, k)) { ok = 0; break; }
+        ASSERT(ok);
+        uint32_t cnt = 0;
+        for (uint32_t i = rc_mmap_int_next(&m, 0); i < m.cap; i = rc_mmap_int_next(&m, i + 1))
+            cnt++;
+        ASSERT(cnt == 100);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("find_head / contains / remove_all on absent key");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_mmap_int_pool pool = rc_mmap_int_pool_make();
+        rc_mmap_int m = rc_mmap_int_make(&pool);
+        rc_mmap_int_add(&m, 1, 10, &a);
+        ASSERT(rc_mmap_int_find_head(&m, 9999) == RC_INDEX_NONE);
+        ASSERT(!rc_mmap_int_contains(&m, 9999));
+        ASSERT(!rc_mmap_int_remove_all(&m, 9999));
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+}
+
 /* ---- hash map ---- */
 
 static void test_hash_map(void)
@@ -3823,6 +4137,8 @@ int main(void)
     test_accumulate();
     putchar('\n');
     test_hash();
+    putchar('\n');
+    test_multimap();
     putchar('\n');
     test_hash_map();
     putchar('\n');
