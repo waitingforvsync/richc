@@ -3014,6 +3014,27 @@ static void test_hash(void)
         ASSERT(rc_hash_vec4f(a) != rc_hash_vec4f(b));
     }
     END_GROUP();
+
+    BEGIN_GROUP("rational: consistent with canonical equality");
+    {
+        rc_rational a = rc_rational_make(1, 2);
+        rc_rational b = rc_rational_make(2, 4);  /* same value; canonical: 1/2 */
+        rc_rational c = rc_rational_make(1, 3);
+        rc_rational d = rc_rational_make(-1, 2);
+        rc_rational e = rc_rational_from_i64(3); /* 3/1 */
+        rc_rational f = rc_rational_from_i64(3);
+        /* Equal rationals must hash equally. */
+        ASSERT(rc_hash_rational(a) == rc_hash_rational(b));
+        ASSERT(rc_hash_rational(e) == rc_hash_rational(f));
+        /* Different values should (almost certainly) differ. */
+        ASSERT(rc_hash_rational(a) != rc_hash_rational(c));
+        ASSERT(rc_hash_rational(a) != rc_hash_rational(d));
+        ASSERT(rc_hash_rational(a) != rc_hash_rational(e));
+        /* Zero: 0/1. */
+        rc_rational z = rc_rational_from_i64(0);
+        ASSERT(rc_hash_rational(z) == rc_hash_rational(rc_rational_make(0, 7)));
+    }
+    END_GROUP();
 }
 
 /* ---- hash multimap ---- */

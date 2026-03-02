@@ -39,6 +39,7 @@
 #include <stdint.h>
 #include <string.h>
 #include "richc/str.h"
+#include "richc/math/rational.h"
 #include "richc/math/vec2i.h"
 #include "richc/math/vec3i.h"
 #include "richc/math/vec2f.h"
@@ -161,6 +162,21 @@ static inline uint32_t rc_hash_str(rc_str s)
 static inline uint32_t rc_hash_combine(uint32_t seed, uint32_t hash)
 {
     return seed ^ (hash + 0x9e3779b9u + (seed << 6) + (seed >> 2));
+}
+
+/* ---- rational ---- */
+
+/*
+ * Hash an rc_rational.  Because rationals are always in canonical form,
+ * equal values have identical num and denom fields, so combining the two
+ * field hashes is both correct and consistent with rc_rational_is_equal.
+ * Asserts that r is valid (denom > 0).
+ */
+static inline uint32_t rc_hash_rational(rc_rational r)
+{
+    RC_ASSERT(rc_rational_is_valid(r));
+    uint32_t h = rc_hash_i64(r.num);
+    return rc_hash_combine(h, rc_hash_i64(r.denom));
 }
 
 /* ---- integer vector types ---- */

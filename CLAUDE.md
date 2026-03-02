@@ -278,6 +278,7 @@ Header: `hash.h` (not a template; include once).
 | `rc_hash_vec2f` | `rc_vec2f` | combine(hash_f32(x), hash_f32(y)) |
 | `rc_hash_vec3f` | `rc_vec3f` | combine chain over x, y, z |
 | `rc_hash_vec4f` | `rc_vec4f` | combine chain over x, y, z, w |
+| `rc_hash_rational` | `rc_rational` | combine(hash_i64(num), hash_i64(denom)); asserts valid |
 | `rc_hash_combine` | `uint32_t seed, uint32_t hash` | Boost hash_combine formula |
 
 `rc_hash_combine` is the building block for hashing structs field by field.
@@ -406,7 +407,7 @@ include/richc/
     rational.h                  — rc_rational (rational arithmetic, always canonical; trivial ops inline, rest in rational.c)
     bigint.h                    — rc_bigint (arbitrary-precision integer; sign-magnitude, arena-backed)
   template/
-    hash.h                      — hash functions for built-in types, rc_str, vector types; rc_hash_combine
+    hash.h                      — hash functions for built-in types, rc_str, rc_rational, vector types; rc_hash_combine
   template/
     array.h                     — View + Span + Array template (main container header)
     hash_map.h                  — open-addressing hash map template

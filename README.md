@@ -70,6 +70,7 @@ Custom type names can be supplied via optional macros (`ARRAY_NAME`, `ARRAY_VIEW
 | `rc_hash_str` | `rc_str` (NULL/invalid safe) |
 | `rc_hash_vec2i` / `rc_hash_vec3i` | `rc_vec2i` / `rc_vec3i` |
 | `rc_hash_vec2f` / `rc_hash_vec3f` / `rc_hash_vec4f` | `rc_vec2f` / `rc_vec3f` / `rc_vec4f` |
+| `rc_hash_rational` | `rc_rational` (always canonical, so field combination is correct) |
 | `rc_hash_combine(seed, hash)` | Mix a hash into a running seed (Boost formula) |
 
 ```c
