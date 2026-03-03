@@ -1807,6 +1807,257 @@ static void test_array(void)
         rc_arena_destroy(&a);
     }
     END_GROUP();
+
+    /* ---- sub-slice functions ---- */
+
+    /* rc_view_int_subview */
+
+    BEGIN_GROUP("view_subview: normal range");
+    {
+        int data[] = {10, 20, 30, 40, 50};
+        rc_view_int v = RC_VIEW(data);
+        rc_view_int s = rc_view_int_subview(v, 1, 3);
+        ASSERT(s.num == 3);
+        ASSERT(s.data[0] == 20 && s.data[1] == 30 && s.data[2] == 40);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("view_subview: full range");
+    {
+        int data[] = {10, 20, 30};
+        rc_view_int v = RC_VIEW(data);
+        rc_view_int s = rc_view_int_subview(v, 0, 3);
+        ASSERT(s.num == 3 && s.data == data);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("view_subview: start=0, count=0");
+    {
+        int data[] = {10, 20, 30};
+        rc_view_int v = RC_VIEW(data);
+        rc_view_int s = rc_view_int_subview(v, 0, 0);
+        ASSERT(s.num == 0 && s.data == data);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("view_subview: start clamped beyond end");
+    {
+        int data[] = {10, 20, 30};
+        rc_view_int v = RC_VIEW(data);
+        rc_view_int s = rc_view_int_subview(v, 100, 1);
+        ASSERT(s.num == 0 && s.data == data + 3);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("view_subview: start == num");
+    {
+        int data[] = {10, 20, 30};
+        rc_view_int v = RC_VIEW(data);
+        rc_view_int s = rc_view_int_subview(v, 3, 0);
+        ASSERT(s.num == 0 && s.data == data + 3);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("view_subview: count clamped");
+    {
+        int data[] = {10, 20, 30, 40, 50};
+        rc_view_int v = RC_VIEW(data);
+        rc_view_int s = rc_view_int_subview(v, 3, 100);
+        ASSERT(s.num == 2);
+        ASSERT(s.data[0] == 40 && s.data[1] == 50);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("view_subview: count=UINT32_MAX clamped to remaining");
+    {
+        int data[] = {10, 20, 30, 40, 50};
+        rc_view_int v = RC_VIEW(data);
+        rc_view_int s = rc_view_int_subview(v, 0, UINT32_MAX);
+        ASSERT(s.num == 5 && s.data == data);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("view_subview: start=UINT32_MAX clamped");
+    {
+        int data[] = {10, 20, 30};
+        rc_view_int v = RC_VIEW(data);
+        rc_view_int s = rc_view_int_subview(v, UINT32_MAX, 1);
+        ASSERT(s.num == 0);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("view_subview: empty source");
+    {
+        rc_view_int v = {0};
+        rc_view_int s = rc_view_int_subview(v, 0, 5);
+        ASSERT(s.num == 0);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("view_subview: exactly to end");
+    {
+        int data[] = {10, 20, 30, 40, 50};
+        rc_view_int v = RC_VIEW(data);
+        rc_view_int s = rc_view_int_subview(v, 3, 2);
+        ASSERT(s.num == 2);
+        ASSERT(s.data[0] == 40 && s.data[1] == 50);
+    }
+    END_GROUP();
+
+    /* rc_span_int_subspan */
+
+    BEGIN_GROUP("span_subspan: normal range, mutation visible in original");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_array_int arr = {0};
+        for (int i = 0; i < 5; i++) rc_array_int_push(&arr, i * 10, &a);
+        rc_span_int s = arr.span;
+        rc_span_int sub = rc_span_int_subspan(s, 1, 3);
+        ASSERT(sub.num == 3);
+        ASSERT(sub.data[0] == 10 && sub.data[1] == 20 && sub.data[2] == 30);
+        sub.data[1] = 99;
+        ASSERT(arr.data[2] == 99);   /* mutation visible in original */
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("span_subspan: start clamped");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_array_int arr = {0};
+        for (int i = 0; i < 3; i++) rc_array_int_push(&arr, i, &a);
+        rc_span_int sub = rc_span_int_subspan(arr.span, 100, 5);
+        ASSERT(sub.num == 0);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("span_subspan: count clamped");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_array_int arr = {0};
+        for (int i = 0; i < 5; i++) rc_array_int_push(&arr, i * 10, &a);
+        rc_span_int sub = rc_span_int_subspan(arr.span, 3, 100);
+        ASSERT(sub.num == 2);
+        ASSERT(sub.data[0] == 30 && sub.data[1] == 40);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    /* rc_span_int_subview */
+
+    BEGIN_GROUP("span_subview: normal range");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_array_int arr = {0};
+        for (int i = 0; i < 5; i++) rc_array_int_push(&arr, i * 10, &a);
+        rc_view_int v = rc_span_int_subview(arr.span, 2, 2);
+        ASSERT(v.num == 2);
+        ASSERT(v.data[0] == 20 && v.data[1] == 30);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("span_subview: count clamped");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_array_int arr = {0};
+        for (int i = 0; i < 4; i++) rc_array_int_push(&arr, i, &a);
+        rc_view_int v = rc_span_int_subview(arr.span, 2, UINT32_MAX);
+        ASSERT(v.num == 2);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    /* rc_array_int_subspan */
+
+    BEGIN_GROUP("array_subspan: normal range, mutation visible in array");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_array_int arr = {0};
+        for (int i = 0; i < 5; i++) rc_array_int_push(&arr, i * 10, &a);
+        rc_span_int sub = rc_array_int_subspan(&arr, 1, 3);
+        ASSERT(sub.num == 3);
+        ASSERT(sub.data[0] == 10 && sub.data[1] == 20 && sub.data[2] == 30);
+        sub.data[0] = 55;
+        ASSERT(arr.data[1] == 55);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("array_subspan: start clamped beyond end");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_array_int arr = {0};
+        rc_array_int_push(&arr, 1, &a);
+        rc_span_int sub = rc_array_int_subspan(&arr, 999, 5);
+        ASSERT(sub.num == 0);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("array_subspan: count clamped");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_array_int arr = {0};
+        for (int i = 0; i < 4; i++) rc_array_int_push(&arr, i, &a);
+        rc_span_int sub = rc_array_int_subspan(&arr, 2, 10);
+        ASSERT(sub.num == 2 && sub.data[0] == 2 && sub.data[1] == 3);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("array_subspan: empty array");
+    {
+        rc_array_int arr = {0};
+        rc_span_int sub = rc_array_int_subspan(&arr, 0, 5);
+        ASSERT(sub.num == 0);
+    }
+    END_GROUP();
+
+    /* rc_array_int_subview */
+
+    BEGIN_GROUP("array_subview: normal range");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_array_int arr = {0};
+        for (int i = 0; i < 5; i++) rc_array_int_push(&arr, i * 10, &a);
+        rc_view_int v = rc_array_int_subview(&arr, 2, 2);
+        ASSERT(v.num == 2);
+        ASSERT(v.data[0] == 20 && v.data[1] == 30);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("array_subview: start=0 full range");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_array_int arr = {0};
+        for (int i = 0; i < 3; i++) rc_array_int_push(&arr, i, &a);
+        rc_view_int v = rc_array_int_subview(&arr, 0, 3);
+        ASSERT(v.num == 3 && v.data == arr.data);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("array_subview: count=UINT32_MAX clamped");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_array_int arr = {0};
+        for (int i = 0; i < 4; i++) rc_array_int_push(&arr, i, &a);
+        rc_view_int v = rc_array_int_subview(&arr, 1, UINT32_MAX);
+        ASSERT(v.num == 3);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("array_subview: empty array");
+    {
+        rc_array_int arr = {0};
+        rc_view_int v = rc_array_int_subview(&arr, 0, 99);
+        ASSERT(v.num == 0);
+    }
+    END_GROUP();
 }
 
 /* ---- context comparator ---- */

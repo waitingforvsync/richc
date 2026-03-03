@@ -180,6 +180,13 @@ Default type name: `rc_array_T { T *data; uint32_t num; uint32_t cap; }`
 Operations: `push`, `pop`, `insert`, `remove`, `reserve`, `resize`.
 Growth strategy: capacity doubles (minimum 8).
 
+Sub-slice functions (all clamped; never assert on out-of-range inputs):
+- `rc_view_T_subview(view, start, count)` → `rc_view_T`
+- `rc_span_T_subspan(span, start, count)` → `rc_span_T`
+- `rc_span_T_subview(span, start, count)` → `rc_view_T`
+- `rc_array_T_subspan(arr*, start, count)` → `rc_span_T`
+- `rc_array_T_subview(arr*, start, count)` → `rc_view_T`
+
 ### Mutable string
 Header: `mstr.h` (not a template; include once).
 

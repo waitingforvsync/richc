@@ -42,6 +42,17 @@
  *       ARRAY_NAME_as_view(ARRAY_NAME *arr)  → ARRAY_VIEW  adds const, drops cap
  *       ARRAY_NAME_as_span(ARRAY_NAME *arr)  → ARRAY_SPAN  drops cap
  *
+ * Sub-slice functions (all static inline)
+ * ----------------------------------------
+ * All accept a zero-based start index and an element count; both are clamped
+ * to the source range so the result is always a valid, non-dangling slice.
+ *
+ *   ARRAY_VIEW_subview(ARRAY_VIEW v, uint32_t start, uint32_t count) → ARRAY_VIEW
+ *   ARRAY_SPAN_subspan(ARRAY_SPAN s, uint32_t start, uint32_t count) → ARRAY_SPAN
+ *   ARRAY_SPAN_subview(ARRAY_SPAN s, uint32_t start, uint32_t count) → ARRAY_VIEW
+ *   ARRAY_NAME_subspan(ARRAY_NAME *arr, uint32_t start, uint32_t count) → ARRAY_SPAN
+ *   ARRAY_NAME_subview(ARRAY_NAME *arr, uint32_t start, uint32_t count) → ARRAY_VIEW
+ *
  * (b) Type-parameterised macros (once-only):
  *       RC_AS_VIEW(T, x)  — compound-literal rc_view_T from any x with .data/.num
  *       RC_AS_SPAN(T, x)  — compound-literal rc_span_T from any x with .data/.num
@@ -135,6 +146,11 @@
 #define ARRAY_SPAN_AS_VIEW_   RC_CONCAT(ARRAY_SPAN, _as_view)
 #define ARRAY_AS_VIEW_        RC_CONCAT(ARRAY_NAME, _as_view)
 #define ARRAY_AS_SPAN_        RC_CONCAT(ARRAY_NAME, _as_span)
+#define ARRAY_VIEW_SUBVIEW_   RC_CONCAT(ARRAY_VIEW, _subview)
+#define ARRAY_SPAN_SUBSPAN_   RC_CONCAT(ARRAY_SPAN, _subspan)
+#define ARRAY_SPAN_SUBVIEW_   RC_CONCAT(ARRAY_SPAN, _subview)
+#define ARRAY_SUBSPAN_        RC_CONCAT(ARRAY_NAME, _subspan)
+#define ARRAY_SUBVIEW_        RC_CONCAT(ARRAY_NAME, _subview)
 #define ARRAY_RESERVE_        RC_CONCAT(ARRAY_NAME, _reserve)
 #define ARRAY_PUSH_           RC_CONCAT(ARRAY_NAME, _push)
 #define ARRAY_POP_            RC_CONCAT(ARRAY_NAME, _pop)
@@ -204,6 +220,64 @@ static inline ARRAY_VIEW ARRAY_AS_VIEW_(ARRAY_NAME *arr)     { return arr->view;
 
 /* Return a mutable span over the current array contents. */
 static inline ARRAY_SPAN ARRAY_AS_SPAN_(ARRAY_NAME *arr) {return arr->span; }
+
+/* ---- generated sub-slice functions ---- */
+
+/*
+ * Sub-slice helpers.  start and count are both clamped to the source's
+ * available range, so the result is always a valid, non-dangling slice.
+ * No assertions fire regardless of the values supplied.
+ */
+
+/* Return a sub-view of v starting at start, spanning count elements. */
+static inline ARRAY_VIEW ARRAY_VIEW_SUBVIEW_(ARRAY_VIEW v,
+                                              uint32_t start, uint32_t count)
+{
+    if (start > v.num) start = v.num;
+    uint32_t avail = v.num - start;
+    if (count > avail) count = avail;
+    return (ARRAY_VIEW) {v.data + start, count};
+}
+
+/* Return a mutable sub-span of s starting at start, spanning count elements. */
+static inline ARRAY_SPAN ARRAY_SPAN_SUBSPAN_(ARRAY_SPAN s,
+                                              uint32_t start, uint32_t count)
+{
+    if (start > s.num) start = s.num;
+    uint32_t avail = s.num - start;
+    if (count > avail) count = avail;
+    return (ARRAY_SPAN) {.data = s.data + start, .num = count};
+}
+
+/* Return a read-only sub-view of s starting at start, spanning count elements. */
+static inline ARRAY_VIEW ARRAY_SPAN_SUBVIEW_(ARRAY_SPAN s,
+                                              uint32_t start, uint32_t count)
+{
+    if (start > s.num) start = s.num;
+    uint32_t avail = s.num - start;
+    if (count > avail) count = avail;
+    return (ARRAY_VIEW) {s.data + start, count};
+}
+
+/* Return a mutable sub-span of arr starting at start, spanning count elements. */
+static inline ARRAY_SPAN ARRAY_SUBSPAN_(ARRAY_NAME *arr,
+                                         uint32_t start, uint32_t count)
+{
+    if (start > arr->num) start = arr->num;
+    uint32_t avail = arr->num - start;
+    if (count > avail) count = avail;
+    return (ARRAY_SPAN) {.data = arr->data + start, .num = count};
+}
+
+/* Return a read-only sub-view of arr starting at start, spanning count elements. */
+static inline ARRAY_VIEW ARRAY_SUBVIEW_(ARRAY_NAME *arr,
+                                         uint32_t start, uint32_t count)
+{
+    if (start > arr->num) start = arr->num;
+    uint32_t avail = arr->num - start;
+    if (count > avail) count = avail;
+    return (ARRAY_VIEW) {arr->data + start, count};
+}
 
 /* ---- generated array functions ---- */
 
@@ -370,6 +444,11 @@ static inline ARRAY_T ARRAY_REMOVE_SWAP_(ARRAY_NAME *arr, uint32_t i)
 #undef ARRAY_SPAN_AS_VIEW_
 #undef ARRAY_AS_VIEW_
 #undef ARRAY_AS_SPAN_
+#undef ARRAY_VIEW_SUBVIEW_
+#undef ARRAY_SPAN_SUBSPAN_
+#undef ARRAY_SPAN_SUBVIEW_
+#undef ARRAY_SUBSPAN_
+#undef ARRAY_SUBVIEW_
 #undef ARRAY_RESERVE_
 #undef ARRAY_PUSH_
 #undef ARRAY_POP_
