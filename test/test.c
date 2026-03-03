@@ -1809,6 +1809,119 @@ static void test_array(void)
     }
     END_GROUP();
 
+    /* ---- element access: get / at / set ---- */
+
+    BEGIN_GROUP("view_get: returns by value, does not alias");
+    {
+        int data[] = {10, 20, 30};
+        rc_view_int v = RC_VIEW(data);
+        ASSERT(rc_view_int_get(v, 0) == 10);
+        ASSERT(rc_view_int_get(v, 2) == 30);
+        /* Modifying data does not affect a previously fetched value. */
+        int val = rc_view_int_get(v, 1);
+        data[1] = 99;
+        ASSERT(val == 20);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("view_at: returns const pointer into original data");
+    {
+        int data[] = {10, 20, 30};
+        rc_view_int v = RC_VIEW(data);
+        const int *p = rc_view_int_at(v, 1);
+        ASSERT(p == &data[1]);
+        ASSERT(*p == 20);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("span_get: returns by value");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_array_int arr = {0};
+        for (int i = 0; i < 4; i++) rc_array_int_push(&arr, i * 10, &a);
+        rc_span_int s = arr.span;
+        ASSERT(rc_span_int_get(s, 0) == 0);
+        ASSERT(rc_span_int_get(s, 3) == 30);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("span_at: returns mutable pointer into original data");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_array_int arr = {0};
+        for (int i = 0; i < 3; i++) rc_array_int_push(&arr, i, &a);
+        rc_span_int s = arr.span;
+        int *p = rc_span_int_at(s, 1);
+        ASSERT(p == &arr.data[1]);
+        *p = 99;
+        ASSERT(arr.data[1] == 99);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("span_set: writes through to original data");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_array_int arr = {0};
+        for (int i = 0; i < 3; i++) rc_array_int_push(&arr, 0, &a);
+        rc_span_int_set(arr.span, 0, 11);
+        rc_span_int_set(arr.span, 2, 33);
+        ASSERT(arr.data[0] == 11 && arr.data[1] == 0 && arr.data[2] == 33);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("array_get: returns by value");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_array_int arr = {0};
+        for (int i = 0; i < 5; i++) rc_array_int_push(&arr, i * 3, &a);
+        ASSERT(rc_array_int_get(&arr, 0) == 0);
+        ASSERT(rc_array_int_get(&arr, 4) == 12);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("array_at: returns mutable pointer");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_array_int arr = {0};
+        for (int i = 0; i < 3; i++) rc_array_int_push(&arr, i, &a);
+        int *p = rc_array_int_at(&arr, 2);
+        ASSERT(p == &arr.data[2]);
+        *p = 77;
+        ASSERT(arr.data[2] == 77);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("array_set: writes element at index");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_array_int arr = {0};
+        for (int i = 0; i < 4; i++) rc_array_int_push(&arr, 0, &a);
+        rc_array_int_set(&arr, 1, 55);
+        rc_array_int_set(&arr, 3, 88);
+        ASSERT(arr.data[0] == 0 && arr.data[1] == 55);
+        ASSERT(arr.data[2] == 0 && arr.data[3] == 88);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("get/at/set: single-element container (boundary)");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_array_int arr = {0};
+        rc_array_int_push(&arr, 42, &a);
+        ASSERT(rc_array_int_get(&arr, 0) == 42);
+        ASSERT(*rc_array_int_at(&arr, 0) == 42);
+        rc_array_int_set(&arr, 0, 99);
+        ASSERT(rc_array_int_get(&arr, 0) == 99);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
     /* ---- sub-slice functions ---- */
 
     /* rc_view_int_subview */

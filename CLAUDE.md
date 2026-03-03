@@ -216,6 +216,11 @@ Default type name: `rc_array_T { T *data; uint32_t num; uint32_t cap; }`
 Operations: `push`, `pop`, `insert`, `remove`, `reserve`, `resize`.
 Growth strategy: capacity doubles (minimum 8).
 
+Element access (named-function alternatives to `RC_AT`; get=copy, at=pointer, set=named write):
+- `rc_view_T_get(view, i)` → `T` (by value); `rc_view_T_at(view, i)` → `const T *`
+- `rc_span_T_get(span, i)` → `T`; `rc_span_T_at(span, i)` → `T *`; `rc_span_T_set(span, i, val)`
+- `rc_array_T_get(arr*, i)` → `T`; `rc_array_T_at(arr*, i)` → `T *`; `rc_array_T_set(arr*, i, val)`
+
 Sub-slice functions (all clamped; never assert on out-of-range inputs):
 - `rc_view_T_subview(view, start, count)` → `rc_view_T`
 - `rc_span_T_subspan(span, start, count)` → `rc_span_T`

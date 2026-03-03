@@ -42,6 +42,22 @@
  *       ARRAY_NAME_as_view(ARRAY_NAME *arr)  → ARRAY_VIEW  adds const, drops cap
  *       ARRAY_NAME_as_span(ARRAY_NAME *arr)  → ARRAY_SPAN  drops cap
  *
+ * Element access functions (all static inline)
+ * ---------------------------------------------
+ * Named-function alternatives to the RC_AT macro with explicit return
+ * semantics: get returns a copy, at returns a pointer, set is a named write.
+ * Assertions fire in the same way as RC_AT; in release (NDEBUG) builds the
+ * check is elided and performance is identical.
+ *
+ *   ARRAY_VIEW_get(ARRAY_VIEW v,    uint32_t i)           → ARRAY_T          read by value
+ *   ARRAY_VIEW_at (ARRAY_VIEW v,    uint32_t i)           → const ARRAY_T *  read pointer
+ *   ARRAY_SPAN_get(ARRAY_SPAN s,    uint32_t i)           → ARRAY_T          read by value
+ *   ARRAY_SPAN_at (ARRAY_SPAN s,    uint32_t i)           → ARRAY_T *        mutable pointer
+ *   ARRAY_SPAN_set(ARRAY_SPAN s,    uint32_t i, ARRAY_T)  → void             write by value
+ *   ARRAY_NAME_get(ARRAY_NAME *arr, uint32_t i)           → ARRAY_T          read by value
+ *   ARRAY_NAME_at (ARRAY_NAME *arr, uint32_t i)           → ARRAY_T *        mutable pointer
+ *   ARRAY_NAME_set(ARRAY_NAME *arr, uint32_t i, ARRAY_T)  → void             write by value
+ *
  * Sub-slice functions (all static inline)
  * ----------------------------------------
  * All accept a zero-based start index and an element count; both are clamped
@@ -146,6 +162,14 @@
 #define ARRAY_SPAN_AS_VIEW_   RC_CONCAT(ARRAY_SPAN, _as_view)
 #define ARRAY_AS_VIEW_        RC_CONCAT(ARRAY_NAME, _as_view)
 #define ARRAY_AS_SPAN_        RC_CONCAT(ARRAY_NAME, _as_span)
+#define ARRAY_VIEW_GET_       RC_CONCAT(ARRAY_VIEW, _get)
+#define ARRAY_VIEW_AT_        RC_CONCAT(ARRAY_VIEW, _at)
+#define ARRAY_SPAN_GET_       RC_CONCAT(ARRAY_SPAN, _get)
+#define ARRAY_SPAN_AT_        RC_CONCAT(ARRAY_SPAN, _at)
+#define ARRAY_SPAN_SET_       RC_CONCAT(ARRAY_SPAN, _set)
+#define ARRAY_GET_            RC_CONCAT(ARRAY_NAME, _get)
+#define ARRAY_AT_             RC_CONCAT(ARRAY_NAME, _at)
+#define ARRAY_SET_            RC_CONCAT(ARRAY_NAME, _set)
 #define ARRAY_VIEW_SUBVIEW_   RC_CONCAT(ARRAY_VIEW, _subview)
 #define ARRAY_SPAN_SUBSPAN_   RC_CONCAT(ARRAY_SPAN, _subspan)
 #define ARRAY_SPAN_SUBVIEW_   RC_CONCAT(ARRAY_SPAN, _subview)
@@ -220,6 +244,64 @@ static inline ARRAY_VIEW ARRAY_AS_VIEW_(ARRAY_NAME *arr)     { return arr->view;
 
 /* Return a mutable span over the current array contents. */
 static inline ARRAY_SPAN ARRAY_AS_SPAN_(ARRAY_NAME *arr) {return arr->span; }
+
+/* ---- generated element access functions ---- */
+
+/* Return the element at index i by value.  Asserts i < v.num. */
+static inline ARRAY_T ARRAY_VIEW_GET_(ARRAY_VIEW v, uint32_t i)
+{
+    RC_ASSERT(i < v.num);
+    return v.data[i];
+}
+
+/* Return a const pointer to element i.  Asserts i < v.num. */
+static inline const ARRAY_T *ARRAY_VIEW_AT_(ARRAY_VIEW v, uint32_t i)
+{
+    RC_ASSERT(i < v.num);
+    return &v.data[i];
+}
+
+/* Return the element at index i by value.  Asserts i < s.num. */
+static inline ARRAY_T ARRAY_SPAN_GET_(ARRAY_SPAN s, uint32_t i)
+{
+    RC_ASSERT(i < s.num);
+    return s.data[i];
+}
+
+/* Return a mutable pointer to element i.  Asserts i < s.num. */
+static inline ARRAY_T *ARRAY_SPAN_AT_(ARRAY_SPAN s, uint32_t i)
+{
+    RC_ASSERT(i < s.num);
+    return &s.data[i];
+}
+
+/* Write val to element i.  Asserts i < s.num. */
+static inline void ARRAY_SPAN_SET_(ARRAY_SPAN s, uint32_t i, ARRAY_T val)
+{
+    RC_ASSERT(i < s.num);
+    s.data[i] = val;
+}
+
+/* Return the element at index i by value.  Asserts i < arr->num. */
+static inline ARRAY_T ARRAY_GET_(ARRAY_NAME *arr, uint32_t i)
+{
+    RC_ASSERT(i < arr->num);
+    return arr->data[i];
+}
+
+/* Return a mutable pointer to element i.  Asserts i < arr->num. */
+static inline ARRAY_T *ARRAY_AT_(ARRAY_NAME *arr, uint32_t i)
+{
+    RC_ASSERT(i < arr->num);
+    return &arr->data[i];
+}
+
+/* Write val to element i.  Asserts i < arr->num. */
+static inline void ARRAY_SET_(ARRAY_NAME *arr, uint32_t i, ARRAY_T val)
+{
+    RC_ASSERT(i < arr->num);
+    arr->data[i] = val;
+}
 
 /* ---- generated sub-slice functions ---- */
 
@@ -444,6 +526,14 @@ static inline ARRAY_T ARRAY_REMOVE_SWAP_(ARRAY_NAME *arr, uint32_t i)
 #undef ARRAY_SPAN_AS_VIEW_
 #undef ARRAY_AS_VIEW_
 #undef ARRAY_AS_SPAN_
+#undef ARRAY_VIEW_GET_
+#undef ARRAY_VIEW_AT_
+#undef ARRAY_SPAN_GET_
+#undef ARRAY_SPAN_AT_
+#undef ARRAY_SPAN_SET_
+#undef ARRAY_GET_
+#undef ARRAY_AT_
+#undef ARRAY_SET_
 #undef ARRAY_VIEW_SUBVIEW_
 #undef ARRAY_SPAN_SUBSPAN_
 #undef ARRAY_SPAN_SUBVIEW_
