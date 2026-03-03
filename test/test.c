@@ -13,6 +13,7 @@
 #include <math.h>
 #include "richc/platform.h"
 #include "richc/arena.h"
+#include "richc/bitset.h"
 #include "richc/hash.h"
 #include "richc/str.h"
 #include "richc/mstr.h"
@@ -4364,6 +4365,7 @@ static void test_hash_trie(void)
     END_GROUP();
 }
 
+static void test_bitset(void);
 static void test_str(void);
 static void test_mstr(void);
 static void test_math(void);
@@ -4418,6 +4420,8 @@ int main(void)
     putchar('\n');
     test_hash_trie();
     putchar('\n');
+    test_bitset();
+    putchar('\n');
     test_str();
     putchar('\n');
     test_mstr();
@@ -4435,6 +4439,346 @@ int main(void)
         printf("%d / %d assertions FAILED.\n", g_failures, g_total);
 
     return g_failures > 0 ? 1 : 0;
+}
+
+/* ---- bitset ---- */
+
+static void test_bitset(void)
+{
+    printf("bitset\n");
+
+    /* ---- reserve ---- */
+
+    BEGIN_GROUP("reserve: no-op when cap already sufficient");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_bitset bs = {0};
+        rc_bitset_reserve(&bs, 32, &a);
+        ASSERT(bs.cap >= 32);
+        uint32_t cap_before = bs.cap;
+        rc_bitset_reserve(&bs, 16, &a);
+        ASSERT(bs.cap == cap_before);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("reserve: grows by doubling from 32");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_bitset bs = {0};
+        rc_bitset_reserve(&bs, 1, &a);
+        ASSERT(bs.cap == 32);
+        rc_bitset_reserve(&bs, 33, &a);
+        ASSERT(bs.cap == 64);
+        rc_bitset_reserve(&bs, 128, &a);
+        ASSERT(bs.cap == 128);
+        rc_bitset_reserve(&bs, 129, &a);
+        ASSERT(bs.cap == 256);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("reserve: new words zeroed");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_bitset bs = {0};
+        rc_bitset_reserve(&bs, 64, &a);
+        ASSERT(bs.data[0] == 0 && bs.data[1] == 0);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    /* ---- resize ---- */
+
+    BEGIN_GROUP("resize: grow sets num, new bits are zero");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_bitset bs = {0};
+        rc_bitset_resize(&bs, 50, &a);
+        ASSERT(bs.num == 50 && bs.cap >= 50);
+        for (uint32_t i = 0; i < 50; i++)
+            ASSERT(rc_bitset_is_set(&bs, i) == 0);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("resize: shrink clears vacated bits (invariant)");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_bitset bs = {0};
+        rc_bitset_resize(&bs, 64, &a);
+        /* Set bits across both words. */
+        for (uint32_t i = 0; i < 64; i++) rc_bitset_set(&bs, i);
+        /* Shrink to 10: bits 10..63 must be cleared. */
+        rc_bitset_resize(&bs, 10, &a);
+        ASSERT(bs.num == 10);
+        /* Grow back without setting anything: old bits beyond 10 must be 0. */
+        rc_bitset_resize(&bs, 64, &a);
+        for (uint32_t i = 0; i < 10; i++)
+            ASSERT(rc_bitset_is_set(&bs, i) == 1);
+        for (uint32_t i = 10; i < 64; i++)
+            ASSERT(rc_bitset_is_set(&bs, i) == 0);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("resize: shrink to 0 clears all bits");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_bitset bs = {0};
+        rc_bitset_resize(&bs, 32, &a);
+        for (uint32_t i = 0; i < 32; i++) rc_bitset_set(&bs, i);
+        rc_bitset_resize(&bs, 0, &a);
+        ASSERT(bs.num == 0);
+        rc_bitset_resize(&bs, 32, &a);
+        for (uint32_t i = 0; i < 32; i++)
+            ASSERT(rc_bitset_is_set(&bs, i) == 0);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("resize: shrink at exact word boundary");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_bitset bs = {0};
+        rc_bitset_resize(&bs, 64, &a);
+        for (uint32_t i = 0; i < 64; i++) rc_bitset_set(&bs, i);
+        rc_bitset_resize(&bs, 32, &a);
+        ASSERT(bs.num == 32);
+        rc_bitset_resize(&bs, 64, &a);
+        for (uint32_t i = 0; i < 32; i++)
+            ASSERT(rc_bitset_is_set(&bs, i) == 1);
+        for (uint32_t i = 32; i < 64; i++)
+            ASSERT(rc_bitset_is_set(&bs, i) == 0);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    /* ---- reset ---- */
+
+    BEGIN_GROUP("reset: clears all bits, num and cap unchanged");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_bitset bs = {0};
+        rc_bitset_resize(&bs, 96, &a);
+        for (uint32_t i = 0; i < 96; i++) rc_bitset_set(&bs, i);
+        rc_bitset_reset(&bs);
+        ASSERT(bs.num == 96);
+        for (uint32_t i = 0; i < 96; i++)
+            ASSERT(rc_bitset_is_set(&bs, i) == 0);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("reset: empty bitset (num=0) is a no-op");
+    {
+        rc_bitset bs = {0};
+        rc_bitset_reset(&bs);   /* must not crash */
+        ASSERT(bs.num == 0);
+    }
+    END_GROUP();
+
+    /* ---- set / clear / is_set ---- */
+
+    BEGIN_GROUP("set/is_set: individual bits in a multi-word bitset");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_bitset bs = {0};
+        rc_bitset_resize(&bs, 128, &a);
+        /* Boundary bits and interior bits. */
+        uint32_t positions[] = {0, 1, 31, 32, 33, 63, 64, 65, 127};
+        for (uint32_t k = 0; k < 9; k++)
+            rc_bitset_set(&bs, positions[k]);
+        for (uint32_t k = 0; k < 9; k++)
+            ASSERT(rc_bitset_is_set(&bs, positions[k]) == 1);
+        /* All other bits must remain 0. */
+        for (uint32_t i = 0; i < 128; i++) {
+            int expected = 0;
+            for (uint32_t k = 0; k < 9; k++)
+                if (positions[k] == i) { expected = 1; break; }
+            ASSERT(rc_bitset_is_set(&bs, i) == expected);
+        }
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("clear: clears only the target bit");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_bitset bs = {0};
+        rc_bitset_resize(&bs, 64, &a);
+        for (uint32_t i = 0; i < 64; i++) rc_bitset_set(&bs, i);
+        rc_bitset_clear(&bs, 31);
+        rc_bitset_clear(&bs, 32);
+        for (uint32_t i = 0; i < 64; i++) {
+            int expected = (i == 31 || i == 32) ? 0 : 1;
+            ASSERT(rc_bitset_is_set(&bs, i) == expected);
+        }
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("set is idempotent; clear on already-clear is safe");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_bitset bs = {0};
+        rc_bitset_resize(&bs, 32, &a);
+        rc_bitset_set(&bs, 5);
+        rc_bitset_set(&bs, 5);
+        ASSERT(rc_bitset_is_set(&bs, 5) == 1);
+        rc_bitset_clear(&bs, 10);   /* was already 0 */
+        ASSERT(rc_bitset_is_set(&bs, 10) == 0);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    /* ---- get_first_set / get_next_set ---- */
+
+    BEGIN_GROUP("get_first_set: empty bitset returns RC_INDEX_NONE");
+    {
+        rc_bitset bs = {0};
+        ASSERT(rc_bitset_get_first_set(&bs) == RC_INDEX_NONE);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("get_first_set: no bits set returns RC_INDEX_NONE");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_bitset bs = {0};
+        rc_bitset_resize(&bs, 64, &a);
+        ASSERT(rc_bitset_get_first_set(&bs) == RC_INDEX_NONE);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("get_first_set: finds bit 0");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_bitset bs = {0};
+        rc_bitset_resize(&bs, 32, &a);
+        rc_bitset_set(&bs, 0);
+        ASSERT(rc_bitset_get_first_set(&bs) == 0);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("get_first_set: finds first set bit in second word");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_bitset bs = {0};
+        rc_bitset_resize(&bs, 64, &a);
+        rc_bitset_set(&bs, 33);
+        ASSERT(rc_bitset_get_first_set(&bs) == 33);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("get_first_set: last bit only");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_bitset bs = {0};
+        rc_bitset_resize(&bs, 64, &a);
+        rc_bitset_set(&bs, 63);
+        ASSERT(rc_bitset_get_first_set(&bs) == 63);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("get_next_set: pos beyond num returns RC_INDEX_NONE");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_bitset bs = {0};
+        rc_bitset_resize(&bs, 32, &a);
+        for (uint32_t i = 0; i < 32; i++) rc_bitset_set(&bs, i);
+        ASSERT(rc_bitset_get_next_set(&bs, 32) == RC_INDEX_NONE);
+        ASSERT(rc_bitset_get_next_set(&bs, UINT32_MAX) == RC_INDEX_NONE);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("get_next_set: advances past cleared bit");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_bitset bs = {0};
+        rc_bitset_resize(&bs, 32, &a);
+        rc_bitset_set(&bs, 4);
+        rc_bitset_set(&bs, 8);
+        rc_bitset_set(&bs, 31);
+        ASSERT(rc_bitset_get_next_set(&bs, 5)  == 8);
+        ASSERT(rc_bitset_get_next_set(&bs, 9)  == 31);
+        ASSERT(rc_bitset_get_next_set(&bs, 31) == 31);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("get_next_set: iteration visits every set bit exactly once");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_bitset bs = {0};
+        rc_bitset_resize(&bs, 96, &a);
+        /* Set every third bit. */
+        for (uint32_t i = 0; i < 96; i += 3) rc_bitset_set(&bs, i);
+
+        uint32_t count = 0;
+        uint32_t prev  = RC_INDEX_NONE;
+        for (uint32_t i = rc_bitset_get_first_set(&bs);
+             i != RC_INDEX_NONE;
+             i = rc_bitset_get_next_set(&bs, i + 1)) {
+            ASSERT(i % 3 == 0);
+            ASSERT(prev == RC_INDEX_NONE || i > prev);
+            prev = i;
+            count++;
+        }
+        ASSERT(count == 32);   /* 0, 3, 6, ..., 93 */
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("get_next_set: iteration across word boundaries");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_bitset bs = {0};
+        rc_bitset_resize(&bs, 128, &a);
+        rc_bitset_set(&bs, 31);
+        rc_bitset_set(&bs, 32);
+        rc_bitset_set(&bs, 63);
+        rc_bitset_set(&bs, 64);
+        rc_bitset_set(&bs, 127);
+        uint32_t expected[] = {31, 32, 63, 64, 127};
+        uint32_t idx = 0;
+        for (uint32_t i = rc_bitset_get_first_set(&bs);
+             i != RC_INDEX_NONE;
+             i = rc_bitset_get_next_set(&bs, i + 1)) {
+            ASSERT(idx < 5 && i == expected[idx++]);
+        }
+        ASSERT(idx == 5);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("get_next_set: num not a multiple of 32 (no out-of-bounds)");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_bitset bs = {0};
+        rc_bitset_resize(&bs, 37, &a);
+        rc_bitset_set(&bs, 36);
+        ASSERT(rc_bitset_get_first_set(&bs) == 36);
+        ASSERT(rc_bitset_get_next_set(&bs, 37) == RC_INDEX_NONE);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("iteration: after reset, no bits found");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_bitset bs = {0};
+        rc_bitset_resize(&bs, 64, &a);
+        for (uint32_t i = 0; i < 64; i++) rc_bitset_set(&bs, i);
+        rc_bitset_reset(&bs);
+        ASSERT(rc_bitset_get_first_set(&bs) == RC_INDEX_NONE);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
 }
 
 /* ---- str ---- */

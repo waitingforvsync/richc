@@ -133,6 +133,42 @@ macros before the include.
 
 ## Data structures
 
+### Bitset
+Header: `bitset.h` / Implementation: `src/bitset.c`.
+
+```c
+rc_bitset  { uint32_t *data; uint32_t num; uint32_t cap; }
+```
+
+Bits are packed into `uint32_t` words (bit `i` is in word `i>>5` at position `i&31`).
+**Invariant**: all bits at positions `>= num` are always zero; this lets
+`get_next_set` scan whole words without a per-bit bounds check.
+
+`cap` is always a multiple of 32; capacity grows by doubling from 32.
+
+Construction: zero-initialise — `rc_bitset bs = {0}` is a valid empty bitset.
+
+Allocating operations (arena may be NULL when no growth is needed):
+- `rc_bitset_reserve(bs, min_bits, arena)` — ensure capacity for at least min_bits
+- `rc_bitset_resize(bs, new_num, arena)` — set num; new bits zero on grow, vacated bits zeroed on shrink
+
+Non-allocating:
+- `rc_bitset_reset(bs)` — clear all bits; num and cap unchanged
+
+Inline (in header):
+- `rc_bitset_set(bs, i)` / `rc_bitset_clear(bs, i)` / `rc_bitset_is_set(bs, i)` — assert `i < num`
+- `rc_bitset_get_first_set(bs)` → `rc_bitset_get_next_set(bs, 0)`
+
+Iteration (bitset.c):
+- `rc_bitset_get_next_set(bs, pos)` — first set bit at index >= pos, or `RC_INDEX_NONE`
+
+Iteration idiom:
+```c
+for (uint32_t i = rc_bitset_get_first_set(&bs);
+     i != RC_INDEX_NONE;
+     i = rc_bitset_get_next_set(&bs, i + 1)) { ... }
+```
+
 ### String view
 Header: `str.h` (not a template; include once).
 
@@ -389,6 +425,7 @@ Covers: all containers, all algorithms, multiple element types (`int`, custom
 CMakeLists.txt                  — build system (static lib + test executable)
 include/richc/
   arena.h                       — arena allocator declarations + inline helpers
+  bitset.h                      — rc_bitset (packed bit array; set/clear/is_set inline; reserve/resize/reset/get_next_set in bitset.c)
   platform.h                    — OS virtual memory abstraction
   debug.h                       — RC_ASSERT
   str.h                         — non-owning string view (rc_str, rc_str_pair)
@@ -436,6 +473,7 @@ include/richc/
     accumulate.h                — fold/reduce template
 src/
   arena.c                       — arena allocator implementation
+  bitset.c                      — rc_bitset reserve, resize, reset, get_next_set
   str.c                         — rc_str non-trivial function implementations
   mstr.c                        — rc_mstr function implementations
   file.c                        — rc_load_text, rc_save_text, rc_load_binary, rc_load_binary_array, rc_save_binary

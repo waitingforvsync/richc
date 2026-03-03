@@ -9,6 +9,7 @@ set(CMAKE_C_EXTENSIONS OFF)
 
 add_library(richc STATIC
     src/arena.c
+    src/bitset.c
     src/str.c
     src/mstr.c
     src/file.c
@@ -16,6 +17,7 @@ add_library(richc STATIC
     src/math/rational.c
     src/math/bigint.c
     include/richc/arena.h
+    include/richc/bitset.h
     include/richc/bytes.h
     include/richc/debug.h
     include/richc/file.h
