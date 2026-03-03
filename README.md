@@ -48,6 +48,7 @@ Custom type names can be supplied via optional macros (`ARRAY_NAME`, `ARRAY_VIEW
 | Header | Type | Description |
 |--------|------|-------------|
 | `arena.h` | `rc_arena` | Virtual-memory bump allocator |
+| `bitset.h` | `rc_bitset` | Packed bit array; `reserve`, `resize`, `reset`, `set`, `clear`, `is_set`, `get_first_set`, `get_next_set` |
 | `str.h` | `rc_str` | Non-owning string view `{const char *data; uint32_t len}` |
 | `mstr.h` | `rc_mstr` | Arena-backed growable string; always null-terminated |
 | `template/array.h` | `rc_array_T` | Growable arena-backed array; also generates `rc_view_T` and `rc_span_T`; all three types have clamped `subview`/`subspan` slice functions |
