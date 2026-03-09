@@ -25,6 +25,7 @@
 #include "richc/math/vec4f.h"
 #include "richc/math/box2f.h"
 #include "richc/math/box2i.h"
+#include "richc/math/array_box2i.h"
 #include "richc/math/mat22f.h"
 #include "richc/math/mat23f.h"
 #include "richc/math/mat33f.h"
@@ -6455,6 +6456,49 @@ static void test_math(void)
         ASSERT(u.max.x == 6 && u.max.y == 6);
         rc_box2i e = rc_box2i_expand(a, rc_vec2i_make(10, -1));
         ASSERT(e.min.y == -1 && e.max.x == 10);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("box2i: make_pos_size");
+    {
+        rc_box2i b = rc_box2i_make_pos_size(rc_vec2i_make(3, 7), rc_vec2i_make(10, 5));
+        ASSERT(b.min.x == 3  && b.min.y == 7);
+        ASSERT(b.max.x == 13 && b.max.y == 12);
+    }
+    {
+        /* zero size */
+        rc_box2i b = rc_box2i_make_pos_size(rc_vec2i_make(4, 4), rc_vec2i_make(0, 0));
+        ASSERT(b.min.x == 4 && b.max.x == 4);
+        ASSERT(b.min.y == 4 && b.max.y == 4);
+    }
+    {
+        /* negative origin */
+        rc_box2i b = rc_box2i_make_pos_size(rc_vec2i_make(-5, -3), rc_vec2i_make(8, 6));
+        ASSERT(b.min.x == -5 && b.min.y == -3);
+        ASSERT(b.max.x ==  3 && b.max.y ==  3);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("box2i: size");
+    {
+        rc_box2i b = rc_box2i_make(rc_vec2i_make(2, 5), rc_vec2i_make(9, 11));
+        rc_vec2i s = rc_box2i_size(b);
+        ASSERT(s.x == 7 && s.y == 6);
+    }
+    {
+        /* zero-area box */
+        rc_box2i b = rc_box2i_make(rc_vec2i_make(3, 3), rc_vec2i_make(3, 3));
+        rc_vec2i s = rc_box2i_size(b);
+        ASSERT(s.x == 0 && s.y == 0);
+    }
+    {
+        /* make_pos_size roundtrip: size() recovers the original size */
+        rc_vec2i pos  = rc_vec2i_make(10, 20);
+        rc_vec2i size = rc_vec2i_make(30, 40);
+        rc_box2i b    = rc_box2i_make_pos_size(pos, size);
+        rc_vec2i s    = rc_box2i_size(b);
+        ASSERT(s.x == size.x && s.y == size.y);
+        ASSERT(b.min.x == pos.x && b.min.y == pos.y);
     }
     END_GROUP();
 

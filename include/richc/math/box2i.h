@@ -17,9 +17,12 @@
  *   rc_box2i_make(a, b)                 — from two corner points; sorts components
  *   rc_box2i_make_with_margin(a, b, m)  — same, then expands each side by m;
  *                                         asserts no int32_t overflow
+ *   rc_box2i_make_pos_size(pos, size)   — from top-left position and extent;
+ *                                         equivalent to make(pos, pos+size)
  *
  * Queries
  * -------
+ *   rc_box2i_size(a)              — extent as rc_vec2i: (max.x-min.x, max.y-min.y)
  *   rc_box2i_contains(a, b)       — true if a fully contains b  [a.min,a.max) ⊇ [b.min,b.max)
  *   rc_box2i_intersects(a, b)     — true if the two boxes overlap (touching edges do NOT count)
  *   rc_box2i_contains_point(a, p) — true if point p is inside a (min inclusive, max exclusive)
@@ -54,6 +57,16 @@ static inline rc_box2i rc_box2i_make(rc_vec2i a, rc_vec2i b)
 }
 
 /*
+ * Construct from a top-left position and a size (width, height).
+ * Equivalent to rc_box2i_make(pos, rc_vec2i_add(pos, size)).
+ * size components should be non-negative for a well-formed box.
+ */
+static inline rc_box2i rc_box2i_make_pos_size(rc_vec2i pos, rc_vec2i size)
+{
+    return (rc_box2i) {pos, rc_vec2i_add(pos, size)};
+}
+
+/*
  * Construct from two corner points and expand each side by margin.
  * Asserts that the expansion does not overflow int32_t.
  */
@@ -70,6 +83,15 @@ static inline rc_box2i rc_box2i_make_with_margin(rc_vec2i a, rc_vec2i b, int32_t
 }
 
 /* ---- queries ---- */
+
+/*
+ * Extent of the box as a vector: (max.x - min.x, max.y - min.y).
+ * Returns {0, 0} for a zero-area box where min == max.
+ */
+static inline rc_vec2i rc_box2i_size(rc_box2i a)
+{
+    return rc_vec2i_sub(a.max, a.min);
+}
 
 /*
  * True if a fully contains b: a.min <= b.min and a.max >= b.max on both axes.
