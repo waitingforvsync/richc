@@ -19,6 +19,15 @@
  *   ARRAY_SPAN: {       ARRAY_T *data; uint32_t num; }              mutable  slice
  *   ARRAY_NAME: {       ARRAY_T *data; uint32_t num; uint32_t cap; } growable array
  *
+ * Construction
+ * ------------
+ * Three constructors build the three types from scratch:
+ *
+ *   VIEW_MAKE_(data, num)        — rc_view_T from const pointer + count
+ *   SPAN_MAKE_(data, num)        — rc_span_T from mutable pointer + count
+ *   ARRAY_MAKE_(initial_cap, a)  — empty rc_array_T with capacity pre-allocated;
+ *                                   initial_cap == 0 with a == NULL is valid
+ *
  * Bounds-checked access (once-only, type-generic)
  * ------------------------------------------------
  * RC_AT(v, i), RC_VIEW_AT(v, i), and RC_SPAN_AT(s, i) are defined on the
@@ -187,6 +196,9 @@
 #define ARRAY_REMOVE_         RC_CONCAT(ARRAY_NAME, _remove)
 #define ARRAY_REMOVE_N_       RC_CONCAT(ARRAY_NAME, _remove_n)
 #define ARRAY_REMOVE_SWAP_    RC_CONCAT(ARRAY_NAME, _remove_swap)
+#define ARRAY_MAKE_           RC_CONCAT(ARRAY_NAME, _make)
+#define SPAN_MAKE_            RC_CONCAT(ARRAY_SPAN, _make)
+#define VIEW_MAKE_            RC_CONCAT(ARRAY_VIEW, _make)
 
 /* ---- generated structs ---- */
 
@@ -235,6 +247,18 @@ typedef struct {
 } ARRAY_NAME;
 
 /* ---- generated conversion functions ---- */
+
+/* Construct a view from a pointer and count. */
+static inline ARRAY_VIEW VIEW_MAKE_(const ARRAY_T *data, uint32_t num)
+{
+    return (ARRAY_VIEW) {data, num};
+}
+
+/* Construct a span from a pointer and count. */
+static inline ARRAY_SPAN SPAN_MAKE_(ARRAY_T *data, uint32_t num)
+{
+    return (ARRAY_SPAN) {.data = data, .num = num};
+}
 
 /* rc_span_T.view as a named function (span → view, adds const). */
 static inline ARRAY_VIEW ARRAY_SPAN_AS_VIEW_(ARRAY_SPAN s)  { return s.view;    }
@@ -384,6 +408,17 @@ static inline void ARRAY_RESERVE_(ARRAY_NAME *arr, uint32_t cap, rc_arena *a)
     RC_ASSERT(p != NULL && "arena OOM");
     arr->data = (ARRAY_T *)p;
     arr->cap  = new_cap;
+}
+
+/*
+ * Create an empty array with initial_cap elements pre-allocated.
+ * initial_cap == 0 is valid with a == NULL (returns a zero-initialised array).
+ */
+static inline ARRAY_NAME ARRAY_MAKE_(uint32_t initial_cap, rc_arena *a)
+{
+    ARRAY_NAME arr = {0};
+    ARRAY_RESERVE_(&arr, initial_cap, a);
+    return arr;
 }
 
 /* Append val; return the index of the new element. */
@@ -551,6 +586,9 @@ static inline ARRAY_T ARRAY_REMOVE_SWAP_(ARRAY_NAME *arr, uint32_t i)
 #undef ARRAY_REMOVE_
 #undef ARRAY_REMOVE_N_
 #undef ARRAY_REMOVE_SWAP_
+#undef ARRAY_MAKE_
+#undef SPAN_MAKE_
+#undef VIEW_MAKE_
 
 #undef ARRAY_NAME
 #undef ARRAY_VIEW

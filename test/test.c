@@ -1022,6 +1022,43 @@ static void test_access(void)
         rc_arena_destroy(&a);
     }
     END_GROUP();
+
+    BEGIN_GROUP("rc_view_int_make: pointer and count");
+    {
+        int data[] = {10, 20, 30, 40, 50};
+        rc_view_int v = rc_view_int_make(data, 5);
+        ASSERT(v.data == data);
+        ASSERT(v.num == 5);
+        ASSERT(v.data[2] == 30);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("rc_view_int_make: count 0");
+    {
+        rc_view_int v = rc_view_int_make(NULL, 0);
+        ASSERT(v.data == NULL);
+        ASSERT(v.num == 0);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("rc_span_int_make: pointer and count, mutation visible");
+    {
+        int data[] = {1, 2, 3};
+        rc_span_int s = rc_span_int_make(data, 3);
+        ASSERT(s.data == data);
+        ASSERT(s.num == 3);
+        s.data[1] = 99;
+        ASSERT(data[1] == 99);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("rc_span_int_make: count 0");
+    {
+        rc_span_int s = rc_span_int_make(NULL, 0);
+        ASSERT(s.data == NULL);
+        ASSERT(s.num == 0);
+    }
+    END_GROUP();
 }
 
 /* ---- platform virtual memory ---- */
@@ -1498,6 +1535,39 @@ static void test_arena(void)
 static void test_array(void)
 {
     printf("array\n");
+
+    BEGIN_GROUP("make: cap 0 with NULL arena, empty array");
+    {
+        rc_array_int arr = rc_array_int_make(0, NULL);
+        ASSERT(arr.data == NULL);
+        ASSERT(arr.num == 0);
+        ASSERT(arr.cap == 0);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("make: cap > 0 pre-allocates, num stays 0");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_array_int arr = rc_array_int_make(16, &a);
+        ASSERT(arr.data != NULL);
+        ASSERT(arr.num == 0);
+        ASSERT(arr.cap >= 16);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("make: subsequent pushes stay within pre-allocated cap");
+    {
+        rc_arena a = rc_arena_make_default();
+        rc_array_int arr = rc_array_int_make(8, &a);
+        uint32_t cap_after_make = arr.cap;
+        for (int i = 0; i < 8; i++) rc_array_int_push(&arr, i, &a);
+        ASSERT(arr.num == 8);
+        ASSERT(arr.cap == cap_after_make);   /* no reallocation needed */
+        for (int i = 0; i < 8; i++) ASSERT(arr.data[i] == i);
+        rc_arena_destroy(&a);
+    }
+    END_GROUP();
 
     BEGIN_GROUP("push: returned index and read back");
     {
