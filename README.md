@@ -120,8 +120,8 @@ All math headers are under `richc/math/`. All types use the `rc_` prefix with no
 | `math/vec2f.h` | `rc_vec2f` | 2D float vector |
 | `math/vec3f.h` | `rc_vec3f` | 3D float vector |
 | `math/vec4f.h` | `rc_vec4f` | 4D float vector |
-| `math/aabb2f.h` | `rc_aabb2f` | 2D float AABB |
-| `math/aabb2i.h` | `rc_aabb2i` | 2D integer AABB |
+| `math/box2f.h` | `rc_box2f` | 2D float axis-aligned box |
+| `math/box2i.h` | `rc_box2i` | 2D integer axis-aligned box |
 | `math/mat22f.h` | `rc_mat22f` | 2×2 column-major float matrix |
 | `math/mat23f.h` | `rc_mat23f` | 2D affine transform `{rc_mat22f m; rc_vec2f t}` |
 | `math/mat33f.h` | `rc_mat33f` | 3×3 column-major float matrix |

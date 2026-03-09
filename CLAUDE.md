@@ -273,8 +273,8 @@ All inline functions carry an explicit type suffix to avoid Windows macro confli
 | `math/vec2f.h` | `rc_vec2f` | 2D float vector |
 | `math/vec3f.h` | `rc_vec3f` | 3D float vector; includes `from_vec3i` |
 | `math/vec4f.h` | `rc_vec4f` | 4D float vector |
-| `math/aabb2f.h` | `rc_aabb2f` | 2D float axis-aligned bounding box `{rc_vec2f min, max}` |
-| `math/aabb2i.h` | `rc_aabb2i` | 2D integer axis-aligned bounding box `{rc_vec2i min, max}` |
+| `math/box2f.h` | `rc_box2f` | 2D float axis-aligned box `{rc_vec2f min, max}` |
+| `math/box2i.h` | `rc_box2i` | 2D integer axis-aligned box `{rc_vec2i min, max}` |
 | `math/mat22f.h` | `rc_mat22f` | 2×2 column-major float matrix; `{rc_vec2f cx, cy}` |
 | `math/mat23f.h` | `rc_mat23f` | 2D affine transform; `{rc_mat22f m; rc_vec2f t}` |
 | `math/mat33f.h` | `rc_mat33f` | 3×3 column-major float matrix; `{rc_vec3f cx, cy, cz}` |
@@ -445,8 +445,8 @@ include/richc/
     vec2f.h                     — rc_vec2f (2D float vector)
     vec3f.h                     — rc_vec3f (3D float vector; from_vec3i)
     vec4f.h                     — rc_vec4f (4D float vector)
-    aabb2f.h                    — rc_aabb2f (2D float axis-aligned bounding box)
-    aabb2i.h                    — rc_aabb2i (2D integer axis-aligned bounding box)
+    box2f.h                    — rc_box2f (2D float axis-aligned bounding box)
+    box2i.h                    — rc_box2i (2D integer axis-aligned bounding box)
     mat22f.h                    — rc_mat22f (2×2 column-major matrix)
     mat23f.h                    — rc_mat23f (2D affine transform)
     mat33f.h                    — rc_mat33f (3×3 column-major matrix)

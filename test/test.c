@@ -23,8 +23,8 @@
 #include "richc/math/vec2f.h"
 #include "richc/math/vec3f.h"
 #include "richc/math/vec4f.h"
-#include "richc/math/aabb2f.h"
-#include "richc/math/aabb2i.h"
+#include "richc/math/box2f.h"
+#include "richc/math/box2i.h"
 #include "richc/math/mat22f.h"
 #include "richc/math/mat23f.h"
 #include "richc/math/mat33f.h"
@@ -6281,11 +6281,11 @@ static void test_math(void)
     }
     END_GROUP();
 
-    /* ---- aabb2f ---- */
+    /* ---- box2f ---- */
 
-    BEGIN_GROUP("aabb2f: make sorts corners");
+    BEGIN_GROUP("box2f: make sorts corners");
     {
-        rc_aabb2f box = rc_aabb2f_make(
+        rc_box2f box = rc_box2f_make(
             rc_vec2f_make(5.0f, 3.0f),
             rc_vec2f_make(1.0f, 7.0f));
         ASSERT(NEARLY(box.min.x, 1.0f) && NEARLY(box.min.y, 3.0f));
@@ -6293,45 +6293,45 @@ static void test_math(void)
     }
     END_GROUP();
 
-    BEGIN_GROUP("aabb2f: contains / intersects / contains_point");
+    BEGIN_GROUP("box2f: contains / intersects / contains_point");
     {
-        rc_aabb2f outer = rc_aabb2f_make(rc_vec2f_make(0.0f,0.0f), rc_vec2f_make(10.0f,10.0f));
-        rc_aabb2f inner = rc_aabb2f_make(rc_vec2f_make(2.0f,2.0f), rc_vec2f_make(5.0f, 5.0f));
-        rc_aabb2f other = rc_aabb2f_make(rc_vec2f_make(8.0f,8.0f), rc_vec2f_make(12.0f,12.0f));
-        rc_aabb2f away  = rc_aabb2f_make(rc_vec2f_make(20.0f,20.0f), rc_vec2f_make(30.0f,30.0f));
+        rc_box2f outer = rc_box2f_make(rc_vec2f_make(0.0f,0.0f), rc_vec2f_make(10.0f,10.0f));
+        rc_box2f inner = rc_box2f_make(rc_vec2f_make(2.0f,2.0f), rc_vec2f_make(5.0f, 5.0f));
+        rc_box2f other = rc_box2f_make(rc_vec2f_make(8.0f,8.0f), rc_vec2f_make(12.0f,12.0f));
+        rc_box2f away  = rc_box2f_make(rc_vec2f_make(20.0f,20.0f), rc_vec2f_make(30.0f,30.0f));
         /* Half-open [min, max): adjacent box sharing an edge does NOT intersect */
-        rc_aabb2f adjacent = rc_aabb2f_make(rc_vec2f_make(10.0f,0.0f), rc_vec2f_make(20.0f,10.0f));
-        ASSERT( rc_aabb2f_contains(outer, inner));
-        ASSERT(!rc_aabb2f_contains(inner, outer));
-        ASSERT( rc_aabb2f_intersects(outer, other));
-        ASSERT(!rc_aabb2f_intersects(outer, away));
-        ASSERT(!rc_aabb2f_intersects(outer, adjacent));   /* touching edge, not overlapping */
+        rc_box2f adjacent = rc_box2f_make(rc_vec2f_make(10.0f,0.0f), rc_vec2f_make(20.0f,10.0f));
+        ASSERT( rc_box2f_contains(outer, inner));
+        ASSERT(!rc_box2f_contains(inner, outer));
+        ASSERT( rc_box2f_intersects(outer, other));
+        ASSERT(!rc_box2f_intersects(outer, away));
+        ASSERT(!rc_box2f_intersects(outer, adjacent));   /* touching edge, not overlapping */
         /* contains_point: min inclusive, max exclusive */
-        ASSERT( rc_aabb2f_contains_point(outer, rc_vec2f_make(0.0f, 0.0f)));  /* min corner: inside */
-        ASSERT( rc_aabb2f_contains_point(outer, rc_vec2f_make(5.0f, 5.0f)));  /* interior */
-        ASSERT(!rc_aabb2f_contains_point(outer, rc_vec2f_make(10.0f, 10.0f)));/* max corner: outside */
-        ASSERT(!rc_aabb2f_contains_point(outer, rc_vec2f_make(10.0f, 5.0f))); /* on max edge: outside */
-        ASSERT(!rc_aabb2f_contains_point(outer, rc_vec2f_make(11.0f, 5.0f))); /* beyond max: outside */
+        ASSERT( rc_box2f_contains_point(outer, rc_vec2f_make(0.0f, 0.0f)));  /* min corner: inside */
+        ASSERT( rc_box2f_contains_point(outer, rc_vec2f_make(5.0f, 5.0f)));  /* interior */
+        ASSERT(!rc_box2f_contains_point(outer, rc_vec2f_make(10.0f, 10.0f)));/* max corner: outside */
+        ASSERT(!rc_box2f_contains_point(outer, rc_vec2f_make(10.0f, 5.0f))); /* on max edge: outside */
+        ASSERT(!rc_box2f_contains_point(outer, rc_vec2f_make(11.0f, 5.0f))); /* beyond max: outside */
     }
     END_GROUP();
 
-    BEGIN_GROUP("aabb2f: union / expand");
+    BEGIN_GROUP("box2f: union / expand");
     {
-        rc_aabb2f a = rc_aabb2f_make(rc_vec2f_make(0.0f,0.0f), rc_vec2f_make(3.0f,3.0f));
-        rc_aabb2f b = rc_aabb2f_make(rc_vec2f_make(2.0f,2.0f), rc_vec2f_make(6.0f,6.0f));
-        rc_aabb2f u = rc_aabb2f_union(a, b);
+        rc_box2f a = rc_box2f_make(rc_vec2f_make(0.0f,0.0f), rc_vec2f_make(3.0f,3.0f));
+        rc_box2f b = rc_box2f_make(rc_vec2f_make(2.0f,2.0f), rc_vec2f_make(6.0f,6.0f));
+        rc_box2f u = rc_box2f_union(a, b);
         ASSERT(NEARLY(u.min.x, 0.0f) && NEARLY(u.min.y, 0.0f));
         ASSERT(NEARLY(u.max.x, 6.0f) && NEARLY(u.max.y, 6.0f));
-        rc_aabb2f e = rc_aabb2f_expand(a, rc_vec2f_make(10.0f, -1.0f));
+        rc_box2f e = rc_box2f_expand(a, rc_vec2f_make(10.0f, -1.0f));
         ASSERT(NEARLY(e.min.y, -1.0f) && NEARLY(e.max.x, 10.0f));
     }
     END_GROUP();
 
-    /* ---- aabb2i ---- */
+    /* ---- box2i ---- */
 
-    BEGIN_GROUP("aabb2i: make sorts corners");
+    BEGIN_GROUP("box2i: make sorts corners");
     {
-        rc_aabb2i box = rc_aabb2i_make(
+        rc_box2i box = rc_box2i_make(
             rc_vec2i_make(5, 3),
             rc_vec2i_make(1, 7));
         ASSERT(box.min.x == 1 && box.min.y == 3);
@@ -6339,51 +6339,51 @@ static void test_math(void)
     }
     END_GROUP();
 
-    BEGIN_GROUP("aabb2i: make_with_margin");
+    BEGIN_GROUP("box2i: make_with_margin");
     {
-        rc_aabb2i box = rc_aabb2i_make_with_margin(
+        rc_box2i box = rc_box2i_make_with_margin(
             rc_vec2i_make(2, 2),
             rc_vec2i_make(8, 8), 1);
         ASSERT(box.min.x == 1 && box.min.y == 1);
         ASSERT(box.max.x == 9 && box.max.y == 9);
         /* zero margin is identity */
-        rc_aabb2i base = rc_aabb2i_make(rc_vec2i_make(3, 3), rc_vec2i_make(7, 7));
-        rc_aabb2i same = rc_aabb2i_make_with_margin(rc_vec2i_make(3, 3), rc_vec2i_make(7, 7), 0);
+        rc_box2i base = rc_box2i_make(rc_vec2i_make(3, 3), rc_vec2i_make(7, 7));
+        rc_box2i same = rc_box2i_make_with_margin(rc_vec2i_make(3, 3), rc_vec2i_make(7, 7), 0);
         ASSERT(same.min.x == base.min.x && same.min.y == base.min.y);
         ASSERT(same.max.x == base.max.x && same.max.y == base.max.y);
     }
     END_GROUP();
 
-    BEGIN_GROUP("aabb2i: contains / intersects / contains_point");
+    BEGIN_GROUP("box2i: contains / intersects / contains_point");
     {
-        rc_aabb2i outer    = rc_aabb2i_make(rc_vec2i_make(0,0),   rc_vec2i_make(10,10));
-        rc_aabb2i inner    = rc_aabb2i_make(rc_vec2i_make(2,2),   rc_vec2i_make(5,5));
-        rc_aabb2i other    = rc_aabb2i_make(rc_vec2i_make(8,8),   rc_vec2i_make(12,12));
-        rc_aabb2i away     = rc_aabb2i_make(rc_vec2i_make(20,20), rc_vec2i_make(30,30));
+        rc_box2i outer    = rc_box2i_make(rc_vec2i_make(0,0),   rc_vec2i_make(10,10));
+        rc_box2i inner    = rc_box2i_make(rc_vec2i_make(2,2),   rc_vec2i_make(5,5));
+        rc_box2i other    = rc_box2i_make(rc_vec2i_make(8,8),   rc_vec2i_make(12,12));
+        rc_box2i away     = rc_box2i_make(rc_vec2i_make(20,20), rc_vec2i_make(30,30));
         /* Half-open [min, max): adjacent box sharing an edge does NOT intersect */
-        rc_aabb2i adjacent = rc_aabb2i_make(rc_vec2i_make(10,0),  rc_vec2i_make(20,10));
-        ASSERT( rc_aabb2i_contains(outer, inner));
-        ASSERT(!rc_aabb2i_contains(inner, outer));
-        ASSERT( rc_aabb2i_intersects(outer, other));
-        ASSERT(!rc_aabb2i_intersects(outer, away));
-        ASSERT(!rc_aabb2i_intersects(outer, adjacent));   /* touching edge, not overlapping */
+        rc_box2i adjacent = rc_box2i_make(rc_vec2i_make(10,0),  rc_vec2i_make(20,10));
+        ASSERT( rc_box2i_contains(outer, inner));
+        ASSERT(!rc_box2i_contains(inner, outer));
+        ASSERT( rc_box2i_intersects(outer, other));
+        ASSERT(!rc_box2i_intersects(outer, away));
+        ASSERT(!rc_box2i_intersects(outer, adjacent));   /* touching edge, not overlapping */
         /* contains_point: min inclusive, max exclusive */
-        ASSERT( rc_aabb2i_contains_point(outer, rc_vec2i_make(0, 0)));    /* min corner: inside */
-        ASSERT( rc_aabb2i_contains_point(outer, rc_vec2i_make(5, 5)));    /* interior */
-        ASSERT(!rc_aabb2i_contains_point(outer, rc_vec2i_make(10, 10)));  /* max corner: outside */
-        ASSERT(!rc_aabb2i_contains_point(outer, rc_vec2i_make(10, 5)));   /* on max edge: outside */
-        ASSERT(!rc_aabb2i_contains_point(outer, rc_vec2i_make(11, 5)));   /* beyond max: outside */
+        ASSERT( rc_box2i_contains_point(outer, rc_vec2i_make(0, 0)));    /* min corner: inside */
+        ASSERT( rc_box2i_contains_point(outer, rc_vec2i_make(5, 5)));    /* interior */
+        ASSERT(!rc_box2i_contains_point(outer, rc_vec2i_make(10, 10)));  /* max corner: outside */
+        ASSERT(!rc_box2i_contains_point(outer, rc_vec2i_make(10, 5)));   /* on max edge: outside */
+        ASSERT(!rc_box2i_contains_point(outer, rc_vec2i_make(11, 5)));   /* beyond max: outside */
     }
     END_GROUP();
 
-    BEGIN_GROUP("aabb2i: union / expand");
+    BEGIN_GROUP("box2i: union / expand");
     {
-        rc_aabb2i a = rc_aabb2i_make(rc_vec2i_make(0,0), rc_vec2i_make(3,3));
-        rc_aabb2i b = rc_aabb2i_make(rc_vec2i_make(2,2), rc_vec2i_make(6,6));
-        rc_aabb2i u = rc_aabb2i_union(a, b);
+        rc_box2i a = rc_box2i_make(rc_vec2i_make(0,0), rc_vec2i_make(3,3));
+        rc_box2i b = rc_box2i_make(rc_vec2i_make(2,2), rc_vec2i_make(6,6));
+        rc_box2i u = rc_box2i_union(a, b);
         ASSERT(u.min.x == 0 && u.min.y == 0);
         ASSERT(u.max.x == 6 && u.max.y == 6);
-        rc_aabb2i e = rc_aabb2i_expand(a, rc_vec2i_make(10, -1));
+        rc_box2i e = rc_box2i_expand(a, rc_vec2i_make(10, -1));
         ASSERT(e.min.y == -1 && e.max.x == 10);
     }
     END_GROUP();

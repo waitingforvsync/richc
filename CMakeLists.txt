@@ -26,8 +26,8 @@ add_library(richc STATIC
     include/richc/platform.h
     include/richc/str.h
     include/richc/template_util.h
-    include/richc/math/aabb2f.h
-    include/richc/math/aabb2i.h
+    include/richc/math/box2f.h
+    include/richc/math/box2i.h
     include/richc/math/mat22f.h
     include/richc/math/mat23f.h
     include/richc/math/mat33f.h
