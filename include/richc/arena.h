@@ -55,6 +55,7 @@
 #define RC_ARENA_H_
 
 #include <stdalign.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include "richc/debug.h"
@@ -110,9 +111,9 @@ void     *rc_arena_alloc(rc_arena *a, uint32_t size);
 /* Like rc_arena_alloc, but guarantees the returned memory is zeroed. */
 void     *rc_arena_alloc_zero(rc_arena *a, uint32_t size);
 
-/* If ptr is the last allocation, reclaim it by moving top back.
- * Otherwise a silent no-op (the space cannot be recovered mid-arena). */
-void      rc_arena_free(rc_arena *a, void *ptr, uint32_t size);
+/* If ptr is the last allocation, reclaim it by moving top back and return true.
+ * Otherwise a no-op returning false (the space cannot be recovered mid-arena). */
+bool      rc_arena_free(rc_arena *a, void *ptr, uint32_t size);
 
 /* Resize the allocation at ptr.  New bytes when growing are NOT zeroed.
  * See rc_arena_realloc_zero for a zeroing variant. */

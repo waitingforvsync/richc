@@ -30,7 +30,7 @@ static bool rc_arena_grow_committed_(rc_arena *a, uint32_t new_top)
  * Requires ptr != NULL and new_size != 0. */
 static void *rc_arena_realloc_(rc_arena *a, void *ptr, uint32_t old_size, uint32_t new_size)
 {
-    if (!new_size) {rc_arena_free(a, ptr, old_size); return NULL;}
+    if (!new_size) {(void)rc_arena_free(a, ptr, old_size); return NULL;}
 
     uint32_t aligned_old = rc_arena_align_up_(old_size);
     uint32_t aligned_new = rc_arena_align_up_(new_size);
@@ -119,11 +119,14 @@ void *rc_arena_alloc_zero(rc_arena *a, uint32_t size)
     return p;
 }
 
-void rc_arena_free(rc_arena *a, void *ptr, uint32_t size)
+bool rc_arena_free(rc_arena *a, void *ptr, uint32_t size)
 {
     uint32_t ptr_offset = (uint32_t)(size_t)((char *)ptr - a->base);
-    if (ptr_offset + rc_arena_align_up_(size) == a->top)
+    if (ptr_offset + rc_arena_align_up_(size) == a->top) {
         a->top = ptr_offset;
+        return true;
+    }
+    return false;
 }
 
 void *rc_arena_realloc(rc_arena *a, void *ptr, uint32_t old_size, uint32_t new_size)

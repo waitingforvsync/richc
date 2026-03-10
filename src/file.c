@@ -62,7 +62,7 @@ static load_raw_result load_raw(const char *filename, rc_arena *a,
 
     /* size > 0 implies alloc_size > 0, so buf is non-NULL here. */
     if (size > 0 && fread(buf, 1, size, f) != (size_t)size) {
-        rc_arena_free(a, buf, alloc_size);
+        (void)rc_arena_free(a, buf, alloc_size);
         fclose(f);
         return load_raw_fail(RC_FILE_ERROR_IO);
     }

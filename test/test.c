@@ -1347,8 +1347,8 @@ static void test_arena(void)
         uint32_t top_after_p1 = a.top;          /* offset after p1, before p2 */
         void    *p2 = rc_arena_alloc(&a, 64);
 
-        rc_arena_free(&a, p2, 64);
-        ASSERT(a.top == top_after_p1);          /* top moved back        */
+        ASSERT(rc_arena_free(&a, p2, 64));      /* returns true: was last    */
+        ASSERT(a.top == top_after_p1);          /* top moved back            */
 
         /* Re-allocating gives the same address. */
         ASSERT(rc_arena_alloc(&a, 64) == p2);
@@ -1365,8 +1365,8 @@ static void test_arena(void)
         void    *p2 = rc_arena_alloc(&a, 64);
         uint32_t top_before = a.top;
 
-        rc_arena_free(&a, p1, 64);                 /* p1 is not last        */
-        ASSERT(a.top == top_before);            /* top unchanged         */
+        ASSERT(!rc_arena_free(&a, p1, 64));     /* returns false: not last   */
+        ASSERT(a.top == top_before);            /* top unchanged             */
 
         rc_arena_destroy(&a);
         (void)p2;
@@ -1468,7 +1468,7 @@ static void test_arena(void)
         ASSERT(p != NULL);
         memset(p, 0xAB, 8);
 
-        rc_arena_free(&a, p, 8);               /* reclaim as last item      */
+        ASSERT(rc_arena_free(&a, p, 8));       /* reclaim as last item      */
         unsigned char *p2 = rc_arena_alloc(&a, 8);
         ASSERT(p2 == p);                    /* same address              */
         /* rc_arena_alloc makes no zeroing promise: old bytes are intact    */
@@ -1487,7 +1487,7 @@ static void test_arena(void)
         ASSERT(p != NULL);
         memset(p, 0xAB, 8);
 
-        rc_arena_free(&a, p, 8);               /* reclaim as last item      */
+        ASSERT(rc_arena_free(&a, p, 8));       /* reclaim as last item      */
         unsigned char *p2 = rc_arena_alloc_zero(&a, 8);
         ASSERT(p2 == p);                    /* same address              */
         int all_zero = 1;
