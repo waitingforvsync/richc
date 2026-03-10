@@ -130,6 +130,7 @@ All math headers are under `richc/math/`. All types use the `rc_` prefix with no
 | `math/quatf.h` | `rc_quatf` | Unit quaternion; Hamilton convention |
 | `math/rational.h` | `rc_rational` | Exact rational arithmetic `{int64_t num, denom}`; always canonical |
 | `math/bigint.h` | `rc_bigint` | Arbitrary-precision integer; sign-magnitude, arena-backed |
+| `math/solve.h` | `rc_quadratic_roots`, `rc_cubic_roots` | Analytic polynomial root solvers: `rc_solve_quadratic` (0–2 real roots, numerically stable via sign-selection) and `rc_solve_cubic` (1 or 3 real roots via Cardano/trigonometric method) |
 
 Matrix storage is column-major throughout. `rc_mat34f` and `rc_mat23f` represent affine transforms as `m * v + t`.
 

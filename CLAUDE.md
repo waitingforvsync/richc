@@ -457,6 +457,7 @@ include/richc/
     quatf.h                     — rc_quatf (unit quaternion, Hamilton convention)
     rational.h                  — rc_rational (rational arithmetic, always canonical; trivial ops inline, rest in rational.c)
     bigint.h                    — rc_bigint (arbitrary-precision integer; sign-magnitude, arena-backed)
+    solve.h                     — rc_solve_quadratic (0–2 real roots, numerically stable), rc_solve_cubic (1 or 3 real roots)
   template/
     hash.h                      — hash functions for built-in types, rc_str, rc_rational, vector types; rc_hash_combine
   template/
@@ -489,6 +490,7 @@ src/
       mat44f.c                  — rc_mat44f_determinant, rc_mat44f_inverse
       rational.c                — rc_rational non-trivial operations (make, from_double, int_mul, mul, int_div, div, add, sub)
       bigint.c                  — rc_bigint non-trivial operations (make, from_u64/i64, copy, reserve, add, sub, mul, divmod, div, mod)
+      solve.c                   — rc_solve_quadratic, rc_solve_cubic implementations
 test/
   test.c                        — full test suite (~7,700 lines, ~2231 assertions)
 ```

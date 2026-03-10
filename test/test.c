@@ -36,6 +36,7 @@
 #include "richc/math/bigint.h"
 #include "richc/file.h"
 #include "richc/bytes.h"
+#include "richc/math/solve.h"
 
 /* ---- instantiate all types and algorithms for int ---- */
 
@@ -4555,6 +4556,7 @@ static void test_mstr(void);
 static void test_math(void);
 static void test_bigint(void);
 static void test_file(void);
+static void test_solve(void);
 
 /* ---- main ---- */
 
@@ -4615,6 +4617,8 @@ int main(void)
     test_bigint();
     putchar('\n');
     test_file();
+    putchar('\n');
+    test_solve();
 
     putchar('\n');
     if (g_failures == 0)
@@ -8212,4 +8216,233 @@ static void test_file(void)
     END_GROUP();
 
     remove(tmp_bin);
+}
+
+/* ---- solve ---- */
+
+/* Helper: check that a root r satisfies |poly(r)| < tol. */
+static float quad_eval_(float a, float b, float c, float t)
+{
+    return ((a * t) + b) * t + c;
+}
+static float cubic_eval_(float a, float b, float c, float d, float t)
+{
+    return (((a * t) + b) * t + c) * t + d;
+}
+#define SOLVE_TOL 1e-4f
+#define ASSERT_NEAR(x, y) ASSERT(fabsf((x) - (y)) < SOLVE_TOL)
+
+static void test_solve(void)
+{
+    printf("solve\n");
+
+    /* ---- quadratic: degenerate (a≈0) → linear ---- */
+
+    BEGIN_GROUP("quadratic: linear fallback");
+    {
+        /* 0·t² + 2·t + 4 = 0  →  t = -2 */
+        rc_quadratic_roots r = rc_solve_quadratic(0.0f, 2.0f, 4.0f);
+        ASSERT(r.num_roots == 1);
+        ASSERT_NEAR(r.root[0], -2.0f);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("quadratic: linear fallback, both coeffs zero → no root");
+    {
+        rc_quadratic_roots r = rc_solve_quadratic(0.0f, 0.0f, 5.0f);
+        ASSERT(r.num_roots == 0);
+    }
+    END_GROUP();
+
+    /* ---- quadratic: negative discriminant → no real roots ---- */
+
+    BEGIN_GROUP("quadratic: no real roots");
+    {
+        /* t² + t + 1 = 0,  disc = 1 - 4 = -3 */
+        rc_quadratic_roots r = rc_solve_quadratic(1.0f, 1.0f, 1.0f);
+        ASSERT(r.num_roots == 0);
+    }
+    END_GROUP();
+
+    /* ---- quadratic: double root (disc = 0) ---- */
+
+    BEGIN_GROUP("quadratic: double root");
+    {
+        /* t² - 2·t + 1 = (t-1)²  →  t = 1 */
+        rc_quadratic_roots r = rc_solve_quadratic(1.0f, -2.0f, 1.0f);
+        ASSERT(r.num_roots == 1);
+        ASSERT_NEAR(r.root[0], 1.0f);
+    }
+    END_GROUP();
+
+    /* ---- quadratic: two distinct roots ---- */
+
+    BEGIN_GROUP("quadratic: two roots, roots satisfy equation");
+    {
+        /* t² - 3·t + 2 = (t-1)(t-2)  →  t = 1, 2 */
+        rc_quadratic_roots r = rc_solve_quadratic(1.0f, -3.0f, 2.0f);
+        ASSERT(r.num_roots == 2);
+        ASSERT_NEAR(quad_eval_(1.0f, -3.0f, 2.0f, r.root[0]), 0.0f);
+        ASSERT_NEAR(quad_eval_(1.0f, -3.0f, 2.0f, r.root[1]), 0.0f);
+        /* Roots are the two expected values in either order. */
+        float lo = r.root[0] < r.root[1] ? r.root[0] : r.root[1];
+        float hi = r.root[0] < r.root[1] ? r.root[1] : r.root[0];
+        ASSERT_NEAR(lo, 1.0f);
+        ASSERT_NEAR(hi, 2.0f);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("quadratic: asymmetric roots (numerically stable)");
+    {
+        /* (t - 0.5)(t - 100) = t² - 100.5t + 50  →  roots 0.5 and 100 exactly */
+        float a = 1.0f, b = -100.5f, c = 50.0f;
+        rc_quadratic_roots r = rc_solve_quadratic(a, b, c);
+        ASSERT(r.num_roots == 2);
+        ASSERT_NEAR(quad_eval_(a, b, c, r.root[0]), 0.0f);
+        ASSERT_NEAR(quad_eval_(a, b, c, r.root[1]), 0.0f);
+        float lo = r.root[0] < r.root[1] ? r.root[0] : r.root[1];
+        float hi = r.root[0] < r.root[1] ? r.root[1] : r.root[0];
+        ASSERT_NEAR(lo, 0.5f);
+        ASSERT_NEAR(hi, 100.0f);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("quadratic: symmetric roots around zero");
+    {
+        /* t² - 4 = 0  →  t = ±2 */
+        rc_quadratic_roots r = rc_solve_quadratic(1.0f, 0.0f, -4.0f);
+        ASSERT(r.num_roots == 2);
+        ASSERT_NEAR(quad_eval_(1.0f, 0.0f, -4.0f, r.root[0]), 0.0f);
+        ASSERT_NEAR(quad_eval_(1.0f, 0.0f, -4.0f, r.root[1]), 0.0f);
+        float s0 = r.root[0], s1 = r.root[1];
+        ASSERT_NEAR(s0 * s0, 4.0f);
+        ASSERT_NEAR(s1 * s1, 4.0f);
+        ASSERT_NEAR(s0 + s1, 0.0f);  /* roots sum to zero */
+    }
+    END_GROUP();
+
+    /* ---- cubic: degenerate fallbacks ---- */
+
+    BEGIN_GROUP("cubic: quadratic fallback (a≈0)");
+    {
+        /* 0·t³ + t² - 3·t + 2 = 0  →  t = 1, 2 */
+        rc_cubic_roots r = rc_solve_cubic(0.0f, 1.0f, -3.0f, 2.0f);
+        ASSERT(r.num_roots == 2);
+        float lo = r.root[0] < r.root[1] ? r.root[0] : r.root[1];
+        float hi = r.root[0] < r.root[1] ? r.root[1] : r.root[0];
+        ASSERT_NEAR(lo, 1.0f);
+        ASSERT_NEAR(hi, 2.0f);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("cubic: linear fallback (a≈0, b≈0)");
+    {
+        /* 0·t³ + 0·t² + 3·t + 6 = 0  →  t = -2 */
+        rc_cubic_roots r = rc_solve_cubic(0.0f, 0.0f, 3.0f, 6.0f);
+        ASSERT(r.num_roots == 1);
+        ASSERT_NEAR(r.root[0], -2.0f);
+    }
+    END_GROUP();
+
+    /* ---- cubic: one real root (Cardano, discriminant > 0) ---- */
+
+    BEGIN_GROUP("cubic: one real root satisfies equation");
+    {
+        /* t³ + t + 1 = 0,  disc > 0  →  one real root ≈ -0.6824 */
+        rc_cubic_roots r = rc_solve_cubic(1.0f, 0.0f, 1.0f, 1.0f);
+        ASSERT(r.num_roots == 1);
+        ASSERT_NEAR(cubic_eval_(1.0f, 0.0f, 1.0f, 1.0f, r.root[0]), 0.0f);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("cubic: one real root, known value");
+    {
+        /* (t - 5)(t² + t + 1) = t³ - 4t² - 4t - 5 = 0,  one real root = 5 */
+        rc_cubic_roots r = rc_solve_cubic(1.0f, -4.0f, -4.0f, -5.0f);
+        ASSERT(r.num_roots == 1);
+        ASSERT_NEAR(r.root[0], 5.0f);
+    }
+    END_GROUP();
+
+    /* ---- cubic: triple root (p ≈ 0 path) ---- */
+
+    BEGIN_GROUP("cubic: triple root at zero");
+    {
+        /* t³ = 0  →  t = 0 */
+        rc_cubic_roots r = rc_solve_cubic(1.0f, 0.0f, 0.0f, 0.0f);
+        ASSERT(r.num_roots == 1);
+        ASSERT_NEAR(r.root[0], 0.0f);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("cubic: triple root at non-zero value");
+    {
+        /* (t - 3)³ = t³ - 9t² + 27t - 27  →  t = 3 */
+        rc_cubic_roots r = rc_solve_cubic(1.0f, -9.0f, 27.0f, -27.0f);
+        ASSERT(r.num_roots == 1);
+        ASSERT_NEAR(r.root[0], 3.0f);
+    }
+    END_GROUP();
+
+    /* ---- cubic: three real roots (trigonometric method) ---- */
+
+    BEGIN_GROUP("cubic: three roots, all satisfy equation");
+    {
+        /* (t+1)(t-1)(t-3) = t³ - 3t² - t + 3  →  t = -1, 1, 3 */
+        rc_cubic_roots r = rc_solve_cubic(1.0f, -3.0f, -1.0f, 3.0f);
+        ASSERT(r.num_roots == 3);
+        ASSERT_NEAR(cubic_eval_(1.0f, -3.0f, -1.0f, 3.0f, r.root[0]), 0.0f);
+        ASSERT_NEAR(cubic_eval_(1.0f, -3.0f, -1.0f, 3.0f, r.root[1]), 0.0f);
+        ASSERT_NEAR(cubic_eval_(1.0f, -3.0f, -1.0f, 3.0f, r.root[2]), 0.0f);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("cubic: three roots, correct set of values");
+    {
+        /* (t+1)(t-1)(t-3) = t³ - 3t² - t + 3  →  t ∈ {-1, 1, 3} */
+        rc_cubic_roots r = rc_solve_cubic(1.0f, -3.0f, -1.0f, 3.0f);
+        ASSERT(r.num_roots == 3);
+        float roots[3] = {r.root[0], r.root[1], r.root[2]};
+        /* Sort to compare in order regardless of which slot holds which root. */
+        for (int i = 0; i < 2; i++)
+            for (int j = i + 1; j < 3; j++)
+                if (roots[j] < roots[i]) { float tmp = roots[i]; roots[i] = roots[j]; roots[j] = tmp; }
+        ASSERT_NEAR(roots[0], -1.0f);
+        ASSERT_NEAR(roots[1],  1.0f);
+        ASSERT_NEAR(roots[2],  3.0f);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("cubic: three roots symmetric around zero");
+    {
+        /* t³ - t = t(t-1)(t+1) = 0  →  t = -1, 0, 1 */
+        rc_cubic_roots r = rc_solve_cubic(1.0f, 0.0f, -1.0f, 0.0f);
+        ASSERT(r.num_roots == 3);
+        ASSERT_NEAR(cubic_eval_(1.0f, 0.0f, -1.0f, 0.0f, r.root[0]), 0.0f);
+        ASSERT_NEAR(cubic_eval_(1.0f, 0.0f, -1.0f, 0.0f, r.root[1]), 0.0f);
+        ASSERT_NEAR(cubic_eval_(1.0f, 0.0f, -1.0f, 0.0f, r.root[2]), 0.0f);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("cubic: three roots, leading coefficient scaled");
+    {
+        /* 2·(t+1)(t-1)(t-3) = 2t³ - 6t² - 2t + 6  →  same roots */
+        rc_cubic_roots r = rc_solve_cubic(2.0f, -6.0f, -2.0f, 6.0f);
+        ASSERT(r.num_roots == 3);
+        ASSERT_NEAR(cubic_eval_(2.0f, -6.0f, -2.0f, 6.0f, r.root[0]), 0.0f);
+        ASSERT_NEAR(cubic_eval_(2.0f, -6.0f, -2.0f, 6.0f, r.root[1]), 0.0f);
+        ASSERT_NEAR(cubic_eval_(2.0f, -6.0f, -2.0f, 6.0f, r.root[2]), 0.0f);
+    }
+    END_GROUP();
+
+    BEGIN_GROUP("cubic: negative leading coefficient");
+    {
+        /* -(t+1)(t-1)(t-3) = -t³ + 3t² + t - 3  →  same roots */
+        rc_cubic_roots r = rc_solve_cubic(-1.0f, 3.0f, 1.0f, -3.0f);
+        ASSERT(r.num_roots == 3);
+        ASSERT_NEAR(cubic_eval_(-1.0f, 3.0f, 1.0f, -3.0f, r.root[0]), 0.0f);
+        ASSERT_NEAR(cubic_eval_(-1.0f, 3.0f, 1.0f, -3.0f, r.root[1]), 0.0f);
+        ASSERT_NEAR(cubic_eval_(-1.0f, 3.0f, 1.0f, -3.0f, r.root[2]), 0.0f);
+    }
+    END_GROUP();
 }
