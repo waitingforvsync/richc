@@ -69,7 +69,7 @@ target_include_directories(richc PUBLIC include)
 
 # Suppress MSVC CRT deprecation warnings for standard POSIX functions (fopen etc.)
 # when building with clang on Windows against the MSVC runtime headers.
-target_compile_definitions(richc PRIVATE _CRT_SECURE_NO_WARNINGS)
+target_compile_definitions(richc PRIVATE _CRT_SECURE_NO_WARNINGS _DEFAULT_SOURCE)
 
 if(MSVC)
     target_compile_options(richc PRIVATE /W3)
@@ -77,13 +77,15 @@ else()
     target_compile_options(richc PRIVATE -Wall -Wextra)
 endif()
 
+target_link_libraries(richc PRIVATE m)
+
 # ---- test executable ----
 
 add_executable(richc_test test/test.c)
 
 target_link_libraries(richc_test PRIVATE richc)
 
-target_compile_definitions(richc_test PRIVATE _CRT_SECURE_NO_WARNINGS)
+target_compile_definitions(richc_test PRIVATE _CRT_SECURE_NO_WARNINGS _DEFAULT_SOURCE)
 
 if(MSVC)
     target_compile_options(richc_test PRIVATE /W3)
