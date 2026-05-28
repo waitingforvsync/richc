@@ -42,10 +42,7 @@
 #ifndef RC_TEST_H_
 #define RC_TEST_H_
 
-#include <stdbool.h>
-#include <stdint.h>
-
-#include "richc/str.h"
+#include "richc/str.h"   // also provides <stdint.h> / <stdbool.h>
 
 /* ---- linker-section placement (compiler/platform specific) ---- */
 

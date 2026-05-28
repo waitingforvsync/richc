@@ -8,13 +8,13 @@ General conventions used throughout the library:
 - All public types and functions are prefixed `rc_`; all public macros `RC_`.
 - The index type is `uint32_t`. `RC_INDEX_NONE` (`UINT32_MAX`) is the sentinel
   for "not found" / "invalid".
-- Functions that allocate take an `rc_arena *` as their last parameter (none of
-  the headers documented so far allocate).
+- Functions that allocate take an `rc_arena *` as their last parameter.
 
 ## Contents
 
 - [richc/arena.h - arena allocator](#richcarenah---arena-allocator)
 - [richc/macros.h - preprocessor utilities and assertions](#richcmacrosh---preprocessor-utilities-and-assertions)
+- [richc/mstr.h - mutable string](#richcmstrh---mutable-string)
 - [richc/str.h - string view](#richcstrh---string-view)
 - [richc/test.h - unit-test framework](#richctesth---unit-test-framework)
 
@@ -161,6 +161,74 @@ Small general-purpose preprocessor helpers used across the library.
   it can sit on the left of a comma operator.
 - `RC_PANIC(cond)` checks `cond` in all builds and traps (terminates) on
   failure. Use it for unrecoverable invariants such as out-of-memory.
+
+---
+
+## richc/mstr.h - mutable string
+
+`rc_mstr` is an arena-backed growable string. Its `{ data, len }` fields share
+layout with `rc_str` and are exposed as `s.view`, so a non-owning view of the
+current contents is always available without copying. The buffer always holds a
+`'\0'` at `data[len]`, so `rc_str_as_cstr(s.view, ...)` takes the no-copy fast
+path.
+
+### Type
+
+```c
+typedef struct rc_mstr {
+    union {
+        struct { const char *data; uint32_t len; };
+        rc_str view;
+    };
+    uint32_t cap;
+} rc_mstr;
+```
+
+`cap` is the character capacity, excluding the null terminator; the backing
+allocation is always `cap + 1` bytes. A zeroed `rc_mstr` is the invalid state
+(`{ NULL, 0, 0 }`); a valid one has non-NULL `data` and `len <= cap`.
+
+### Construction
+
+```c
+rc_mstr rc_mstr_make(uint32_t cap, rc_arena *a);
+rc_mstr rc_mstr_from_cstr(const char *s, uint32_t max_cap, rc_arena *a);
+rc_mstr rc_mstr_from_str(rc_str s, uint32_t max_cap, rc_arena *a);
+```
+
+- `rc_mstr_make` returns an empty string with the given initial capacity.
+- `rc_mstr_from_cstr` / `rc_mstr_from_str` copy the source, sizing the buffer to
+  `max(source length, max_cap)`. They return the invalid state when given a NULL
+  C string or an invalid `rc_str`.
+
+### Predicates
+
+```c
+bool rc_mstr_is_valid(const rc_mstr *s);   // inline; true when data is non-NULL
+bool rc_mstr_is_empty(const rc_mstr *s);   // inline; true when len is 0
+```
+
+### Mutation
+
+```c
+void rc_mstr_reset(rc_mstr *s);
+void rc_mstr_reserve(rc_mstr *s, uint32_t new_cap, rc_arena *a);
+void rc_mstr_append(rc_mstr *s, rc_str str, rc_arena *a);
+void rc_mstr_append_char(rc_mstr *s, char c, rc_arena *a);
+void rc_mstr_replace(rc_mstr *s, rc_str find, rc_str replacement, rc_arena *a);
+```
+
+- `rc_mstr_reset` sets `len` to 0 and keeps the buffer.
+- `rc_mstr_reserve` ensures capacity for at least `new_cap` characters (no-op if
+  already large enough); it may move the buffer.
+- `rc_mstr_append` / `rc_mstr_append_char` append, growing by doubling (minimum
+  8) as needed; appending an empty `rc_str` is a no-op.
+- `rc_mstr_replace` replaces every non-overlapping occurrence of `find` with
+  `replacement`, rewriting in place (left-to-right when the result is no larger,
+  otherwise reserving and rewriting right-to-left). An empty `find` is a no-op.
+
+The mutation functions require a valid `rc_mstr` and valid `rc_str` arguments
+(asserted), and allocate through the arena, which never returns NULL.
 
 ---
 

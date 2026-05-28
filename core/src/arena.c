@@ -1,6 +1,5 @@
 #include "richc/arena.h"
 
-#include <stdbool.h>
 #include <string.h>
 
 /*

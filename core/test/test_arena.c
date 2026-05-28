@@ -1,5 +1,3 @@
-#include <stdint.h>
-
 #include "richc/arena.h"
 #include "richc/test.h"
 
