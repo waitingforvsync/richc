@@ -53,9 +53,9 @@
 #ifndef RC_STR_H_
 #define RC_STR_H_
 
-#include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 
 #ifndef RC_INDEX_NONE
@@ -64,12 +64,12 @@
 
 /* ---- types ---- */
 
-typedef struct {
+typedef struct rc_str {
     const char *data;
     uint32_t    len;
 } rc_str;
 
-typedef struct {
+typedef struct rc_str_pair {
     rc_str first;
     rc_str second;
 } rc_str_pair;

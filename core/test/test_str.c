@@ -61,9 +61,11 @@ RC_TEST(str, is_equal)
 
 RC_TEST(str, is_equal_empty)
 {
-    // Any two zero-length views compare equal, including the invalid view.
-    RC_CHECK_TRUE(rc_str_is_equal(RC_STR(""), RC_STR("")));
-    RC_CHECK_TRUE(rc_str_is_equal(rc_str_make(NULL), RC_STR("")));
+    // Distinct empty (but valid) views are equal regardless of their data pointer.
+    rc_str e1 = rc_str_left(RC_STR("abc"), 0);
+    rc_str e2 = rc_str_left(RC_STR("xyz"), 0);
+    RC_CHECK_TRUE(rc_str_is_equal(e1, e2));
+    RC_CHECK_TRUE(rc_str_is_equal(RC_STR(""), e1));
 }
 
 RC_TEST(str, is_equal_insensitive)

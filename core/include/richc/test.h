@@ -12,13 +12,13 @@
  *
  * Tests with a fixture
  * --------------------
- *   RC_TEST_GROUP_DATA(group) { ... };  declare the per-group fixture struct
- *   RC_TEST_GROUP_INIT(group) { ... }   runs before each test in the group
- *   RC_TEST_GROUP_DEINIT(group) { ... } runs after each test in the group
- *   RC_TEST_STEP(group, name) { ... }   a test that receives the fixture as data
- *   RC_TEST_STEP_SKIP(group, name)      registered fixtured test, not run
- * Inside INIT/DEINIT/STEP bodies the fixture is available as the local pointer
- * data, of type struct rc_test_group_data_<group> *.
+ *   RC_TEST_GROUP_DATA(group) { ... };       declare the per-group fixture struct
+ *   RC_TEST_GROUP_INIT(group, fix) { ... }   runs before each test in the group
+ *   RC_TEST_GROUP_DEINIT(group, fix) { ... } runs after each test in the group
+ *   RC_TEST_STEP(group, name, fix) { ... }   a test that receives the fixture
+ *   RC_TEST_STEP_SKIP(group, name, fix)      registered fixtured test, not run
+ * The last argument to INIT/DEINIT/STEP names the fixture pointer made available
+ * inside the body; it has type struct rc_test_group_data_<group> *.
  *
  * Assertions
  * ----------
@@ -42,8 +42,8 @@
 #ifndef RC_TEST_H_
 #define RC_TEST_H_
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "richc/str.h"
 
@@ -110,24 +110,24 @@ struct rc_test {
 #define RC_TEST_GROUP_DATA(group) \
     struct rc_test_group_data_##group
 
-#define RC_TEST_GROUP_INIT(group) \
-    static void rc_test_init_##group(struct rc_test_group_data_##group *data); \
-    static void rc_test_init_##group##_wrapper(void *data) { \
-        rc_test_init_##group((struct rc_test_group_data_##group *)data); \
+#define RC_TEST_GROUP_INIT(group, fixture) \
+    static void rc_test_init_##group(struct rc_test_group_data_##group *fixture); \
+    static void rc_test_init_##group##_wrapper(void *fixture) { \
+        rc_test_init_##group((struct rc_test_group_data_##group *)fixture); \
     } \
-    static void rc_test_init_##group(struct rc_test_group_data_##group *data)
+    static void rc_test_init_##group(struct rc_test_group_data_##group *fixture)
 
-#define RC_TEST_GROUP_DEINIT(group) \
-    static void rc_test_deinit_##group(struct rc_test_group_data_##group *data); \
-    static void rc_test_deinit_##group##_wrapper(void *data) { \
-        rc_test_deinit_##group((struct rc_test_group_data_##group *)data); \
+#define RC_TEST_GROUP_DEINIT(group, fixture) \
+    static void rc_test_deinit_##group(struct rc_test_group_data_##group *fixture); \
+    static void rc_test_deinit_##group##_wrapper(void *fixture) { \
+        rc_test_deinit_##group((struct rc_test_group_data_##group *)fixture); \
     } \
-    static void rc_test_deinit_##group(struct rc_test_group_data_##group *data)
+    static void rc_test_deinit_##group(struct rc_test_group_data_##group *fixture)
 
-#define RC_TEST_STEP(group, name) \
+#define RC_TEST_STEP(group, name, fixture) \
     static void rc_test_fn_##group##_##name(struct rc_test_group_data_##group *); \
-    static void rc_test_step_##group##_##name##_wrapper(void *data) { \
-        rc_test_fn_##group##_##name((struct rc_test_group_data_##group *)data); \
+    static void rc_test_step_##group##_##name##_wrapper(void *fixture) { \
+        rc_test_fn_##group##_##name((struct rc_test_group_data_##group *)fixture); \
     } \
     static struct rc_test_group_data_##group rc_test_data_##group##_##name; \
     static const rc_test rc_test_desc_##group##_##name = { \
@@ -139,9 +139,9 @@ struct rc_test {
         .context = &rc_test_data_##group##_##name \
     }; \
     RC_TEST_SECTION_(RC_TEST_SECTION_NAME_) const rc_test *rc_test_ptr_##group##_##name = &rc_test_desc_##group##_##name; \
-    static void rc_test_fn_##group##_##name(struct rc_test_group_data_##group *data)
+    static void rc_test_fn_##group##_##name(struct rc_test_group_data_##group *fixture)
 
-#define RC_TEST_STEP_SKIP(group, name) \
+#define RC_TEST_STEP_SKIP(group, name, fixture) \
     static void rc_test_fn_##group##_##name(struct rc_test_group_data_##group *); \
     static struct rc_test_group_data_##group rc_test_data_##group##_##name; \
     static const rc_test rc_test_desc_##group##_##name = { \
@@ -150,7 +150,7 @@ struct rc_test {
         .context = &rc_test_data_##group##_##name \
     }; \
     RC_TEST_SECTION_(RC_TEST_SECTION_NAME_) const rc_test *rc_test_ptr_##group##_##name = &rc_test_desc_##group##_##name; \
-    static void rc_test_fn_##group##_##name(struct rc_test_group_data_##group *data)
+    static void rc_test_fn_##group##_##name(struct rc_test_group_data_##group *fixture)
 
 /* ---- assertions ---- */
 

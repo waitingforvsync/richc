@@ -1,9 +1,9 @@
+#include "richc/test.h"
+
 #include <inttypes.h>
 #include <math.h>
 #include <setjmp.h>
 #include <stdio.h>
-
-#include "richc/test.h"
 
 /* Section boundaries.  On Windows the sentinels are placed either side of the
  * test items in name order ($a < $b < $c); on ELF the linker provides the

@@ -1,6 +1,9 @@
 #include "richc/str.h"
-#include <string.h>
+
 #include <ctype.h>
+#include <string.h>
+
+#include "richc/macros.h"
 
 rc_str rc_str_make(const char *s)
 {
@@ -11,6 +14,8 @@ rc_str rc_str_make(const char *s)
 
 bool rc_str_is_equal(rc_str a, rc_str b)
 {
+    RC_ASSERT(rc_str_is_valid(a));
+    RC_ASSERT(rc_str_is_valid(b));
     if (a.len != b.len) return false;
     if (a.len == 0)     return true;
     return memcmp(a.data, b.data, a.len) == 0;
@@ -18,6 +23,8 @@ bool rc_str_is_equal(rc_str a, rc_str b)
 
 int rc_str_compare(rc_str a, rc_str b)
 {
+    RC_ASSERT(rc_str_is_valid(a));
+    RC_ASSERT(rc_str_is_valid(b));
     uint32_t min_len = a.len < b.len ? a.len : b.len;
     if (min_len > 0) {
         int r = memcmp(a.data, b.data, min_len);
@@ -30,6 +37,8 @@ int rc_str_compare(rc_str a, rc_str b)
 
 int rc_str_compare_insensitive(rc_str a, rc_str b)
 {
+    RC_ASSERT(rc_str_is_valid(a));
+    RC_ASSERT(rc_str_is_valid(b));
     uint32_t min_len = a.len < b.len ? a.len : b.len;
     for (uint32_t i = 0; i < min_len; i++) {
         int ca = tolower((unsigned char)a.data[i]);
@@ -48,6 +57,8 @@ bool rc_str_is_equal_insensitive(rc_str a, rc_str b)
 
 bool rc_str_starts_with(rc_str s, rc_str prefix)
 {
+    RC_ASSERT(rc_str_is_valid(s));
+    RC_ASSERT(rc_str_is_valid(prefix));
     if (prefix.len > s.len) return false;
     if (prefix.len == 0)    return true;
     return memcmp(s.data, prefix.data, prefix.len) == 0;
@@ -55,6 +66,8 @@ bool rc_str_starts_with(rc_str s, rc_str prefix)
 
 bool rc_str_ends_with(rc_str s, rc_str suffix)
 {
+    RC_ASSERT(rc_str_is_valid(s));
+    RC_ASSERT(rc_str_is_valid(suffix));
     if (suffix.len > s.len) return false;
     if (suffix.len == 0)    return true;
     return memcmp(s.data + s.len - suffix.len, suffix.data, suffix.len) == 0;
@@ -62,6 +75,8 @@ bool rc_str_ends_with(rc_str s, rc_str suffix)
 
 uint32_t rc_str_find_first(rc_str haystack, rc_str needle)
 {
+    RC_ASSERT(rc_str_is_valid(haystack));
+    RC_ASSERT(rc_str_is_valid(needle));
     if (needle.len == 0)            return 0;
     if (needle.len > haystack.len)  return RC_INDEX_NONE;
     uint32_t limit = haystack.len - needle.len;
@@ -74,6 +89,8 @@ uint32_t rc_str_find_first(rc_str haystack, rc_str needle)
 
 uint32_t rc_str_find_last(rc_str haystack, rc_str needle)
 {
+    RC_ASSERT(rc_str_is_valid(haystack));
+    RC_ASSERT(rc_str_is_valid(needle));
     if (needle.len == 0)            return haystack.len;
     if (needle.len > haystack.len)  return RC_INDEX_NONE;
     uint32_t limit = haystack.len - needle.len;
@@ -128,6 +145,7 @@ rc_str_pair rc_str_last_split(rc_str s, rc_str split_by)
 
 const char *rc_str_as_cstr(rc_str s, char *buf, uint32_t buf_size)
 {
+    RC_ASSERT(rc_str_is_valid(s));
     if (s.data && s.data[s.len] == '\0')
         return s.data;
     if (!buf || buf_size == 0) return NULL;
