@@ -6,6 +6,7 @@ add_library(richc STATIC
     src/str.c
     src/test.c
     include/richc/arena.h
+    include/richc/bytes.h
     include/richc/macros.h
     include/richc/mstr.h
     include/richc/str.h
@@ -32,6 +33,7 @@ target_link_libraries(richc PRIVATE m)
 add_executable(richc_core_test
     test/test_arena.c
     test/test_array.c
+    test/test_bytes.c
     test/test_mstr.c
     test/test_str.c
 )

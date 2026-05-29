@@ -34,6 +34,7 @@ General conventions used throughout the library:
 Headers:
 
 - [richc/arena.h - arena allocator](#richcarenah---arena-allocator)
+- [richc/bytes.h - byte buffers](#richcbytesh---byte-buffers)
 - [richc/macros.h - preprocessor utilities and assertions](#richcmacrosh---preprocessor-utilities-and-assertions)
 - [richc/mstr.h - mutable string](#richcmstrh---mutable-string)
 - [richc/str.h - string view](#richcstrh---string-view)
@@ -159,6 +160,23 @@ void build_temp(rc_arena scratch, rc_arena *out) {
     int *result = rc_arena_alloc_type(out, int, n);          // survives
 }
 ```
+
+---
+
+## richc/bytes.h - byte buffers
+
+`bytes.h` instantiates the [array template](#richctemplatearrayh---view-span-array)
+for `uint8_t`, giving the byte container family:
+
+```c
+rc_view_bytes    // { const uint8_t *data; uint32_t num; }
+rc_span_bytes    // {       uint8_t *data; uint32_t num; }
+rc_array_bytes   // {       uint8_t *data; uint32_t num; uint32_t cap; }
+```
+
+Every view/span/array operation applies, named `rc_array_bytes_*`,
+`rc_span_bytes_*`, and `rc_view_bytes_*` (e.g. `rc_array_bytes_push`,
+`rc_view_bytes_get_subview`). Include the header once.
 
 ---
 

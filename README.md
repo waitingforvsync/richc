@@ -86,6 +86,8 @@ Available now in core:
   `rc_array`, sharing an anonymous union so conversions between them are
   typesafe field accesses. Arrays grow geometrically; spans and views are
   non-owning windows.
+- **Byte buffers** (`richc/bytes.h`) - `rc_view_bytes` / `rc_span_bytes` /
+  `rc_array_bytes`, the array template instantiated for `uint8_t`.
 - **Unit-test framework** (`richc/test.h`) - tests that register themselves
   automatically via linker sections, typed `RC_CHECK` assertions, group
   fixtures, and a filtering test runner. Part of the core library; it costs
