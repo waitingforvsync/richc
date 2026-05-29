@@ -35,6 +35,7 @@ Headers:
 
 - [richc/arena.h - arena allocator](#richcarenah---arena-allocator)
 - [richc/bytes.h - byte buffers](#richcbytesh---byte-buffers)
+- [richc/file.h - file I/O](#richcfileh---file-io)
 - [richc/macros.h - preprocessor utilities and assertions](#richcmacrosh---preprocessor-utilities-and-assertions)
 - [richc/mstr.h - mutable string](#richcmstrh---mutable-string)
 - [richc/str.h - string view](#richcstrh---string-view)
@@ -177,6 +178,47 @@ rc_array_bytes   // {       uint8_t *data; uint32_t num; uint32_t cap; }
 Every view/span/array operation applies, named `rc_array_bytes_*`,
 `rc_span_bytes_*`, and `rc_view_bytes_*` (e.g. `rc_array_bytes_push`,
 `rc_view_bytes_get_subview`). Include the header once.
+
+---
+
+## richc/file.h - file I/O
+
+Whole-file load and save. Filenames are `rc_str`; all I/O is binary mode (no
+line-ending translation), and loaded data is allocated from the supplied arena.
+Every function reports `rc_file_error`: `RC_FILE_OK` (0) on success, otherwise
+`RC_FILE_ERROR_NOT_FOUND`, `RC_FILE_ERROR_ACCESS_DENIED`,
+`RC_FILE_ERROR_TOO_LARGE`, or `RC_FILE_ERROR_IO`.
+
+### Loading
+
+Each load has an immutable and a mutable form. The mutable form takes a
+`minimum_capacity` so the returned `rc_mstr` / `rc_array_bytes` can grow before
+reallocating.
+
+```c
+typedef struct { rc_str         text; rc_file_error error; } rc_load_text_result;
+typedef struct { rc_mstr        text; rc_file_error error; } rc_load_text_mut_result;
+typedef struct { rc_view_bytes  data; rc_file_error error; } rc_load_binary_result;
+typedef struct { rc_array_bytes data; rc_file_error error; } rc_load_binary_mut_result;
+
+rc_load_text_result       rc_load_text(rc_str filename, rc_arena *arena);
+rc_load_text_mut_result   rc_load_text_mut(rc_str filename, uint32_t minimum_capacity, rc_arena *arena);
+rc_load_binary_result     rc_load_binary(rc_str filename, rc_arena *arena);
+rc_load_binary_mut_result rc_load_binary_mut(rc_str filename, uint32_t minimum_capacity, rc_arena *arena);
+```
+
+Text loads are always null-terminated, so `rc_str_as_cstr` on the result takes
+its no-copy fast path. On failure the returned text/data is the empty (invalid)
+state and `error` is set.
+
+### Saving
+
+```c
+rc_file_error rc_save_text(rc_str filename, rc_str text);
+rc_file_error rc_save_binary(rc_str filename, rc_view_bytes data);
+```
+
+Both create or truncate the file.
 
 ---
 

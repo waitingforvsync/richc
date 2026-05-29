@@ -88,6 +88,9 @@ Available now in core:
   non-owning windows.
 - **Byte buffers** (`richc/bytes.h`) - `rc_view_bytes` / `rc_span_bytes` /
   `rc_array_bytes`, the array template instantiated for `uint8_t`.
+- **File I/O** (`richc/file.h`) - whole-file load and save with `rc_str`
+  filenames; immutable and mutable load variants returning `rc_str`/`rc_mstr`
+  and `rc_view_bytes`/`rc_array_bytes`.
 - **Unit-test framework** (`richc/test.h`) - tests that register themselves
   automatically via linker sections, typed `RC_CHECK` assertions, group
   fixtures, and a filtering test runner. Part of the core library; it costs
