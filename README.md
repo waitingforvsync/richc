@@ -51,6 +51,29 @@ add_subdirectory(richc)
 target_link_libraries(your_app PRIVATE richc)
 ```
 
+## Template headers
+
+Generic containers are preprocessor templates. A header under `richc/template/`
+generates type-specific code for an element type you choose: define the control
+macro(s), then include the header. The header `#undef`s its macros at the end,
+so you can include it again for another type.
+
+```c
+#define RC_ARRAY_TYPE int
+#include "richc/template/array.h"
+// now: rc_view_int, rc_span_int, rc_array_int and their operations
+
+#define RC_ARRAY_TYPE float
+#define RC_ARRAY_NAME float
+#include "richc/template/array.h"
+// now: rc_view_float, rc_span_float, rc_array_float
+```
+
+The generated types are always named `rc_array_<suffix>`, `rc_span_<suffix>`,
+and `rc_view_<suffix>`. The optional `RC_ARRAY_NAME` gives the `<suffix>`
+(defaulting to the element type's spelling, so it must be a single identifier -
+supply a name for multi-token types such as `unsigned char`).
+
 ## What it contains
 
 Available now in core:
@@ -58,6 +81,11 @@ Available now in core:
 - **String view** (`richc/str.h`) - `rc_str`, a non-owning pointer-and-length
   view with comparison, slicing, searching, trimming, splitting, and conversion
   to a C string. Never allocates.
+- **View / span / array** (`richc/template/array.h`) - the template above. A
+  read-only `rc_view`, a mutable `rc_span`, and a growable arena-backed
+  `rc_array`, sharing an anonymous union so conversions between them are
+  typesafe field accesses. Arrays grow geometrically; spans and views are
+  non-owning windows.
 - **Unit-test framework** (`richc/test.h`) - tests that register themselves
   automatically via linker sections, typed `RC_CHECK` assertions, group
   fixtures, and a filtering test runner. Part of the core library; it costs

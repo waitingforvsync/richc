@@ -64,9 +64,9 @@ typedef struct rc_mstr {
 
 /* ---- construction (return by value) ---- */
 
-rc_mstr rc_mstr_make(uint32_t cap, rc_arena *a);
-rc_mstr rc_mstr_from_cstr(const char *s, uint32_t max_cap, rc_arena *a);
-rc_mstr rc_mstr_from_str(rc_str s, uint32_t max_cap, rc_arena *a);
+rc_mstr rc_mstr_make(uint32_t cap, rc_arena *arena);
+rc_mstr rc_mstr_from_cstr(const char *s, uint32_t max_cap, rc_arena *arena);
+rc_mstr rc_mstr_from_str(rc_str s, uint32_t max_cap, rc_arena *arena);
 
 /* ---- predicates (inline) ---- */
 
@@ -85,9 +85,9 @@ static inline bool rc_mstr_is_empty(const rc_mstr *s)
 /* ---- mutation ---- */
 
 void rc_mstr_reset(rc_mstr *s);
-void rc_mstr_reserve(rc_mstr *s, uint32_t new_cap, rc_arena *a);
-void rc_mstr_append(rc_mstr *s, rc_str str, rc_arena *a);
-void rc_mstr_append_char(rc_mstr *s, char c, rc_arena *a);
-void rc_mstr_replace(rc_mstr *s, rc_str find, rc_str replacement, rc_arena *a);
+void rc_mstr_reserve(rc_mstr *s, uint32_t new_cap, rc_arena *arena);
+void rc_mstr_append(rc_mstr *s, rc_str str, rc_arena *arena);
+void rc_mstr_append_char(rc_mstr *s, char c, rc_arena *arena);
+void rc_mstr_replace(rc_mstr *s, rc_str find, rc_str replacement, rc_arena *arena);
 
 #endif /* RC_MSTR_H_ */

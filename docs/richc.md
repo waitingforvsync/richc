@@ -6,17 +6,42 @@ organised by header.
 General conventions used throughout the library:
 
 - All public types and functions are prefixed `rc_`; all public macros `RC_`.
+  Everything is `snake_case`.
+- Function naming by role:
+  - `rc_<type>_make(...)` / `rc_<type>_make_<thing>(...)` acts like a
+    constructor - it returns a fresh `rc_<type>` by value.
+  - `rc_<type>_from_<other>(...)` acts like a conversion constructor - it builds
+    an `rc_<type>` from a value of a different type.
+  - `rc_<type>_as_<other>(...)` acts like a cast - it reinterprets the value as
+    another type without allocating or copying.
+  - `rc_<type>_is_<predicate>(...)` returns a `bool` (e.g. `is_valid`,
+    `is_empty`).
+- A trailing underscore denotes an internal (private) symbol that happens to be
+  visible in a public header (e.g. `RC_CHECK_IMPL_`, a generated `_grow_`
+  helper). Do not use these directly; they are not part of the API.
 - The index type is `uint32_t`. `RC_INDEX_NONE` (`UINT32_MAX`) is the sentinel
   for "not found" / "invalid".
-- Functions that allocate take an `rc_arena *` as their last parameter.
+- Functions that allocate take an `rc_arena *`, named `arena`, as their last
+  parameter. It may be NULL when no allocation is actually required; arena
+  allocation never returns NULL (out of memory is a panic), so results are not
+  NULL-checked.
+- Preconditions are enforced with `RC_ASSERT` (active in debug builds): passing
+  an invalid argument - a NULL pointer, an out-of-range index, an invalid view -
+  is a programming error that traps, not something the function reports.
 
 ## Contents
+
+Headers:
 
 - [richc/arena.h - arena allocator](#richcarenah---arena-allocator)
 - [richc/macros.h - preprocessor utilities and assertions](#richcmacrosh---preprocessor-utilities-and-assertions)
 - [richc/mstr.h - mutable string](#richcmstrh---mutable-string)
 - [richc/str.h - string view](#richcstrh---string-view)
 - [richc/test.h - unit-test framework](#richctesth---unit-test-framework)
+
+Templates:
+
+- [richc/template/array.h - view, span, array](#richctemplatearrayh---view-span-array)
 
 ---
 
@@ -457,3 +482,146 @@ RC_TEST(str, basics)
 
 RC_TEST_MAIN()
 ```
+
+---
+
+## richc/template/array.h - view, span, array
+
+A template header that, for one element type, generates a read-only view, a
+mutable span, and a growable arena-backed array.
+
+### Instantiation
+
+Define `RC_ARRAY_TYPE` (and optionally `RC_ARRAY_NAME`) before including:
+
+```c
+#define RC_ARRAY_TYPE int
+#include "richc/template/array.h"   // rc_view_int, rc_span_int, rc_array_int
+```
+
+The generated types are `rc_array_<s>`, `rc_span_<s>`, `rc_view_<s>`, where `<s>`
+is `RC_ARRAY_NAME` (default: the element type's spelling, so it must be a single
+identifier - give a name for multi-token types). Both control macros are
+undefined again by the header, so it can be included again for another type.
+
+### Types
+
+```c
+typedef struct rc_view_<s>  { const T *data; uint32_t num; }              rc_view_<s>;
+typedef struct rc_span_<s>  {       T *data; uint32_t num; }              rc_span_<s>;
+typedef struct rc_array_<s> {       T *data; uint32_t num; uint32_t cap; } rc_array_<s>;
+```
+
+The span and array embed an anonymous union, so converting to a narrower type is
+a typesafe field access with no function call:
+
+```c
+rc_view_int v = arr.view;    // array -> view
+rc_span_int s = arr.span;    // array -> span
+rc_view_int w = s.view;      // span  -> view
+```
+
+### Shared macros (defined once, work on any view/span/array)
+
+- `RC_AT(c, i)` - bounds-checked element access; an lvalue, so it can be read or
+  assigned. Asserts `i < c.num`.
+- `RC_VIEW(arr)` / `RC_SPAN(arr)` - brace initializers from a C array
+  expression, for use in a declaration only. The count is derived via `sizeof`,
+  so `arr` must be a real array, not a pointer.
+
+```c
+int raw[] = {1, 2, 3};
+rc_view_int v = RC_VIEW(raw);
+rc_span_int s = RC_SPAN(raw);
+```
+
+### Array operations
+
+Construction and access:
+
+```c
+rc_array_<s> rc_array_<s>_make(uint32_t initial_capacity, rc_arena *arena);
+rc_array_<s> rc_array_<s>_make_copy(rc_view_<s> view, uint32_t minimum_capacity, rc_arena *arena);
+T            rc_array_<s>_get(const rc_array_<s> *array, uint32_t index);   // by value
+void         rc_array_<s>_set(rc_array_<s> *array, uint32_t index, T value);
+T           *rc_array_<s>_at(rc_array_<s> *array, uint32_t index);
+bool         rc_array_<s>_is_valid(const rc_array_<s> *array);   // owns a buffer (data != NULL)
+bool         rc_array_<s>_is_empty(const rc_array_<s> *array);   // num == 0
+```
+
+Capacity and size:
+
+```c
+void         rc_array_<s>_reserve(rc_array_<s> *array, uint32_t capacity, rc_arena *arena); // exact
+rc_span_<s>  rc_array_<s>_resize(rc_array_<s> *array, uint32_t num, rc_arena *arena);        // -> whole array
+void         rc_array_<s>_reset(rc_array_<s> *array);                                       // num = 0
+```
+
+`reserve` allocates the exact capacity requested. The growing operations below
+instead grow geometrically (to the larger of double the capacity, the request,
+or 8), so they stay amortised O(1). `resize` sets the element count and returns
+a span over the whole array - the idiom is to resize to a fixed size, then work
+through the returned span.
+
+Adding and removing:
+
+```c
+uint32_t rc_array_<s>_push(rc_array_<s> *array, T value, rc_arena *arena);           // -> index
+uint32_t rc_array_<s>_push_n(rc_array_<s> *array, uint32_t n, rc_arena *arena);      // n uninitialised; -> first index
+uint32_t rc_array_<s>_push_n_zero(rc_array_<s> *array, uint32_t n, rc_arena *arena); // n zeroed; -> first index
+T        rc_array_<s>_pop(rc_array_<s> *array);                                      // last by value; asserts non-empty
+void     rc_array_<s>_pop_n(rc_array_<s> *array, uint32_t n);                        // drop last n
+uint32_t rc_array_<s>_append(rc_array_<s> *array, rc_view_<s> view, rc_arena *arena);// -> new element count
+void     rc_array_<s>_insert(rc_array_<s> *array, uint32_t index, T value, rc_arena *arena);
+void     rc_array_<s>_insert_n(rc_array_<s> *array, uint32_t index, uint32_t n, rc_arena *arena);      // uninitialised
+void     rc_array_<s>_insert_n_zero(rc_array_<s> *array, uint32_t index, uint32_t n, rc_arena *arena); // zeroed
+void     rc_array_<s>_remove(rc_array_<s> *array, uint32_t index);                   // shift tail left
+void     rc_array_<s>_remove_n(rc_array_<s> *array, uint32_t index, uint32_t n);
+```
+
+### Span operations
+
+A span is passed by value; `set`/`at`/`last_at` write through to the underlying
+memory.
+
+```c
+rc_span_<s> rc_span_<s>_make(T *data, uint32_t num);            // wraps a pointer; no allocation
+bool        rc_span_<s>_is_valid(rc_span_<s> span);            // data != NULL
+bool        rc_span_<s>_is_empty(rc_span_<s> span);            // num == 0
+rc_span_<s> rc_span_<s>_get_subspan(rc_span_<s> span, uint32_t start, uint32_t end);  // [start, end), clamped
+rc_span_<s> rc_span_<s>_get_head(rc_span_<s> span, uint32_t n);  // first n, clamped
+rc_span_<s> rc_span_<s>_get_tail(rc_span_<s> span, uint32_t n);  // from index n, clamped
+T           rc_span_<s>_get(rc_span_<s> span, uint32_t index);   // by value
+void        rc_span_<s>_set(rc_span_<s> span, uint32_t index, T value);
+T          *rc_span_<s>_at(rc_span_<s> span, uint32_t index);
+T          *rc_span_<s>_last_at(rc_span_<s> span);               // asserts non-empty
+```
+
+### View operations
+
+The same set as span, minus `set` (read-only); `at`/`last_at` return `const`
+pointers, and the slice helpers take and return views.
+
+```c
+rc_view_<s> rc_view_<s>_make(const T *data, uint32_t num);      // wraps a pointer; no allocation
+bool        rc_view_<s>_is_valid(rc_view_<s> view);
+bool        rc_view_<s>_is_empty(rc_view_<s> view);
+rc_view_<s> rc_view_<s>_get_subview(rc_view_<s> view, uint32_t start, uint32_t end);  // clamped
+rc_view_<s> rc_view_<s>_get_head(rc_view_<s> view, uint32_t n);  // clamped
+rc_view_<s> rc_view_<s>_get_tail(rc_view_<s> view, uint32_t n);  // clamped
+T               rc_view_<s>_get(rc_view_<s> view, uint32_t index);
+const T        *rc_view_<s>_at(rc_view_<s> view, uint32_t index);
+const T        *rc_view_<s>_last_at(rc_view_<s> view);           // asserts non-empty
+```
+
+There is no allocating span/view constructor: allocation is the array's job. For
+a fixed-size allocated span, make an array and resize it
+(`rc_array_<s>_resize(&a, n, arena)` returns the span); for a copy, use
+`rc_array_<s>_make_copy(view, 0, arena)` and take its `.span` / `.view`.
+
+### Arena parameter
+
+Every operation that may reallocate takes `rc_arena *arena` last. Passing NULL
+is valid when no growth is required; a reallocation with `arena == NULL` asserts.
+Arena allocation never returns NULL (out of memory is a panic), so results are
+never NULL-checked.
