@@ -219,6 +219,20 @@ RC_TEST_STEP(array, reset, fix)
     RC_CHECK(a.cap, ==, cap);             // buffer retained
 }
 
+RC_TEST_STEP(array, deinit, fix)
+{
+    rc_array_int a = rc_array_int_make(0, &fix->a);
+    rc_array_int_push(&a, 1, &fix->a);
+    rc_array_int_push(&a, 2, &fix->a);
+    rc_array_int_deinit(&a, &fix->a);
+    RC_CHECK(a.num, ==, 0u);
+    RC_CHECK(a.cap, ==, 0u);
+    RC_CHECK_TRUE(a.data == NULL);
+    // deinit on an already-empty array is a no-op
+    rc_array_int_deinit(&a, &fix->a);
+    RC_CHECK_TRUE(a.data == NULL);
+}
+
 /* ---- insert / remove ---- */
 
 RC_TEST_STEP(array, insert, fix)

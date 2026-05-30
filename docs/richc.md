@@ -715,6 +715,7 @@ Capacity and size:
 void         rc_array_<s>_reserve(rc_array_<s> *array, uint32_t capacity, rc_arena *arena); // exact
 rc_span_<s>  rc_array_<s>_resize(rc_array_<s> *array, uint32_t num, rc_arena *arena);        // -> whole array
 void         rc_array_<s>_reset(rc_array_<s> *array);                                       // num = 0
+void         rc_array_<s>_deinit(rc_array_<s> *array, rc_arena *arena);                     // free + zero
 ```
 
 `reserve` allocates the exact capacity requested. The growing operations below
@@ -834,7 +835,7 @@ rc_trie_u64                                   // { pool *; uint32_t root; }
 
 rc_trie_u64_pool rc_trie_u64_pool_make(uint32_t min_blocks, rc_arena *arena);
 void             rc_trie_u64_pool_reserve(rc_trie_u64_pool *pool, uint32_t min_blocks, rc_arena *arena);
-void             rc_trie_u64_pool_destroy(rc_trie_u64_pool *pool, rc_arena *arena);
+void             rc_trie_u64_pool_deinit(rc_trie_u64_pool *pool, rc_arena *arena);
 
 rc_trie_u64      rc_trie_u64_make(rc_trie_u64_pool *pool, rc_arena *arena);
 bool             rc_trie_u64_contains(rc_trie_u64 *t, uint64_t key);                   // both set and map
@@ -863,12 +864,12 @@ int             *rc_trie_u64_value_at(rc_trie_u64 *t, uint32_t index);
   growth-stable.
 - Keys with identical hashes are handled correctly, forming an O(n)-deep chain
   (operations stay correct, access degrades to O(n) for n identical hashes).
-- `pool_make(0, ...)` is a valid empty pool; `pool_destroy` returns the backing
-  to the arena best-effort (LIFO) and resets the pool to empty.
-- `pool_make`/`pool_reserve`/`pool_reset` come from the `rc_pool` template; its
-  low-level block ops (`pool_alloc`/`pool_free`/`pool_get`/`pool_set`/`pool_at`)
-  are generated and used internally by the trie - do not call them on a pool that
-  backs tries.
+- A zero-initialised pool is a valid empty pool; `pool_deinit` frees the backing
+  (best-effort, LIFO) and zeroes the pool.
+- `pool_make`/`pool_reserve`/`pool_reset`/`pool_deinit` come from the `rc_pool`
+  template; its low-level block ops (`pool_alloc`/`pool_free`/`pool_get`/`pool_set`/
+  `pool_at`) are generated and used internally by the trie - do not call them on a
+  pool that backs tries.
 
 ---
 
@@ -890,16 +891,19 @@ stays valid for the element's lifetime regardless of other allocs/frees.
 Control macros: `RC_POOL_TYPE` (required); `RC_POOL_NAME` (optional; the default
 requires a single-identifier element type). Both are `#undef`'d by the header.
 Each slot is a `union { uint32_t next_free_; RC_POOL_TYPE value; }`, so an element
-type smaller than `uint32_t` rounds each slot up to 4 bytes.
+type smaller than `uint32_t` rounds each slot up to 4 bytes. The free list stores
+references as `index + 1` (0 = none), which lets index 0 be an ordinary list
+member and makes a **zero-initialised pool a valid empty pool** (no `make` needed).
 
 ### Generated type and functions
 
 ```c
-rc_pool_thing                                    // { array items; uint32_t first_free; }
+rc_pool_thing                                    // { array items; uint32_t first_free; } - { 0 } is valid
 
-rc_pool_thing rc_pool_thing_make(uint32_t capacity, rc_arena *arena);
+rc_pool_thing rc_pool_thing_make(uint32_t capacity, rc_arena *arena);   // optional; only to pre-reserve
 void          rc_pool_thing_reserve(rc_pool_thing *pool, uint32_t min_capacity, rc_arena *arena);
-void          rc_pool_thing_reset(rc_pool_thing *pool);                 // drop all elements
+void          rc_pool_thing_reset(rc_pool_thing *pool);                 // drop all elements, keep backing
+void          rc_pool_thing_deinit(rc_pool_thing *pool, rc_arena *arena); // free backing + zero
 uint32_t      rc_pool_thing_alloc(rc_pool_thing *pool, rc_arena *arena); // index of a zeroed slot
 void          rc_pool_thing_free(rc_pool_thing *pool, uint32_t index);
 thing         rc_pool_thing_get(const rc_pool_thing *pool, uint32_t index);

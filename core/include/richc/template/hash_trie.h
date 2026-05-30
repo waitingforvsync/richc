@@ -81,7 +81,7 @@
  * ----------------------------------------
  *   RC_TRIE_NAME_pool    NAME_pool_make(uint32_t min_blocks, rc_arena *arena)
  *   void                 NAME_pool_reserve(NAME_pool *pool, uint32_t min_blocks, rc_arena *arena)
- *   void                 NAME_pool_destroy(NAME_pool *pool, rc_arena *arena)
+ *   void                 NAME_pool_deinit(NAME_pool *pool, rc_arena *arena)
  *   RC_TRIE_NAME         NAME_make(NAME_pool *pool, rc_arena *arena)
  *   bool                 NAME_contains(NAME *t, RC_TRIE_KEY_TYPE key)
  *   bool                 NAME_add(NAME *t, RC_TRIE_KEY_TYPE key, [RC_TRIE_VALUE_TYPE val,] rc_arena *arena)
@@ -123,7 +123,7 @@
  *   int *p = rc_trie_u64_find_ptr(&a, 0xDEADBEEF);   // direct pointer (or NULL)
  *   rc_trie_u64_find(&b, 0xDEADBEEF);                // RC_INDEX_NONE: b is independent
  *
- *   rc_trie_u64_pool_destroy(&pool, &arena);
+ *   rc_trie_u64_pool_deinit(&pool, &arena);
  */
 
 #ifndef RC_TEMPLATE_HASH_TRIE_H_
@@ -181,7 +181,6 @@ static inline uint64_t rc_trie_ror64_(uint64_t h)
 
 /* ---- public function-name macros ---- */
 
-#define RC_TRIE_POOL_DESTROY_ RC_CONCAT(RC_TRIE_NAME, _pool_destroy)
 #define RC_TRIE_MAKE_         RC_CONCAT(RC_TRIE_NAME, _make)
 #define RC_TRIE_CONTAINS_     RC_CONCAT(RC_TRIE_NAME, _contains)
 #define RC_TRIE_FIND_         RC_CONCAT(RC_TRIE_NAME, _find)
@@ -229,26 +228,13 @@ typedef struct RC_TRIE_NAME {
     uint32_t       root;
 } RC_TRIE_NAME;
 
-/* ---- pool lifecycle ---- */
-
 /*
- * The pool's make / reserve / reset come from the rc_pool template as
- * RC_TRIE_NAME_pool_make / _pool_reserve / _pool_reset.  Its low-level block ops
- * (_pool_alloc / _free / _get / _set / _at) are generated too and used internally
- * by the trie; do not call them directly on a pool that backs tries.
- *
- * pool_destroy releases the pool's backing (best-effort: rc_arena_free reclaims
- * it only if it is the arena's most recent allocation; otherwise it is reclaimed
- * on arena reset) and resets the pool to a valid empty state.  Any trie still
- * referencing the pool must not be used afterwards.
+ * The pool lifecycle (make / reserve / reset / deinit) and its low-level block
+ * ops (alloc / free / get / set / at) all come from the rc_pool template, named
+ * RC_TRIE_NAME_pool_*.  Use pool_deinit to free the backing.  The block ops are
+ * used internally by the trie; do not call them directly on a pool that backs
+ * tries.
  */
-static inline void RC_TRIE_POOL_DESTROY_(RC_TRIE_POOL_ *pool, rc_arena *arena)
-{
-    RC_ASSERT(arena != NULL);
-    rc_arena_free(arena, pool->items.data,
-                  (uint32_t)((size_t)pool->items.cap * sizeof(*pool->items.data)));
-    *pool = (RC_TRIE_POOL_) {.first_free = RC_INDEX_NONE};
-}
 
 /* ---- internal: allocate a fresh, zeroed 16-node block ---- */
 
@@ -537,7 +523,6 @@ static inline bool RC_TRIE_DELETE_(RC_TRIE_NAME *t, RC_TRIE_KEY_TYPE key)
 #undef RC_TRIE_BLOCK_EMPTY_
 #undef RC_TRIE_DEL_FROM_
 #undef RC_TRIE_PROBE_
-#undef RC_TRIE_POOL_DESTROY_
 #undef RC_TRIE_MAKE_
 #undef RC_TRIE_CONTAINS_
 #undef RC_TRIE_FIND_

@@ -264,11 +264,11 @@ RC_TEST_STEP(hash_trie, pool_lifecycle, fix)
     rc_trie_test_add(&t, 7, 70, &fix->a);
     RC_CHECK(*rc_trie_test_find_ptr(&t, 7), ==, 70);
 
-    rc_trie_test_pool_destroy(&pool, &fix->a);
+    rc_trie_test_pool_deinit(&pool, &fix->a);
     RC_CHECK(pool.items.num, ==, 0u);
     RC_CHECK(pool.items.cap, ==, 0u);
     RC_CHECK_TRUE(pool.items.data == NULL);
-    RC_CHECK(pool.first_free, ==, RC_INDEX_NONE);
+    RC_CHECK(pool.first_free, ==, 0u);
 }
 
 RC_TEST_STEP(hash_trie, reclaim, fix)

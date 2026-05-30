@@ -51,6 +51,7 @@
  *   rc_array_<s>_reserve(array, capacity, arena)      -> void  (exact capacity)
  *   rc_array_<s>_resize(array, num, arena)            -> rc_span_<s> (whole array)
  *   rc_array_<s>_reset(array)                         -> void
+ *   rc_array_<s>_deinit(array, arena)                -> void  (free + zero)
  *   rc_array_<s>_push(array, value, arena)            -> uint32_t (index added)
  *   rc_array_<s>_push_n(array, n, arena)              -> uint32_t (first index; uninitialised)
  *   rc_array_<s>_push_n_zero(array, n, arena)         -> uint32_t (first index; zeroed)
@@ -153,6 +154,7 @@
 #define RC_ARRAY_GROW_          RC_CONCAT(RC_ARRAY_, _grow_)
 #define RC_ARRAY_RESIZE_        RC_CONCAT(RC_ARRAY_, _resize)
 #define RC_ARRAY_RESET_         RC_CONCAT(RC_ARRAY_, _reset)
+#define RC_ARRAY_DEINIT_        RC_CONCAT(RC_ARRAY_, _deinit)
 #define RC_ARRAY_PUSH_          RC_CONCAT(RC_ARRAY_, _push)
 #define RC_ARRAY_PUSH_N_        RC_CONCAT(RC_ARRAY_, _push_n)
 #define RC_ARRAY_PUSH_N_ZERO_   RC_CONCAT(RC_ARRAY_, _push_n_zero)
@@ -348,6 +350,17 @@ static inline void RC_ARRAY_RESET_(RC_ARRAY_ *array)
 {
     RC_ASSERT(array);
     array->num = 0;
+}
+
+// Free the backing allocation (best-effort, see rc_arena_free) and zero the
+// array, leaving it in a valid empty (zero-initialised) state.
+static inline void RC_ARRAY_DEINIT_(RC_ARRAY_ *array, rc_arena *arena)
+{
+    RC_ASSERT(array);
+    if (array->data) {
+        rc_arena_free(arena, array->data, (uint32_t)((size_t)array->cap * sizeof(RC_ARRAY_TYPE)));
+    }
+    *array = (RC_ARRAY_) {0};
 }
 
 // Append `value`; return its index.  arena may be NULL when no growth is needed.
@@ -615,6 +628,7 @@ static inline const RC_ARRAY_TYPE *RC_VIEW_LAST_AT_(RC_VIEW_ view)
 #undef RC_ARRAY_GROW_
 #undef RC_ARRAY_RESIZE_
 #undef RC_ARRAY_RESET_
+#undef RC_ARRAY_DEINIT_
 #undef RC_ARRAY_PUSH_
 #undef RC_ARRAY_PUSH_N_
 #undef RC_ARRAY_PUSH_N_ZERO_

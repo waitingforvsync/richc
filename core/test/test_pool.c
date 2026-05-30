@@ -115,8 +115,38 @@ RC_TEST_STEP(pool, reset, fix)
     rc_pool_int_alloc(&pool, &fix->a);
     rc_pool_int_reset(&pool);
     RC_CHECK(pool.items.num, ==, 0u);
-    RC_CHECK(pool.first_free, ==, RC_INDEX_NONE);
+    RC_CHECK(pool.first_free, ==, 0u);   // empty free list
     // allocation starts over from index 0
+    RC_CHECK(rc_pool_int_alloc(&pool, &fix->a), ==, 0u);
+}
+
+RC_TEST_STEP(pool, zero_init, fix)
+{
+    // a zero-initialised pool is a valid empty pool (no make needed)
+    rc_pool_int pool = {0};
+    RC_CHECK(rc_pool_int_alloc(&pool, &fix->a), ==, 0u);
+    rc_pool_int_set(&pool, 0, 42);
+    RC_CHECK(rc_pool_int_get(&pool, 0), ==, 42);
+    // free index 0 onto the list, then re-alloc it (index 0 must round-trip
+    // through the + 1 free-list encoding)
+    rc_pool_int_alloc(&pool, &fix->a);   // 1, so freeing 0 is not a trailing pop
+    rc_pool_int_free(&pool, 0);
+    RC_CHECK(rc_pool_int_alloc(&pool, &fix->a), ==, 0u);
+    RC_CHECK(rc_pool_int_get(&pool, 0), ==, 0);   // reused slot is zeroed
+}
+
+RC_TEST_STEP(pool, deinit, fix)
+{
+    rc_pool_int pool = rc_pool_int_make(8, &fix->a);
+    rc_pool_int_alloc(&pool, &fix->a);
+    rc_pool_int_alloc(&pool, &fix->a);
+
+    rc_pool_int_deinit(&pool, &fix->a);
+    RC_CHECK(pool.items.num, ==, 0u);
+    RC_CHECK(pool.items.cap, ==, 0u);
+    RC_CHECK_TRUE(pool.items.data == NULL);
+    RC_CHECK(pool.first_free, ==, 0u);
+    // the zeroed pool is usable again
     RC_CHECK(rc_pool_int_alloc(&pool, &fix->a), ==, 0u);
 }
 
