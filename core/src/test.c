@@ -125,6 +125,109 @@ void rc_test_check_str(rc_str actual, const char *op, rc_str expected, const cha
     longjmp(rc_test_jmp, 1);
 }
 
+/* The integer vectors support only exact == / != via the type's own is_equal. */
+
+void rc_test_check_vec2i(rc_vec2i actual, const char *op, rc_vec2i expected, const char *expr, const char *file, int line)
+{
+    if (rc_test_op2(op, "==")) {
+        if (rc_vec2i_is_equal(actual, expected)) return;
+    }
+    else if (rc_test_op2(op, "!=")) {
+        if (!rc_vec2i_is_equal(actual, expected)) return;
+    }
+    else {
+        printf("[FAIL]\n%s:%d: unsupported operation: %s\n", file, line, op);
+    }
+
+    printf("[FAIL]\n%s:%d: %s: actual (%d, %d)\n", file, line, expr, (int)actual.x, (int)actual.y);
+    longjmp(rc_test_jmp, 1);
+}
+
+void rc_test_check_vec3i(rc_vec3i actual, const char *op, rc_vec3i expected, const char *expr, const char *file, int line)
+{
+    if (rc_test_op2(op, "==")) {
+        if (rc_vec3i_is_equal(actual, expected)) return;
+    }
+    else if (rc_test_op2(op, "!=")) {
+        if (!rc_vec3i_is_equal(actual, expected)) return;
+    }
+    else {
+        printf("[FAIL]\n%s:%d: unsupported operation: %s\n", file, line, op);
+    }
+
+    printf("[FAIL]\n%s:%d: %s: actual (%d, %d, %d)\n", file, line, expr, (int)actual.x, (int)actual.y, (int)actual.z);
+    longjmp(rc_test_jmp, 1);
+}
+
+/*
+ * The float vectors support == / != (exact, via the type's own is_equal) and ~=
+ * (each component within rc_test_epsilon - the same per-component tolerance the
+ * scalar float check uses).
+ */
+
+void rc_test_check_vec2f(rc_vec2f actual, const char *op, rc_vec2f expected, const char *expr, const char *file, int line)
+{
+    if (rc_test_op2(op, "==")) {
+        if (rc_vec2f_is_equal(actual, expected)) return;
+    }
+    else if (rc_test_op2(op, "!=")) {
+        if (!rc_vec2f_is_equal(actual, expected)) return;
+    }
+    else if (rc_test_op2(op, "~=")) {
+        if (fabs(actual.x - expected.x) < rc_test_epsilon &&
+            fabs(actual.y - expected.y) < rc_test_epsilon) return;
+    }
+    else {
+        printf("[FAIL]\n%s:%d: unsupported operation: %s\n", file, line, op);
+    }
+
+    printf("[FAIL]\n%s:%d: %s: actual (%g, %g)\n", file, line, expr, actual.x, actual.y);
+    longjmp(rc_test_jmp, 1);
+}
+
+void rc_test_check_vec3f(rc_vec3f actual, const char *op, rc_vec3f expected, const char *expr, const char *file, int line)
+{
+    if (rc_test_op2(op, "==")) {
+        if (rc_vec3f_is_equal(actual, expected)) return;
+    }
+    else if (rc_test_op2(op, "!=")) {
+        if (!rc_vec3f_is_equal(actual, expected)) return;
+    }
+    else if (rc_test_op2(op, "~=")) {
+        if (fabs(actual.x - expected.x) < rc_test_epsilon &&
+            fabs(actual.y - expected.y) < rc_test_epsilon &&
+            fabs(actual.z - expected.z) < rc_test_epsilon) return;
+    }
+    else {
+        printf("[FAIL]\n%s:%d: unsupported operation: %s\n", file, line, op);
+    }
+
+    printf("[FAIL]\n%s:%d: %s: actual (%g, %g, %g)\n", file, line, expr, actual.x, actual.y, actual.z);
+    longjmp(rc_test_jmp, 1);
+}
+
+void rc_test_check_vec4f(rc_vec4f actual, const char *op, rc_vec4f expected, const char *expr, const char *file, int line)
+{
+    if (rc_test_op2(op, "==")) {
+        if (rc_vec4f_is_equal(actual, expected)) return;
+    }
+    else if (rc_test_op2(op, "!=")) {
+        if (!rc_vec4f_is_equal(actual, expected)) return;
+    }
+    else if (rc_test_op2(op, "~=")) {
+        if (fabs(actual.x - expected.x) < rc_test_epsilon &&
+            fabs(actual.y - expected.y) < rc_test_epsilon &&
+            fabs(actual.z - expected.z) < rc_test_epsilon &&
+            fabs(actual.w - expected.w) < rc_test_epsilon) return;
+    }
+    else {
+        printf("[FAIL]\n%s:%d: unsupported operation: %s\n", file, line, op);
+    }
+
+    printf("[FAIL]\n%s:%d: %s: actual (%g, %g, %g, %g)\n", file, line, expr, actual.x, actual.y, actual.z, actual.w);
+    longjmp(rc_test_jmp, 1);
+}
+
 int rc_test_run(const char *filter_string)
 {
     rc_str filter = rc_str_make(filter_string);

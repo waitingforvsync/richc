@@ -581,12 +581,23 @@ types and operators:
 | `int8_t` .. `uint64_t` (all fixed-width integers) | `==` `!=` `<` `>` `<=` `>=` |
 | `float`, `double` | `==` `!=` `<` `>` `<=` `>=` and `~=` |
 | `rc_str` | `==` `!=` |
+| `rc_vec2i`, `rc_vec3i` | `==` `!=` |
+| `rc_vec2f`, `rc_vec3f`, `rc_vec4f` | `==` `!=` and `~=` |
 
-`~=` is an approximate float compare with a fixed epsilon of 0.0001. Plain
-`int` / `unsigned` literals match the `int32_t` / `uint32_t` entries. A failing
-assertion prints the file, line, expression, and actual value, then aborts the
-current test (the runner records it as a failure and continues with the next
-test).
+`~=` is an approximate compare with a fixed epsilon of 0.0001; for the float
+vectors it holds when every component is within epsilon. The vector `==` / `!=`
+are exact, equivalent to the type's own `is_equal`. Plain `int` / `unsigned`
+literals match the `int32_t` / `uint32_t` entries. A failing assertion prints
+the file, line, expression, and actual value, then aborts the current test (the
+runner records it as a failure and continues with the next test).
+
+Because the vector types are first-class operands, a whole-vector comparison
+replaces a wrapped `is_equal` call or a set of per-component checks:
+
+```c
+RC_CHECK(rc_vec2f_add(a, b), ==, rc_vec2f_make(11.0f, 22.0f));
+RC_CHECK(rc_vec2f_normalize(rc_vec2f_make(3.0f, 4.0f)), ~=, rc_vec2f_make(0.6f, 0.8f));
+```
 
 ### Running
 
@@ -817,3 +828,64 @@ general.
 - `_cross(a, b)` -> `rc_vec3i` - each component is computed in `int64_t` and
   asserted to fit in `int32_t`.
 - `_is_equal(a, b)` -> `bool`.
+
+---
+
+## richc/math/vec2f.h - 2D float vector
+
+`rc_vec2f { float x, y; }`. All operations are inline; no heap allocation.
+
+- Construction: `rc_vec2f_make(x, y)`, `_make_zero`, `_make_unitx`,
+  `_make_unity`, `_make_sincos(angle)` -> `(sin, cos)`, `_make_cossin(angle)`
+  -> `(cos, sin)`, `_from_floats(p)` (from `float[2]`), `_from_vec2i(v)` (cast
+  from `rc_vec2i`).
+- Conversion: `_as_floats(a)` -> `const float *` (the components as `float[2]`).
+- Arithmetic (return `rc_vec2f`): `_add`, `_add3`, `_add4`, `_sub`,
+  `_scalar_mul`, `_scalar_div`, `_component_mul`, `_component_min`,
+  `_component_max`, `_component_floor`, `_component_ceil`, `_component_abs`,
+  `_lerp(a, b, t)` (`a + (b - a) * t`), `_perp` (the CCW perpendicular
+  `(-y, x)`), `_negate`.
+- Scalar results (`float`): `_dot`, `_wedge` (the 2D cross product),
+  `_lengthsqr`, `_length`.
+- `_normalize(a)` -> `rc_vec2f` - scales to unit length; asserts the vector is
+  non-zero. `_normalize_safe(a, tolerance)` returns the zero vector when the
+  length is below `tolerance` instead of asserting.
+- `_is_nearly_equal(a, b, tolerance)` -> `bool` (squared distance below
+  `tolerance^2`), `_is_equal(a, b)` -> `bool` (exact).
+
+---
+
+## richc/math/vec3f.h - 3D float vector
+
+`rc_vec3f { float x, y, z; }`. All operations are inline; no heap allocation.
+
+- Construction: `rc_vec3f_make(x, y, z)`, `_make_zero`, `_make_unitx/y/z`,
+  `_from_floats(p)` (from `float[3]`), `_from_vec2f(v, z)` (extend a `rc_vec2f`),
+  `_from_vec3i(v)` (cast from `rc_vec3i`).
+- Conversion: `_as_floats(a)` -> `const float *`.
+- Arithmetic (return `rc_vec3f`): `_add`, `_add3`, `_add4`, `_sub`,
+  `_scalar_mul`, `_scalar_div`, `_component_mul`, `_component_min`,
+  `_component_max`, `_component_floor`, `_component_ceil`, `_component_abs`,
+  `_lerp(a, b, t)`, `_negate`.
+- Scalar results (`float`): `_dot`, `_lengthsqr`, `_length`.
+- `_cross(a, b)` -> `rc_vec3f` - the 3D cross product.
+- `_normalize(a)` -> `rc_vec3f` (asserts non-zero), `_normalize_safe(a, tolerance)`.
+- `_is_nearly_equal(a, b, tolerance)` -> `bool`, `_is_equal(a, b)` -> `bool`.
+
+---
+
+## richc/math/vec4f.h - 4D float vector
+
+`rc_vec4f { float x, y, z, w; }`. All operations are inline; no heap allocation.
+
+- Construction: `rc_vec4f_make(x, y, z, w)`, `_make_zero`, `_make_unitx/y/z/w`,
+  `_from_floats(p)` (from `float[4]`), `_from_vec2f(v, z, w)` (extend a
+  `rc_vec2f`), `_from_vec3f(v, w)` (extend a `rc_vec3f`).
+- Conversion: `_as_floats(a)` -> `const float *`.
+- Arithmetic (return `rc_vec4f`): `_add`, `_add3`, `_add4`, `_sub`,
+  `_scalar_mul`, `_scalar_div`, `_component_mul`, `_component_min`,
+  `_component_max`, `_component_floor`, `_component_ceil`, `_component_abs`,
+  `_lerp(a, b, t)`, `_negate`.
+- Scalar results (`float`): `_dot`, `_lengthsqr`, `_length`.
+- `_normalize(a)` -> `rc_vec4f` (asserts non-zero), `_normalize_safe(a, tolerance)`.
+- `_is_nearly_equal(a, b, tolerance)` -> `bool`, `_is_equal(a, b)` -> `bool`.

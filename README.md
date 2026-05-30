@@ -94,8 +94,9 @@ Available now in core:
 - **Scalar ops** (`richc/ops.h`) - bit reinterpretation, integer min/max/sign,
   GCD, count-leading-zeros, and overflow checks.
 - **Math** (`richc/math/`) - integer vectors `rc_vec2i` / `rc_vec3i` (arithmetic,
-  dot/wedge/cross, etc.) and an integer box `rc_box2i`; more vector, matrix, and
-  quaternion types to follow.
+  dot/wedge/cross, etc.), float vectors `rc_vec2f` / `rc_vec3f` / `rc_vec4f`
+  (the same plus length/normalize/lerp), and an integer box `rc_box2i`; matrix
+  and quaternion types to follow.
 - **Hashing** (`richc/hash.h`) - `uint32_t` hashers for integers, floats,
   pointers, byte sequences, and strings, plus `rc_hash_combine`.
 - **Unit-test framework** (`richc/test.h`) - tests that register themselves

@@ -23,12 +23,15 @@
  * Assertions
  * ----------
  *   RC_CHECK(a, op, b)   compare a op b; op is one of == != < > <= >=
- *                        (and ~= for float/double, a fixed-epsilon compare)
+ *                        (and ~= for float/double and the float vectors, a
+ *                        fixed-epsilon compare)
  *   RC_CHECK_TRUE(a)     assert a is truthy
  *   RC_CHECK_FALSE(a)    assert a is falsy
  * The left operand selects the comparison via _Generic: bool, the fixed-width
- * integer types, float, double, and rc_str are supported.  A failing assertion
- * prints file:line and the actual value, then aborts the current test.
+ * integer types, float, double, rc_str, the integer vectors rc_vec2i/rc_vec3i
+ * (== and !=), and the float vectors rc_vec2f/rc_vec3f/rc_vec4f (==, !=, and ~=,
+ * the latter a per-component fixed-epsilon compare) are supported.  A failing
+ * assertion prints file:line and the actual value, then aborts the current test.
  *
  * Running
  * -------
@@ -42,7 +45,8 @@
 #ifndef RC_TEST_H_
 #define RC_TEST_H_
 
-#include "richc/str.h"   // also provides <stdint.h> / <stdbool.h>
+#include "richc/math/vec4f.h"   // transitively brings the whole vec2f/3f/4f and vec2i/3i family
+#include "richc/str.h"          // also provides <stdint.h> / <stdbool.h>
 
 /* ---- linker-section placement (compiler/platform specific) ---- */
 
@@ -171,13 +175,23 @@ struct rc_test {
         uint64_t: rc_test_check_int, \
         float: rc_test_check_float, \
         double: rc_test_check_float, \
-        rc_str: rc_test_check_str \
+        rc_str: rc_test_check_str, \
+        rc_vec2i: rc_test_check_vec2i, \
+        rc_vec3i: rc_test_check_vec3i, \
+        rc_vec2f: rc_test_check_vec2f, \
+        rc_vec3f: rc_test_check_vec3f, \
+        rc_vec4f: rc_test_check_vec4f \
     )(a, #op, b, #a " " #op " " #b, file, line)
 
 void rc_test_check_bool(bool actual, const char *op, bool expected, const char *expr, const char *file, int line);
 void rc_test_check_int(int64_t actual, const char *op, int64_t expected, const char *expr, const char *file, int line);
 void rc_test_check_float(double actual, const char *op, double expected, const char *expr, const char *file, int line);
 void rc_test_check_str(rc_str actual, const char *op, rc_str expected, const char *expr, const char *file, int line);
+void rc_test_check_vec2i(rc_vec2i actual, const char *op, rc_vec2i expected, const char *expr, const char *file, int line);
+void rc_test_check_vec3i(rc_vec3i actual, const char *op, rc_vec3i expected, const char *expr, const char *file, int line);
+void rc_test_check_vec2f(rc_vec2f actual, const char *op, rc_vec2f expected, const char *expr, const char *file, int line);
+void rc_test_check_vec3f(rc_vec3f actual, const char *op, rc_vec3f expected, const char *expr, const char *file, int line);
+void rc_test_check_vec4f(rc_vec4f actual, const char *op, rc_vec4f expected, const char *expr, const char *file, int line);
 
 /* ---- running ---- */
 

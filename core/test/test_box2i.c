@@ -17,9 +17,9 @@ RC_TEST(box2i, make)
 RC_TEST(box2i, make_pos_size)
 {
     rc_box2i b = rc_box2i_make_pos_size(rc_vec2i_make(3, 4), rc_vec2i_make(10, 20));
-    RC_CHECK_TRUE(rc_vec2i_is_equal(rc_box2i_min(b), rc_vec2i_make(3, 4)));
-    RC_CHECK_TRUE(rc_vec2i_is_equal(rc_box2i_max(b), rc_vec2i_make(13, 24)));
-    RC_CHECK_TRUE(rc_vec2i_is_equal(rc_box2i_size(b), rc_vec2i_make(10, 20)));
+    RC_CHECK(rc_box2i_min(b), ==, rc_vec2i_make(3, 4));
+    RC_CHECK(rc_box2i_max(b), ==, rc_vec2i_make(13, 24));
+    RC_CHECK(rc_box2i_size(b), ==, rc_vec2i_make(10, 20));
 }
 
 RC_TEST(box2i, make_with_margin)
