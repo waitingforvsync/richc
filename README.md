@@ -89,8 +89,9 @@ Available now in core:
 - **Byte buffers** (`richc/bytes.h`) - `rc_view_bytes` / `rc_span_bytes` /
   `rc_array_bytes`, the array template instantiated for `uint8_t`.
 - **Hash trie** (`richc/template/hash_trie.h`) - a template for a 16-way
-  arena-backed map keyed by a 64-bit hash; nodes are pooled 16 to a block in an
-  internal `rc_array`, and one pool can back many independent tries.
+  arena-backed map or set keyed by a 64-bit hash; nodes are pooled 16 to a block
+  in an internal `rc_pool` (so blocks emptied by delete are recycled), and one
+  pool can back many independent tries.
 - **Object pool** (`richc/template/pool.h`) - a template for an index-stable
   free-list pool over an `rc_array`: `alloc` returns a stable index, `free`
   recycles it, and freed slots are reused.

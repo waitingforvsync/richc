@@ -160,7 +160,7 @@ RC_TEST_STEP(pool, struct_elements, fix)
     RC_CHECK(zero.x, ==, 0);
     RC_CHECK(zero.y, ==, 0);
 
-    rc_pool_point_set(&pool, i, (rc_pool_point_value){.x = 3, .y = 4});
+    rc_pool_point_set(&pool, i, (rc_pool_point_value) {.x = 3, .y = 4});
     rc_pool_point_value p = rc_pool_point_get(&pool, i);
     RC_CHECK(p.x, ==, 3);
     RC_CHECK(p.y, ==, 4);

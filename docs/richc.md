@@ -799,11 +799,16 @@ pointer across growth in that case. Element indices are always stable.
 
 ## richc/template/hash_trie.h - 16-way hash trie
 
-A preprocessor template (like `array.h`) for an arena-backed map keyed by a
-64-bit hash. Each node has 16 children selected by successive 4-bit groups of the
-hash. Nodes are stored 16 to a block, and the blocks live in a pool that is
-internally just an `rc_array` of blocks (the array template handles growth and
-zero-fill). One pool can back many independent tries.
+A preprocessor template (like `array.h`) for an arena-backed map or set keyed by
+a 64-bit hash. Each node has 16 children selected by successive 4-bit groups of
+the hash. Nodes are stored 16 to a block, and the blocks live in an `rc_pool`
+(`richc/template/pool.h`), so a block emptied by `delete` is freed back and
+recycled by a later allocation rather than leaking. One pool can back many
+independent tries.
+
+Define `RC_TRIE_VALUE_TYPE` for a map; omit it for a set (then the node carries
+no value, `add` takes no value, and `find` / `find_ptr` / `value_*` are not
+generated).
 
 ### Instantiation
 
@@ -815,15 +820,16 @@ zero-fill). One pool can back many independent tries.
 #include "richc/template/hash_trie.h"
 ```
 
-Control macros: `RC_TRIE_KEY_TYPE`, `RC_TRIE_VALUE_TYPE`, `RC_TRIE_HASH(k)`
-(required); `RC_TRIE_EQUAL(a, b)` (optional, default `(a) == (b)`); `RC_TRIE_NAME`
-(optional; the default requires a single-identifier key type, so pass an explicit
-name for multi-token keys). All are `#undef`'d by the header.
+Control macros: `RC_TRIE_KEY_TYPE`, `RC_TRIE_HASH(k)` (required);
+`RC_TRIE_VALUE_TYPE` (optional - present for a map, absent for a set);
+`RC_TRIE_EQUAL(a, b)` (optional, default `(a) == (b)`); `RC_TRIE_NAME` (optional;
+the default requires a single-identifier key type, so pass an explicit name for
+multi-token keys). All are `#undef`'d by the header.
 
 ### Generated types and functions
 
 ```c
-rc_trie_u64_pool                              // arena-backed array of 16-node blocks
+rc_trie_u64_pool                              // an rc_pool of 16-node blocks
 rc_trie_u64                                   // { pool *; uint32_t root; }
 
 rc_trie_u64_pool rc_trie_u64_pool_make(uint32_t min_blocks, rc_arena *arena);
@@ -831,20 +837,38 @@ void             rc_trie_u64_pool_reserve(rc_trie_u64_pool *pool, uint32_t min_b
 void             rc_trie_u64_pool_destroy(rc_trie_u64_pool *pool, rc_arena *arena);
 
 rc_trie_u64      rc_trie_u64_make(rc_trie_u64_pool *pool, rc_arena *arena);
-int             *rc_trie_u64_find(rc_trie_u64 *t, uint64_t key);                       // NULL if absent
-bool             rc_trie_u64_add(rc_trie_u64 *t, uint64_t key, int val, rc_arena *arena);  // true if new
+bool             rc_trie_u64_contains(rc_trie_u64 *t, uint64_t key);                   // both set and map
+bool             rc_trie_u64_add(rc_trie_u64 *t, uint64_t key, int val, rc_arena *arena);  // a set omits val
 bool             rc_trie_u64_delete(rc_trie_u64 *t, uint64_t key);                     // true if present
+
+// map only (RC_TRIE_VALUE_TYPE defined):
+uint32_t         rc_trie_u64_find(rc_trie_u64 *t, uint64_t key);                       // node index, or RC_INDEX_NONE
+int             *rc_trie_u64_find_ptr(rc_trie_u64 *t, uint64_t key);                   // value pointer, or NULL
+int              rc_trie_u64_value_get(rc_trie_u64 *t, uint32_t index);
+void             rc_trie_u64_value_set(rc_trie_u64 *t, uint32_t index, int value);
+int             *rc_trie_u64_value_at(rc_trie_u64 *t, uint32_t index);
 ```
 
-- `find` returns a pointer into the pool. It survives an `add` that grows the
-  pool in place (the intended one-growable-per-arena case); only an `add` that
-  relocates the pool - when it shares an arena with other growables - invalidates
-  it.
-- `add` returns true when the key was new, false when it replaced a value.
+- `contains` reports membership and works for both set and map tries.
+- `add` returns true when the key was new, false when it was already present (a
+  map then replaces its value); a set's `add` takes no `val`.
+- `find` (map only) returns a node index (`block * 16 + slot`), or `RC_INDEX_NONE`
+  if absent; read or write the value with `value_get` / `value_set` / `value_at`.
+  Following richc's index-first style, the index is stable across pool growth
+  (prefer it to hold a result), and is valid until the next add/delete that
+  restructures the trie.
+- `find_ptr` (map only) returns the value pointer directly - faster for one-shot
+  access, but the pointer follows the usual pool rule (survives in-place growth,
+  invalidated by a relocating grow), whereas the index from `find` is always
+  growth-stable.
 - Keys with identical hashes are handled correctly, forming an O(n)-deep chain
   (operations stay correct, access degrades to O(n) for n identical hashes).
 - `pool_make(0, ...)` is a valid empty pool; `pool_destroy` returns the backing
   to the arena best-effort (LIFO) and resets the pool to empty.
+- `pool_make`/`pool_reserve`/`pool_reset` come from the `rc_pool` template; its
+  low-level block ops (`pool_alloc`/`pool_free`/`pool_get`/`pool_set`/`pool_at`)
+  are generated and used internally by the trie - do not call them on a pool that
+  backs tries.
 
 ---
 

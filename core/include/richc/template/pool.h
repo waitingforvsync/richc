@@ -139,7 +139,7 @@ typedef struct RC_POOL_NAME {
 /* Create a pool, optionally pre-reserving room for `capacity` slots (0 for none). */
 static inline RC_POOL_NAME RC_POOL_MAKE_(uint32_t capacity, rc_arena *arena)
 {
-    return (RC_POOL_NAME){
+    return (RC_POOL_NAME) {
         .items      = RC_POOL_ARRAY_MAKE_(capacity, arena),
         .first_free = RC_INDEX_NONE
     };
@@ -197,7 +197,7 @@ static inline uint32_t RC_POOL_ALLOC_(RC_POOL_NAME *pool, rc_arena *arena)
     }
     uint32_t index = pool->first_free;
     pool->first_free = pool->items.data[index].next_free_;
-    RC_POOL_SET_(pool, index, (RC_POOL_TYPE){0});   // zero the reused slot
+    RC_POOL_SET_(pool, index, (RC_POOL_TYPE) {0});   // zero the reused slot
     return index;
 }
 
