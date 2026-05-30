@@ -12,6 +12,7 @@ add_library(richc STATIC
     include/richc/file.h
     include/richc/hash.h
     include/richc/macros.h
+    include/richc/math/box2i.h
     include/richc/math/vec2i.h
     include/richc/math/vec3i.h
     include/richc/mstr.h
@@ -40,6 +41,7 @@ target_link_libraries(richc PRIVATE m)
 add_executable(richc_core_test
     test/test_arena.c
     test/test_array.c
+    test/test_box2i.c
     test/test_bytes.c
     test/test_file.c
     test/test_hash.c

@@ -49,6 +49,7 @@ Templates:
 
 Math:
 
+- [richc/math/box2i.h - 2D integer box](#richcmathbox2ih---2d-integer-box)
 - [richc/math/vec2i.h - 2D integer vector](#richcmathvec2ih---2d-integer-vector)
 - [richc/math/vec3i.h - 3D integer vector](#richcmathvec3ih---3d-integer-vector)
 
@@ -757,6 +758,28 @@ Every operation that may reallocate takes `rc_arena *arena` last. Passing NULL
 is valid when no growth is required; a reallocation with `arena == NULL` asserts.
 Arena allocation never returns NULL (out of memory is a panic), so results are
 never NULL-checked.
+
+---
+
+## richc/math/box2i.h - 2D integer box
+
+`rc_box2i { rc_vec2i min_; rc_vec2i max_; }` - an axis-aligned bounding box over
+the half-open region `[min, max)` (min inclusive, max exclusive, matching pixel
+/ tile grids). `min <= max` component-wise is an invariant: the constructors
+establish it and the queries assume it, but C cannot enforce it on a
+hand-initialised box, so a caller that builds one directly must uphold it. The
+corners are internal members (trailing underscore); read them via the accessors.
+
+- Construction: `rc_box2i_make(a, b)` (sorts the two corners),
+  `rc_box2i_make_pos_size(pos, size)` (top-left + extent),
+  `rc_box2i_make_with_margin(a, b, margin)` (sorted corners expanded by `margin`
+  on each side; asserts no `int32_t` overflow).
+- Accessors: `rc_box2i_min(a)` and `rc_box2i_max(a)` -> `rc_vec2i` (the corners),
+  `rc_box2i_size(a)` -> `rc_vec2i` (the extent `max - min`).
+- Queries: `rc_box2i_contains(a, b)` -> `bool`, `rc_box2i_intersects(a, b)` ->
+  `bool` (touching edges do not count), `rc_box2i_contains_point(a, p)` -> `bool`.
+- Combination: `rc_box2i_union(a, b)` (smallest box containing both),
+  `rc_box2i_expand(a, p)` (smallest box containing `a` and the point `p`).
 
 ---
 
