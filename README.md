@@ -88,6 +88,9 @@ Available now in core:
   non-owning windows.
 - **Byte buffers** (`richc/bytes.h`) - `rc_view_bytes` / `rc_span_bytes` /
   `rc_array_bytes`, the array template instantiated for `uint8_t`.
+- **Hash trie** (`richc/template/hash_trie.h`) - a template for a 16-way
+  arena-backed map keyed by a 64-bit hash; nodes are pooled 16 to a block in an
+  internal `rc_array`, and one pool can back many independent tries.
 - **File I/O** (`richc/file.h`) - whole-file load and save with `rc_str`
   filenames; immutable and mutable load variants returning `rc_str`/`rc_mstr`
   and `rc_view_bytes`/`rc_array_bytes`.

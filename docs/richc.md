@@ -46,6 +46,7 @@ Headers:
 Templates:
 
 - [richc/template/array.h - view, span, array](#richctemplatearrayh---view-span-array)
+- [richc/template/hash_trie.h - 16-way hash trie](#richctemplatehash_trieh---16-way-hash-trie)
 
 Math:
 
@@ -783,6 +784,55 @@ Every operation that may reallocate takes `rc_arena *arena` last. Passing NULL
 is valid when no growth is required; a reallocation with `arena == NULL` asserts.
 Arena allocation never returns NULL (out of memory is a panic), so results are
 never NULL-checked.
+
+---
+
+## richc/template/hash_trie.h - 16-way hash trie
+
+A preprocessor template (like `array.h`) for an arena-backed map keyed by a
+64-bit hash. Each node has 16 children selected by successive 4-bit groups of the
+hash. Nodes are stored 16 to a block, and the blocks live in a pool that is
+internally just an `rc_array` of blocks (the array template handles growth and
+zero-fill). One pool can back many independent tries.
+
+### Instantiation
+
+```c
+#define RC_TRIE_KEY_TYPE   uint64_t
+#define RC_TRIE_VALUE_TYPE int
+#define RC_TRIE_HASH(k)    rc_hash_u64(k)   // expression cast to uint64_t
+#define RC_TRIE_NAME       rc_trie_u64      // optional; default rc_trie_<KEY_TYPE>
+#include "richc/template/hash_trie.h"
+```
+
+Control macros: `RC_TRIE_KEY_TYPE`, `RC_TRIE_VALUE_TYPE`, `RC_TRIE_HASH(k)`
+(required); `RC_TRIE_EQUAL(a, b)` (optional, default `(a) == (b)`); `RC_TRIE_NAME`
+(optional; the default requires a single-identifier key type, so pass an explicit
+name for multi-token keys). All are `#undef`'d by the header.
+
+### Generated types and functions
+
+```c
+rc_trie_u64_pool                              // arena-backed array of 16-node blocks
+rc_trie_u64                                   // { pool *; uint32_t root; }
+
+rc_trie_u64_pool rc_trie_u64_pool_make(uint32_t min_blocks, rc_arena *arena);
+void             rc_trie_u64_pool_reserve(rc_trie_u64_pool *pool, uint32_t min_blocks, rc_arena *arena);
+void             rc_trie_u64_pool_destroy(rc_trie_u64_pool *pool, rc_arena *arena);
+
+rc_trie_u64      rc_trie_u64_make(rc_trie_u64_pool *pool, rc_arena *arena);
+int             *rc_trie_u64_find(rc_trie_u64 *t, uint64_t key);                       // NULL if absent
+bool             rc_trie_u64_add(rc_trie_u64 *t, uint64_t key, int val, rc_arena *arena);  // true if new
+bool             rc_trie_u64_delete(rc_trie_u64 *t, uint64_t key);                     // true if present
+```
+
+- `find` returns a pointer into the pool; a later `add` that grows the pool
+  invalidates it.
+- `add` returns true when the key was new, false when it replaced a value.
+- Keys with identical hashes are handled correctly, forming an O(n)-deep chain
+  (operations stay correct, access degrades to O(n) for n identical hashes).
+- `pool_make(0, ...)` is a valid empty pool; `pool_destroy` returns the backing
+  to the arena best-effort (LIFO) and resets the pool to empty.
 
 ---
 

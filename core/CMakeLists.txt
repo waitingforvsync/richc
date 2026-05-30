@@ -35,6 +35,7 @@ add_library(richc STATIC
     include/richc/ops.h
     include/richc/str.h
     include/richc/template/array.h
+    include/richc/template/hash_trie.h
     include/richc/test.h
 )
 
@@ -62,6 +63,7 @@ add_executable(richc_core_test
     test/test_bytes.c
     test/test_file.c
     test/test_hash.c
+    test/test_hash_trie.c
     test/test_mat22f.c
     test/test_mat23f.c
     test/test_mat33f.c
