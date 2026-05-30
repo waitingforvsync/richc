@@ -98,6 +98,11 @@ Available now in core:
 - **Object pool** (`richc/template/pool.h`) - a template for an index-stable
   free-list pool over an `rc_array`: `alloc` returns a stable index, `free`
   recycles it, and freed slots are reused.
+- **Binary search** (`richc/template/lower_bound.h`,
+  `richc/template/upper_bound.h`) - templates generating `lower_bound` and
+  `upper_bound` over a sorted `rc_view`: the first index whose element is
+  `>= value` and the first whose element is `> value`, with an optional custom
+  comparator and context pointer.
 - **File I/O** (`richc/file.h`) - whole-file load and save with `rc_str`
   filenames; immutable and mutable load variants returning `rc_str`/`rc_mstr`
   and `rc_view_bytes`/`rc_array_bytes`.

@@ -48,7 +48,9 @@ Templates:
 
 - [richc/template/array.h - view, span, array](#richctemplatearrayh---view-span-array)
 - [richc/template/hash_trie.h - 16-way hash trie](#richctemplatehash_trieh---16-way-hash-trie)
+- [richc/template/lower_bound.h - binary search](#richctemplatelower_boundh---binary-search)
 - [richc/template/pool.h - free-list object pool](#richctemplatepoolh---free-list-object-pool)
+- [richc/template/upper_bound.h - binary search](#richctemplateupper_boundh---binary-search)
 
 Math:
 
@@ -958,6 +960,56 @@ int             *rc_trie_u64_value_at(rc_trie_u64 *t, uint32_t index);
 
 ---
 
+## richc/template/lower_bound.h - binary search
+
+A preprocessor template (like `array.h`) that generates a binary search over a
+sorted `rc_view`. It finds the first element `e` for which `!(e < value)` - the
+first element `>= value` when the view is sorted ascending under the comparison -
+and returns its index, or `view.num` if every element is less than `value`.
+Include it again (after redefining the control macros) for another element type.
+
+### Instantiation
+
+```c
+#define RC_LOWER_BOUND_TYPE int
+#include "richc/template/lower_bound.h"
+// uint32_t rc_lower_bound_int(rc_view_int view, int value);
+```
+
+| Control macro | Required | Default | Meaning |
+|---------------|----------|---------|---------|
+| `RC_LOWER_BOUND_TYPE` | yes | - | element type |
+| `RC_LOWER_BOUND_CTX`  | no  | none | context type threaded to the comparator |
+| `RC_LOWER_BOUND_CMP`  | no  | `(a) < (b)` | comparator expression |
+| `RC_LOWER_BOUND_VIEW` | no  | `rc_view_<TYPE>` | view type to search |
+| `RC_LOWER_BOUND_NAME` | no  | `rc_lower_bound_<TYPE>` | generated function name |
+
+All macros defined before inclusion are undefined again by the header. The
+default `VIEW` and `NAME` paste `<TYPE>`, so they require a single-identifier
+type; give an explicit `RC_LOWER_BOUND_VIEW` / `RC_LOWER_BOUND_NAME` for a
+multi-token element type.
+
+### Comparator and context
+
+Without a context the comparator is `RC_LOWER_BOUND_CMP(a, b)`, true iff `a < b`.
+Defining `RC_LOWER_BOUND_CTX` adds a context pointer as the comparator's first
+argument and as a function parameter:
+
+```c
+typedef struct { int sign; } sign_ctx;
+#define RC_LOWER_BOUND_TYPE          int
+#define RC_LOWER_BOUND_CTX           sign_ctx
+#define RC_LOWER_BOUND_CMP(c, a, b)  ((c)->sign * (a) < (c)->sign * (b))
+#define RC_LOWER_BOUND_NAME          rc_lower_bound_signed
+#include "richc/template/lower_bound.h"
+// uint32_t rc_lower_bound_signed(rc_view_int view, sign_ctx *ctx, int value);
+```
+
+The generated signature is `uint32_t NAME(VIEW view, TYPE value)` without a
+context, or `uint32_t NAME(VIEW view, CTX *ctx, TYPE value)` with one.
+
+---
+
 ## richc/template/pool.h - free-list object pool
 
 A preprocessor template (like `array.h`) for an index-stable object pool backed
@@ -1007,6 +1059,44 @@ thing        *rc_pool_thing_at(rc_pool_thing *pool, uint32_t index);    // point
   a caller error.
 - There is no iteration: a freed slot is indistinguishable from a live one, so
   walk `[0, items.num)` only with separate liveness information.
+
+---
+
+## richc/template/upper_bound.h - binary search
+
+A preprocessor template (like `array.h`) that generates a binary search over a
+sorted `rc_view`. It finds the first element `e` for which `!(e <= value)` - the
+first element strictly greater than `value` when the view is sorted ascending
+under the comparison - and returns its index, or `view.num` if every element is
+`<= value`. It is the companion to `lower_bound.h`: with duplicates of `value`
+present, `lower_bound` gives the first matching index and `upper_bound` the index
+just past the last, so `[lower, upper)` is the equal range.
+
+### Instantiation
+
+```c
+#define RC_UPPER_BOUND_TYPE int
+#include "richc/template/upper_bound.h"
+// uint32_t rc_upper_bound_int(rc_view_int view, int value);
+```
+
+| Control macro | Required | Default | Meaning |
+|---------------|----------|---------|---------|
+| `RC_UPPER_BOUND_TYPE` | yes | - | element type |
+| `RC_UPPER_BOUND_CTX`  | no  | none | context type threaded to the comparator |
+| `RC_UPPER_BOUND_CMP`  | no  | `(a) < (b)` | comparator expression |
+| `RC_UPPER_BOUND_VIEW` | no  | `rc_view_<TYPE>` | view type to search |
+| `RC_UPPER_BOUND_NAME` | no  | `rc_upper_bound_<TYPE>` | generated function name |
+
+The comparator and context conventions are identical to `lower_bound.h`: the
+comparator is `RC_UPPER_BOUND_CMP(a, b)`, true iff `a < b`, and defining
+`RC_UPPER_BOUND_CTX` adds a context pointer as both the comparator's first
+argument and a function parameter. The `<=` test reuses this `<` comparator as
+`!(value < element)`, so no separate comparator is needed. All macros defined
+before inclusion are undefined again by the header.
+
+The generated signature is `uint32_t NAME(VIEW view, TYPE value)` without a
+context, or `uint32_t NAME(VIEW view, CTX *ctx, TYPE value)` with one.
 
 ---
 
