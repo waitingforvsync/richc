@@ -10,6 +10,8 @@
  * Byte sequences  : FNV-1a 32-bit (bytes, str).
  * Composition     : rc_hash_combine - mix a new hash into a running seed using
  *                   the Boost hash_combine formula.
+ * Vector types    : each component hashed by its scalar hash, then folded
+ *                   left-to-right with rc_hash_combine.
  *
  * Float edge cases
  * ----------------
@@ -28,7 +30,17 @@
 #ifndef RC_HASH_H_
 #define RC_HASH_H_
 
-#include "richc/str.h"
+#include <stdint.h>
+
+/* The hashes take their argument by value, but a prototype only needs the type
+ * declared, not complete - forward-declare the tags rather than pulling in the
+ * defining headers (the definitions in hash.c include them). */
+typedef struct rc_str rc_str;
+typedef struct rc_vec2i rc_vec2i;
+typedef struct rc_vec3i rc_vec3i;
+typedef struct rc_vec2f rc_vec2f;
+typedef struct rc_vec3f rc_vec3f;
+typedef struct rc_vec4f rc_vec4f;
 
 /* ---- integer types ---- */
 
@@ -54,5 +66,16 @@ uint32_t rc_hash_str(rc_str s);
 /* ---- composition ---- */
 
 uint32_t rc_hash_combine(uint32_t seed, uint32_t hash);
+
+/* ---- integer vector types ---- */
+
+uint32_t rc_hash_vec2i(rc_vec2i v);
+uint32_t rc_hash_vec3i(rc_vec3i v);
+
+/* ---- float vector types ---- */
+
+uint32_t rc_hash_vec2f(rc_vec2f v);
+uint32_t rc_hash_vec3f(rc_vec3f v);
+uint32_t rc_hash_vec4f(rc_vec4f v);
 
 #endif /* RC_HASH_H_ */

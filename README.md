@@ -98,7 +98,8 @@ Available now in core:
   (the same plus length/normalize/lerp), and axis-aligned boxes `rc_box2i` /
   `rc_box2f`; matrix and quaternion types to follow.
 - **Hashing** (`richc/hash.h`) - `uint32_t` hashers for integers, floats,
-  pointers, byte sequences, and strings, plus `rc_hash_combine`.
+  pointers, byte sequences, strings, and the vector types, plus
+  `rc_hash_combine`.
 - **Unit-test framework** (`richc/test.h`) - tests that register themselves
   automatically via linker sections, typed `RC_CHECK` assertions, group
   fixtures, and a filtering test runner. Part of the core library; it costs

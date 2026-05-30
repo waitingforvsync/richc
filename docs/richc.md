@@ -246,6 +246,12 @@ uint32_t rc_hash_ptr(const void *p);       // hashes the pointer, not the pointe
 uint32_t rc_hash_bytes(const void *data, uint32_t len);   // FNV-1a 32-bit
 uint32_t rc_hash_str(rc_str s);            // hashes the string's bytes
 uint32_t rc_hash_combine(uint32_t seed, uint32_t hash);   // Boost hash_combine
+
+uint32_t rc_hash_vec2i(rc_vec2i v);        // components folded with rc_hash_combine
+uint32_t rc_hash_vec3i(rc_vec3i v);
+uint32_t rc_hash_vec2f(rc_vec2f v);        // per-component rc_hash_f32, then folded
+uint32_t rc_hash_vec3f(rc_vec3f v);
+uint32_t rc_hash_vec4f(rc_vec4f v);
 ```
 
 `rc_hash_combine` mixes one hash into a running seed, for hashing a struct field
@@ -255,6 +261,10 @@ by field:
 uint32_t h = rc_hash_i32(point.x);
 h = rc_hash_combine(h, rc_hash_i32(point.y));
 ```
+
+The vector hashes are exactly this fold: each component is hashed by its scalar
+hash (`rc_hash_i32` or `rc_hash_f32`) and combined left-to-right, so component
+order matters and float vectors inherit the `-0.0f`/`+0.0f` normalisation.
 
 Float values `-0.0` and `+0.0` are equal under `==`, so they are normalised to
 hash the same. Hash functions for further types are added here as those types

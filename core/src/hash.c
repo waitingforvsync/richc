@@ -1,6 +1,8 @@
 #include "richc/hash.h"
 
+#include "richc/math/vec4f.h"
 #include "richc/ops.h"
+#include "richc/str.h"
 
 /* ---- integer types ---- */
 
@@ -80,4 +82,42 @@ uint32_t rc_hash_str(rc_str s)
 uint32_t rc_hash_combine(uint32_t seed, uint32_t hash)
 {
     return seed ^ (hash + 0x9e3779b9u + (seed << 6) + (seed >> 2));
+}
+
+/* ---- integer vector types ---- */
+
+uint32_t rc_hash_vec2i(rc_vec2i v)
+{
+    uint32_t h = rc_hash_i32(v.x);
+    return rc_hash_combine(h, rc_hash_i32(v.y));
+}
+
+uint32_t rc_hash_vec3i(rc_vec3i v)
+{
+    uint32_t h = rc_hash_i32(v.x);
+    h = rc_hash_combine(h, rc_hash_i32(v.y));
+    return rc_hash_combine(h, rc_hash_i32(v.z));
+}
+
+/* ---- float vector types ---- */
+
+uint32_t rc_hash_vec2f(rc_vec2f v)
+{
+    uint32_t h = rc_hash_f32(v.x);
+    return rc_hash_combine(h, rc_hash_f32(v.y));
+}
+
+uint32_t rc_hash_vec3f(rc_vec3f v)
+{
+    uint32_t h = rc_hash_f32(v.x);
+    h = rc_hash_combine(h, rc_hash_f32(v.y));
+    return rc_hash_combine(h, rc_hash_f32(v.z));
+}
+
+uint32_t rc_hash_vec4f(rc_vec4f v)
+{
+    uint32_t h = rc_hash_f32(v.x);
+    h = rc_hash_combine(h, rc_hash_f32(v.y));
+    h = rc_hash_combine(h, rc_hash_f32(v.z));
+    return rc_hash_combine(h, rc_hash_f32(v.w));
 }

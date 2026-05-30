@@ -51,3 +51,34 @@ RC_TEST(hash, combine)
     RC_CHECK(rc_hash_combine(a, b), ==, rc_hash_combine(a, b));      // deterministic
     RC_CHECK_TRUE(rc_hash_combine(a, b) != rc_hash_combine(b, a));   // order matters
 }
+
+RC_TEST(hash, integer_vectors)
+{
+    // the vector hash is the components folded left-to-right with combine
+    rc_vec2i a = rc_vec2i_make(3, 4);
+    RC_CHECK(rc_hash_vec2i(a), ==, rc_hash_combine(rc_hash_i32(3), rc_hash_i32(4)));
+
+    rc_vec3i b = rc_vec3i_make(3, 4, 5);
+    uint32_t expect3 = rc_hash_combine(rc_hash_combine(rc_hash_i32(3), rc_hash_i32(4)), rc_hash_i32(5));
+    RC_CHECK(rc_hash_vec3i(b), ==, expect3);
+
+    // order of components matters: (3, 4) and (4, 3) differ
+    RC_CHECK_TRUE(rc_hash_vec2i(a) != rc_hash_vec2i(rc_vec2i_make(4, 3)));
+}
+
+RC_TEST(hash, float_vectors)
+{
+    rc_vec2f a = rc_vec2f_make(1.0f, 2.0f);
+    RC_CHECK(rc_hash_vec2f(a), ==, rc_hash_combine(rc_hash_f32(1.0f), rc_hash_f32(2.0f)));
+
+    rc_vec4f b = rc_vec4f_make(1.0f, 2.0f, 3.0f, 4.0f);
+    uint32_t h = rc_hash_combine(rc_hash_f32(1.0f), rc_hash_f32(2.0f));
+    h = rc_hash_combine(h, rc_hash_f32(3.0f));
+    h = rc_hash_combine(h, rc_hash_f32(4.0f));
+    RC_CHECK(rc_hash_vec4f(b), ==, h);
+
+    // -0.0f and +0.0f hash equal per-component, so vectors differing only in
+    // signed zero hash the same
+    RC_CHECK(rc_hash_vec3f(rc_vec3f_make(-0.0f, 1.0f, 2.0f)), ==,
+             rc_hash_vec3f(rc_vec3f_make(0.0f, 1.0f, 2.0f)));
+}
