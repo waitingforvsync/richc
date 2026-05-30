@@ -40,6 +40,8 @@ add_library(richc STATIC
     include/richc/template/bitset_foreach.h
     include/richc/template/hash_trie.h
     include/richc/template/lower_bound.h
+    include/richc/template/max_element.h
+    include/richc/template/min_element.h
     include/richc/template/pool.h
     include/richc/template/pool_foreach.h
     include/richc/template/sort.h
@@ -80,6 +82,8 @@ add_executable(richc_core_test
     test/test_mat33f.c
     test/test_mat34f.c
     test/test_mat44f.c
+    test/test_max_element.c
+    test/test_min_element.c
     test/test_mstr.c
     test/test_ops.c
     test/test_pool.c

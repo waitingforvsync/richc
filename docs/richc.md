@@ -50,6 +50,8 @@ Templates:
 - [richc/template/bitset_foreach.h - iterate set bits](#richctemplatebitset_foreachh---iterate-set-bits)
 - [richc/template/hash_trie.h - 16-way hash trie](#richctemplatehash_trieh---16-way-hash-trie)
 - [richc/template/lower_bound.h - binary search](#richctemplatelower_boundh---binary-search)
+- [richc/template/max_element.h - index of the maximum](#richctemplatemax_elementh---index-of-the-maximum)
+- [richc/template/min_element.h - index of the minimum](#richctemplatemin_elementh---index-of-the-minimum)
 - [richc/template/pool.h - free-list object pool](#richctemplatepoolh---free-list-object-pool)
 - [richc/template/pool_foreach.h - iterate live pool entries](#richctemplatepool_foreachh---iterate-live-pool-entries)
 - [richc/template/sort.h - introsort](#richctemplatesorth---introsort)
@@ -1061,6 +1063,55 @@ typedef struct { int sign; } sign_ctx;
 
 The generated signature is `uint32_t NAME(VIEW view, TYPE value)` without a
 context, or `uint32_t NAME(VIEW view, CTX *ctx, TYPE value)` with one.
+
+---
+
+## richc/template/max_element.h - index of the maximum
+
+A preprocessor template (like `array.h`) that scans an `rc_view` and returns the
+index of the *first* element that no other element is greater than - the leftmost
+maximum under the comparison - or `RC_INDEX_NONE` if the view is empty. Include it
+again (after redefining the control macros) for another element type.
+
+### Instantiation
+
+```c
+#define RC_MAX_ELEMENT_TYPE int
+#include "richc/template/max_element.h"
+// uint32_t rc_max_element_int(rc_view_int view);
+```
+
+| Control macro | Required | Default | Meaning |
+|---------------|----------|---------|---------|
+| `RC_MAX_ELEMENT_TYPE` | yes | - | element type |
+| `RC_MAX_ELEMENT_CTX`  | no  | none | context type threaded to the comparator |
+| `RC_MAX_ELEMENT_CMP`  | no  | `(a) < (b)` | comparator expression (still "less than"; the template applies it the other way round) |
+| `RC_MAX_ELEMENT_VIEW` | no  | `rc_view_<TYPE>` | view type to scan |
+| `RC_MAX_ELEMENT_NAME` | no  | `rc_max_element_<TYPE>` | generated function name |
+
+The comparator and context conventions are identical to `lower_bound.h`: the
+comparator is true iff `a < b`, and defining `RC_MAX_ELEMENT_CTX` adds a context
+pointer as both the comparator's first argument and a function parameter. All
+macros defined before inclusion are undefined again by the header. The generated
+signature is `uint32_t NAME(VIEW view)` without a context, or
+`uint32_t NAME(VIEW view, CTX *ctx)` with one.
+
+---
+
+## richc/template/min_element.h - index of the minimum
+
+A preprocessor template (like `array.h`) that scans an `rc_view` and returns the
+index of the *first* element that no other element is less than - the leftmost
+minimum under the comparison - or `RC_INDEX_NONE` if the view is empty. It is the
+companion to `max_element.h` with an identical interface (`RC_MIN_ELEMENT_TYPE` /
+`_CTX` / `_CMP` / `_VIEW` / `_NAME`, default name `rc_min_element_<TYPE>`); only
+the chosen extreme differs.
+
+```c
+#define RC_MIN_ELEMENT_TYPE int
+#include "richc/template/min_element.h"
+// uint32_t rc_min_element_int(rc_view_int view);
+```
 
 ---
 

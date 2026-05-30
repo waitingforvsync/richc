@@ -110,6 +110,10 @@ Available now in core:
   `upper_bound` over a sorted `rc_view`: the first index whose element is
   `>= value` and the first whose element is `> value`, with an optional custom
   comparator and context pointer.
+- **Min / max element** (`richc/template/min_element.h`,
+  `richc/template/max_element.h`) - templates returning the index of the leftmost
+  minimum or maximum of an `rc_view` (`RC_INDEX_NONE` if empty), with an optional
+  custom comparator and context pointer.
 - **File I/O** (`richc/file.h`) - whole-file load and save with `rc_str`
   filenames; immutable and mutable load variants returning `rc_str`/`rc_mstr`
   and `rc_view_bytes`/`rc_array_bytes`.
