@@ -97,7 +97,9 @@ Available now in core:
   pool can back many independent tries.
 - **Object pool** (`richc/template/pool.h`) - a template for an index-stable
   free-list pool over an `rc_array`: `alloc` returns a stable index, `free`
-  recycles it, and freed slots are reused.
+  recycles it, and freed slots are reused. `pool_foreach.h` adds an iterator
+  template that visits the live entries (via a scratch-arena bitset of the dead
+  slots), calling a macro on each with an optional context.
 - **Sort** (`richc/template/sort.h`) - a template generating an in-place
   introsort over a mutable `rc_span` (quicksort with a heapsort fallback and
   insertion sort for small spans), with an optional custom comparator and

@@ -50,6 +50,7 @@ Templates:
 - [richc/template/hash_trie.h - 16-way hash trie](#richctemplatehash_trieh---16-way-hash-trie)
 - [richc/template/lower_bound.h - binary search](#richctemplatelower_boundh---binary-search)
 - [richc/template/pool.h - free-list object pool](#richctemplatepoolh---free-list-object-pool)
+- [richc/template/pool_foreach.h - iterate live pool entries](#richctemplatepool_foreachh---iterate-live-pool-entries)
 - [richc/template/sort.h - introsort](#richctemplatesorth---introsort)
 - [richc/template/upper_bound.h - binary search](#richctemplateupper_boundh---binary-search)
 
@@ -1047,6 +1048,7 @@ void          rc_pool_thing_free(rc_pool_thing *pool, uint32_t index);
 thing         rc_pool_thing_get(const rc_pool_thing *pool, uint32_t index);
 void          rc_pool_thing_set(rc_pool_thing *pool, uint32_t index, thing value);
 thing        *rc_pool_thing_at(rc_pool_thing *pool, uint32_t index);    // pointer; see below
+rc_bitset     rc_pool_thing_free_bitset(const rc_pool_thing *pool, rc_arena *arena);  // dead slots
 ```
 
 - `alloc` returns an INDEX (not a pointer); the slot's value is zeroed. It reuses
@@ -1058,8 +1060,66 @@ thing        *rc_pool_thing_at(rc_pool_thing *pool, uint32_t index);    // point
   which is popped so the backing does not keep a dead tail (this does not cascade
   into earlier free entries). Double-freeing or freeing an out-of-range index is
   a caller error.
-- There is no iteration: a freed slot is indistinguishable from a live one, so
-  walk `[0, items.num)` only with separate liveness information.
+- The pool itself does not iterate (a freed slot is indistinguishable from a live
+  one by inspection), but `free_bitset` exposes the liveness information: it
+  returns an `rc_bitset`, sized to `items.num` and allocated from `arena`, whose
+  set bits are exactly the free-list (dead) slots - so a clear bit is a live slot.
+  The [`pool_foreach`](#richctemplatepool_foreachh---iterate-live-pool-entries)
+  template builds on it to visit the live elements.
+
+---
+
+## richc/template/pool_foreach.h - iterate live pool entries
+
+A preprocessor template (like `sort.h`) that generates a function to visit the
+*live* entries of an `rc_pool`. The pool has no built-in iteration because a freed
+slot is byte-identical to a live one; this template bridges that by calling the
+pool's `free_bitset` to find the dead slots in a scratch arena, then invoking a
+caller-supplied macro on a pointer to each live element. Include it again (after
+redefining the control macros) to generate another iterator.
+
+### Instantiation
+
+```c
+#define RC_POOL_TYPE thing
+#include "richc/template/pool.h"            // rc_pool_thing + rc_pool_thing_free_bitset
+
+typedef struct { int total; } sum_ctx;
+static void add_cost(sum_ctx *c, thing *t) { c->total += t->cost; }
+
+#define RC_POOL_FOREACH_TYPE       thing
+#define RC_POOL_FOREACH_CTX        sum_ctx
+#define RC_POOL_FOREACH_FUNC(c, e) add_cost(c, e)
+#include "richc/template/pool_foreach.h"
+// void rc_pool_foreach_thing(rc_pool_thing *pool, sum_ctx *ctx, rc_arena scratch);
+```
+
+| Control macro | Required | Default | Meaning |
+|---------------|----------|---------|---------|
+| `RC_POOL_FOREACH_TYPE` | yes | - | element type / suffix; drives the defaults |
+| `RC_POOL_FOREACH_FUNC` | yes | - | per-element callback (see below) |
+| `RC_POOL_FOREACH_CTX`  | no  | none | context type threaded to the callback |
+| `RC_POOL_FOREACH_POOL` | no  | `rc_pool_<TYPE>` | pool type name (override for a custom `RC_POOL_NAME`) |
+| `RC_POOL_FOREACH_NAME` | no  | `rc_pool_foreach_<TYPE>` | generated function name |
+
+All macros defined before inclusion are undefined again by the header.
+
+### Callback and context
+
+Without a context the callback is `RC_POOL_FOREACH_FUNC(elem)`, where `elem` is a
+`RC_POOL_TYPE *` pointing at the live element (writable, so it can mutate in
+place). Defining `RC_POOL_FOREACH_CTX` adds a context pointer as the callback's
+first argument and as a function parameter:
+
+```c
+#define RC_POOL_FOREACH_FUNC(ctx, elem)  ...   // ctx is RC_POOL_FOREACH_CTX *
+```
+
+The generated signature is `void NAME(POOL *pool, rc_arena scratch)` without a
+context, or `void NAME(POOL *pool, CTX *ctx, rc_arena scratch)` with one. The
+`scratch` arena is taken by value (the standard scratch pattern): the dead-slot
+bitset is built in the caller's snapshot and discarded on return, leaving the
+caller's arena untouched.
 
 ---
 

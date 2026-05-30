@@ -40,6 +40,7 @@ add_library(richc STATIC
     include/richc/template/hash_trie.h
     include/richc/template/lower_bound.h
     include/richc/template/pool.h
+    include/richc/template/pool_foreach.h
     include/richc/template/sort.h
     include/richc/template/upper_bound.h
     include/richc/test.h
@@ -80,6 +81,7 @@ add_executable(richc_core_test
     test/test_mstr.c
     test/test_ops.c
     test/test_pool.c
+    test/test_pool_foreach.c
     test/test_quatf.c
     test/test_rational.c
     test/test_solve.c

@@ -31,8 +31,10 @@
  *
  * Iteration
  * ---------
- * A freed slot is indistinguishable from a live one, so the pool offers no
- * iteration: walk [0, num) only when you have separate liveness information.
+ * A freed slot is indistinguishable from a live one by inspecting it, so the only
+ * liveness information is the free list.  NAME_free_bitset materialises it as a
+ * bitset of the dead slots (set bit == free); the pool_foreach.h template builds
+ * that bitset in a scratch arena and calls a macro on each live element.
  *
  * Define before including:
  *   RC_POOL_TYPE   element type (required)
@@ -56,6 +58,7 @@
  *   RC_POOL_TYPE  NAME_get(const NAME *pool, uint32_t index)
  *   void          NAME_set(NAME *pool, uint32_t index, RC_POOL_TYPE value)
  *   RC_POOL_TYPE *NAME_at(NAME *pool, uint32_t index)             // pointer; see below
+ *   rc_bitset     NAME_free_bitset(const NAME *pool, rc_arena *arena)  // dead slots; see Iteration
  *
  * alloc returns an INDEX, not a pointer.  The index is always stable.  at returns
  * a pointer into the backing array: with the intended one-growable-per-arena
@@ -82,6 +85,7 @@
 #define RC_TEMPLATE_POOL_H_
 
 #include "richc/arena.h"   // also provides RC_CONCAT, RC_ASSERT, <stdint.h>
+#include "richc/bitset.h"
 
 #endif /* RC_TEMPLATE_POOL_H_ */
 
@@ -121,6 +125,7 @@
 #define RC_POOL_AT_      RC_CONCAT(RC_POOL_NAME, _at)
 #define RC_POOL_ALLOC_   RC_CONCAT(RC_POOL_NAME, _alloc)
 #define RC_POOL_FREE_    RC_CONCAT(RC_POOL_NAME, _free)
+#define RC_POOL_FREE_BITSET_ RC_CONCAT(RC_POOL_NAME, _free_bitset)
 
 /* ---- generated types ---- */
 
@@ -243,6 +248,26 @@ static inline void RC_POOL_FREE_(RC_POOL_NAME *pool, uint32_t index)
     }
 }
 
+/* ---- iteration support ---- */
+
+/*
+ * Build a bitset whose set bits are exactly the free-list (dead) slots, sized to
+ * items.num and allocated from `arena`; a clear bit is therefore a live slot.
+ * Intended for a scratch arena - see pool_foreach.h, which consumes it to visit
+ * the live elements.  An empty pool yields an empty bitset.
+ */
+static inline rc_bitset RC_POOL_FREE_BITSET_(const RC_POOL_NAME *pool, rc_arena *arena)
+{
+    rc_bitset dead = {0};
+    rc_bitset_resize(&dead, pool->items.num, arena);   // fresh bitset -> all bits 0
+    for (uint32_t link = pool->first_free; link != 0; ) {
+        uint32_t index = link - 1;                      // decode the + 1
+        rc_bitset_set(&dead, index);
+        link = pool->items.data[index].next_free_;
+    }
+    return dead;
+}
+
 /* ---- cleanup ---- */
 
 #undef RC_POOL_SLOT_
@@ -262,6 +287,7 @@ static inline void RC_POOL_FREE_(RC_POOL_NAME *pool, uint32_t index)
 #undef RC_POOL_AT_
 #undef RC_POOL_ALLOC_
 #undef RC_POOL_FREE_
+#undef RC_POOL_FREE_BITSET_
 
 #undef RC_POOL_NAME
 #undef RC_POOL_TYPE
