@@ -88,6 +88,9 @@ Available now in core:
   non-owning windows.
 - **Byte buffers** (`richc/bytes.h`) - `rc_view_bytes` / `rc_span_bytes` /
   `rc_array_bytes`, the array template instantiated for `uint8_t`.
+- **Bit array** (`richc/bitset.h`) - `rc_bitset`, a growable arena-backed array
+  of bits packed into `uint32_t` words, with set/clear/test, geometric `push`,
+  and whole-word set-bit iteration.
 - **Hash trie** (`richc/template/hash_trie.h`) - a template for a 16-way
   arena-backed map or set keyed by a 64-bit hash; nodes are pooled 16 to a block
   in an internal `rc_pool` (so blocks emptied by delete are recycled), and one
@@ -99,7 +102,7 @@ Available now in core:
   filenames; immutable and mutable load variants returning `rc_str`/`rc_mstr`
   and `rc_view_bytes`/`rc_array_bytes`.
 - **Scalar ops** (`richc/ops.h`) - bit reinterpretation, integer min/max/sign,
-  GCD, count-leading-zeros, and overflow checks.
+  GCD, count-leading-zeros, count-trailing-zeros, and overflow checks.
 - **Math** (`richc/math/`) - integer vectors `rc_vec2i` / `rc_vec3i` (arithmetic,
   dot/wedge/cross, etc.), float vectors `rc_vec2f` / `rc_vec3f` / `rc_vec4f`
   (the same plus length/normalize/lerp), axis-aligned boxes `rc_box2i` /

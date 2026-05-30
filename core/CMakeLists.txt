@@ -2,6 +2,7 @@
 
 add_library(richc STATIC
     src/arena.c
+    src/bitset.c
     src/file.c
     src/hash.c
     src/math/mat44f.c
@@ -12,6 +13,7 @@ add_library(richc STATIC
     src/str.c
     src/test.c
     include/richc/arena.h
+    include/richc/bitset.h
     include/richc/bytes.h
     include/richc/file.h
     include/richc/hash.h
@@ -59,6 +61,7 @@ target_link_libraries(richc PRIVATE m)
 add_executable(richc_core_test
     test/test_arena.c
     test/test_array.c
+    test/test_bitset.c
     test/test_box2f.c
     test/test_box2i.c
     test/test_bytes.c

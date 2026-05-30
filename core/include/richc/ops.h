@@ -78,6 +78,28 @@ static inline uint32_t rc_clz_u64(uint64_t a)
 #endif
 }
 
+/* ---- count trailing zeros (returns the bit width for 0) ---- */
+
+static inline uint32_t rc_ctz_u32(uint32_t a)
+{
+    if (a == 0) return 32;
+#ifdef _MSC_VER
+    return _tzcnt_u32(a);
+#else
+    return (uint32_t)__builtin_ctz(a);
+#endif
+}
+
+static inline uint32_t rc_ctz_u64(uint64_t a)
+{
+    if (a == 0) return 64;
+#ifdef _MSC_VER
+    return (uint32_t)_tzcnt_u64(a);
+#else
+    return (uint32_t)__builtin_ctzll(a);
+#endif
+}
+
 /* ---- overflow checks ---- */
 
 // True if a * b would overflow uint64_t.

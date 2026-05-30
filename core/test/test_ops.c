@@ -40,6 +40,18 @@ RC_TEST(ops, clz)
     RC_CHECK(rc_clz_u64(0x8000000000000000ull), ==, 0u);
 }
 
+RC_TEST(ops, ctz)
+{
+    RC_CHECK(rc_ctz_u32(0u), ==, 32u);
+    RC_CHECK(rc_ctz_u32(1u), ==, 0u);
+    RC_CHECK(rc_ctz_u32(0x80000000u), ==, 31u);
+    RC_CHECK(rc_ctz_u32(0x18u), ==, 3u);            // lowest set bit at 3
+    RC_CHECK(rc_ctz_u64(0ull), ==, 64u);
+    RC_CHECK(rc_ctz_u64(1ull), ==, 0u);
+    RC_CHECK(rc_ctz_u64(0x8000000000000000ull), ==, 63u);
+    RC_CHECK(rc_ctz_u64(0x100000000ull), ==, 32u);  // crosses the 32-bit boundary
+}
+
 RC_TEST(ops, overflow)
 {
     RC_CHECK_TRUE(rc_add_overflows_u64(UINT64_MAX, 1));

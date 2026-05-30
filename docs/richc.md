@@ -34,6 +34,7 @@ General conventions used throughout the library:
 Headers:
 
 - [richc/arena.h - arena allocator](#richcarenah---arena-allocator)
+- [richc/bitset.h - growable bit array](#richcbitseth---growable-bit-array)
 - [richc/bytes.h - byte buffers](#richcbytesh---byte-buffers)
 - [richc/file.h - file I/O](#richcfileh---file-io)
 - [richc/hash.h - hashing](#richchashh---hashing)
@@ -169,6 +170,77 @@ is unchanged on return:
 void build_temp(rc_arena scratch, rc_arena *out) {
     int *tmp    = rc_arena_alloc_type(&scratch, int, 1024);  // local only
     int *result = rc_arena_alloc_type(out, int, n);          // survives
+}
+```
+
+---
+
+## richc/bitset.h - growable bit array
+
+A dense, arena-backed array of bits packed into `uint32_t` words. Bit `i` lives
+in word `i / 32` at bit position `i % 32`.
+
+```c
+typedef struct rc_bitset {
+    uint32_t *data;
+    uint32_t  num;   // number of addressable bits
+    uint32_t  cap;   // capacity in bits; always a multiple of 32
+} rc_bitset;
+```
+
+A zero-initialised `rc_bitset` is a valid empty bitset:
+
+```c
+rc_bitset bs = {0};
+```
+
+**Invariant:** every bit at a position `>= num` is zero. This lets
+`get_next_set` scan whole words without a per-bit bounds check, and every
+mutator preserves it.
+
+### Allocating operations
+
+```c
+void     rc_bitset_reserve(rc_bitset *bs, uint32_t min_bits, rc_arena *arena);
+void     rc_bitset_resize(rc_bitset *bs, uint32_t new_num, rc_arena *arena);
+uint32_t rc_bitset_push(rc_bitset *bs, bool val, rc_arena *arena);
+uint32_t rc_bitset_push_n_zero(rc_bitset *bs, uint32_t n, rc_arena *arena);
+```
+
+- `reserve` ensures capacity for at least `min_bits`, allocated exactly (rounded
+  up to a whole word). No-op when `cap >= min_bits`.
+- `resize` sets `num` to `new_num`. Growing reserves exactly and leaves the new
+  bits 0; shrinking zeroes the vacated bits to keep the invariant.
+- `push` appends one bit set to `val` and returns its index (the old `num`).
+- `push_n_zero` appends `n` zero bits and returns the first index.
+
+`push` and `push_n_zero` grow geometrically - the larger of `2 * cap`, the
+request, or 64 bits (8 bytes) - matching the array growth policy. `arena` may be
+NULL whenever no growth is needed (a fitting `reserve`/`resize`, or any shrink).
+
+### Non-allocating operations
+
+```c
+void     rc_bitset_reset(rc_bitset *bs);                       // clear all bits; num/cap unchanged
+uint32_t rc_bitset_get_next_set(const rc_bitset *bs, uint32_t pos);  // first set bit at >= pos, or RC_INDEX_NONE
+```
+
+### Inline operations
+
+```c
+void     rc_bitset_set(rc_bitset *bs, uint32_t i);        // set bit i        (asserts i < num)
+void     rc_bitset_clear(rc_bitset *bs, uint32_t i);      // clear bit i      (asserts i < num)
+bool     rc_bitset_is_set(const rc_bitset *bs, uint32_t i);  // true if set    (asserts i < num)
+uint32_t rc_bitset_get_first_set(const rc_bitset *bs);    // first set bit, or RC_INDEX_NONE
+```
+
+### Iterating set bits
+
+```c
+for (uint32_t i = rc_bitset_get_first_set(&bs);
+     i != RC_INDEX_NONE;
+     i = rc_bitset_get_next_set(&bs, i + 1)) {
+    // use i
 }
 ```
 
@@ -388,6 +460,8 @@ int64_t  rc_gcd_i64(int64_t a, int64_t b);
 
 uint32_t rc_clz_u32(uint32_t a);           // count leading zeros (32 for a == 0)
 uint32_t rc_clz_u64(uint64_t a);           // count leading zeros (64 for a == 0)
+uint32_t rc_ctz_u32(uint32_t a);           // count trailing zeros (32 for a == 0)
+uint32_t rc_ctz_u64(uint64_t a);           // count trailing zeros (64 for a == 0)
 
 bool rc_mul_overflows_u64(uint64_t a, uint64_t b);   bool rc_add_overflows_u64(uint64_t a, uint64_t b);
 bool rc_add_overflows_i64(int64_t a, int64_t b);     bool rc_sub_overflows_i64(int64_t a, int64_t b);
