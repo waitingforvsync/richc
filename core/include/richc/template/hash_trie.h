@@ -83,8 +83,10 @@
  *   bool                 NAME_add(NAME *t, RC_TRIE_KEY_TYPE key, RC_TRIE_VALUE_TYPE val, rc_arena *arena)
  *   bool                 NAME_delete(NAME *t, RC_TRIE_KEY_TYPE key)
  *
- * find() returns a pointer to the stored value, or NULL if absent; it is
- * invalidated by any later add that grows the pool.  add() returns true if the
+ * find() returns a pointer to the stored value, or NULL if absent.  It survives
+ * an add that grows the pool in place (the intended one-growable-per-arena case);
+ * if the pool shares an arena with other growables, an add that relocates the
+ * pool invalidates it.  add() returns true if the
  * key was new, false if an existing value was replaced.  delete() returns true
  * if the key was present.
  *

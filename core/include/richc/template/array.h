@@ -322,8 +322,11 @@ static inline void RC_ARRAY_SET_(RC_ARRAY_ *array, uint32_t index, RC_ARRAY_TYPE
     array->data[index] = value;
 }
 
-// Return a mutable pointer to element `index`.  Asserts index < num.  The
-// pointer is invalidated by any subsequent growth.
+// Return a mutable pointer to element `index`.  Asserts index < num.  With the
+// intended one-growable-array-per-arena usage the buffer is always the arena's
+// latest allocation, so it grows in place (the VM-backed arena preserves the
+// address) and the pointer survives growth; sharing an arena among growables can
+// relocate a non-latest buffer on growth and invalidate the pointer.
 static inline RC_ARRAY_TYPE *RC_ARRAY_AT_(RC_ARRAY_ *array, uint32_t index)
 {
     RC_ASSERT(RC_ARRAY_IS_VALID_(array));

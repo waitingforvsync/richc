@@ -47,6 +47,7 @@ Templates:
 
 - [richc/template/array.h - view, span, array](#richctemplatearrayh---view-span-array)
 - [richc/template/hash_trie.h - 16-way hash trie](#richctemplatehash_trieh---16-way-hash-trie)
+- [richc/template/pool.h - free-list object pool](#richctemplatepoolh---free-list-object-pool)
 
 Math:
 
@@ -785,6 +786,15 @@ is valid when no growth is required; a reallocation with `arena == NULL` asserts
 Arena allocation never returns NULL (out of memory is a panic), so results are
 never NULL-checked.
 
+The intended usage is **one growable array per arena**. The arena reserves a
+large virtual address range and commits on demand, and `rc_arena_realloc` grows
+the latest allocation in place (the same address), so when the array is its
+arena's sole growable, growth never moves the buffer and pointers from `at`
+survive growth. If several growable arrays share one arena, growing one that is
+no longer the latest allocation relocates it (a copy to a new address), which
+invalidates outstanding pointers into it - so prefer holding an index over a
+pointer across growth in that case. Element indices are always stable.
+
 ---
 
 ## richc/template/hash_trie.h - 16-way hash trie
@@ -826,13 +836,64 @@ bool             rc_trie_u64_add(rc_trie_u64 *t, uint64_t key, int val, rc_arena
 bool             rc_trie_u64_delete(rc_trie_u64 *t, uint64_t key);                     // true if present
 ```
 
-- `find` returns a pointer into the pool; a later `add` that grows the pool
-  invalidates it.
+- `find` returns a pointer into the pool. It survives an `add` that grows the
+  pool in place (the intended one-growable-per-arena case); only an `add` that
+  relocates the pool - when it shares an arena with other growables - invalidates
+  it.
 - `add` returns true when the key was new, false when it replaced a value.
 - Keys with identical hashes are handled correctly, forming an O(n)-deep chain
   (operations stay correct, access degrades to O(n) for n identical hashes).
 - `pool_make(0, ...)` is a valid empty pool; `pool_destroy` returns the backing
   to the arena best-effort (LIFO) and resets the pool to empty.
+
+---
+
+## richc/template/pool.h - free-list object pool
+
+A preprocessor template (like `array.h`) for an index-stable object pool backed
+by an `rc_array`. `alloc` hands out a stable `uint32_t` index for a fixed-size
+element; freed indices are recycled through an in-band free list, so an index
+stays valid for the element's lifetime regardless of other allocs/frees.
+
+### Instantiation
+
+```c
+#define RC_POOL_TYPE thing
+#define RC_POOL_NAME rc_pool_thing   // optional; default rc_pool_<TYPE>
+#include "richc/template/pool.h"
+```
+
+Control macros: `RC_POOL_TYPE` (required); `RC_POOL_NAME` (optional; the default
+requires a single-identifier element type). Both are `#undef`'d by the header.
+Each slot is a `union { uint32_t next_free_; RC_POOL_TYPE value; }`, so an element
+type smaller than `uint32_t` rounds each slot up to 4 bytes.
+
+### Generated type and functions
+
+```c
+rc_pool_thing                                    // { array items; uint32_t first_free; }
+
+rc_pool_thing rc_pool_thing_make(uint32_t capacity, rc_arena *arena);
+void          rc_pool_thing_reserve(rc_pool_thing *pool, uint32_t min_capacity, rc_arena *arena);
+void          rc_pool_thing_reset(rc_pool_thing *pool);                 // drop all elements
+uint32_t      rc_pool_thing_alloc(rc_pool_thing *pool, rc_arena *arena); // index of a zeroed slot
+void          rc_pool_thing_free(rc_pool_thing *pool, uint32_t index);
+thing         rc_pool_thing_get(const rc_pool_thing *pool, uint32_t index);
+void          rc_pool_thing_set(rc_pool_thing *pool, uint32_t index, thing value);
+thing        *rc_pool_thing_at(rc_pool_thing *pool, uint32_t index);    // pointer; see below
+```
+
+- `alloc` returns an INDEX (not a pointer); the slot's value is zeroed. It reuses
+  a freed slot when one exists, otherwise appends, growing the backing. The index
+  is always stable; `at` pointers survive in-place growth (the intended
+  one-growable-per-arena case) but are invalidated if the backing relocates
+  because it shares an arena with other growables.
+- `free` pushes the slot onto the free list, except when it is the final slot,
+  which is popped so the backing does not keep a dead tail (this does not cascade
+  into earlier free entries). Double-freeing or freeing an out-of-range index is
+  a caller error.
+- There is no iteration: a freed slot is indistinguishable from a live one, so
+  walk `[0, items.num)` only with separate liveness information.
 
 ---
 
