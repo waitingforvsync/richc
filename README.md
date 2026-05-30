@@ -98,8 +98,9 @@ Available now in core:
   (the same plus length/normalize/lerp), axis-aligned boxes `rc_box2i` /
   `rc_box2f`, and column-major float matrices `rc_mat22f` / `rc_mat33f` /
   `rc_mat44f` with the 2D/3D affine transforms `rc_mat23f` / `rc_mat34f`
-  (multiply, determinant, inverse, rotation/projection/look-at builders);
-  quaternion types to follow.
+  (multiply, determinant, inverse, rotation/projection/look-at builders), and
+  the quaternion `rc_quatf` (compose/transform, slerp, exp/log/pow, and
+  matrix conversion both ways).
 - **Hashing** (`richc/hash.h`) - `uint32_t` hashers for integers, floats,
   pointers, byte sequences, strings, and the vector types, plus
   `rc_hash_combine`.

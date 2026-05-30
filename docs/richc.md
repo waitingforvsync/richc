@@ -1005,3 +1005,35 @@ All operations are inline.
 - Conversion: `_as_floats(m)` -> `const float *` (column-major `float[16]`).
 - Operations: `_add`, `_sub`, `_scalar_mul`, `_vec4f_mul(m, v)`, `_mul(a, b)`,
   `_transpose`, `_determinant` -> `float`, `_inverse` (asserts determinant != 0).
+
+---
+
+## richc/math/quatf.h - quaternion
+
+`rc_quatf { rc_vec3f xyz; float w; }` - a rotation as a quaternion `q = w + x*i +
+y*j + z*k` (Hamilton convention), identity `(0,0,0,1)`. The rotation-building
+constructors return unit quaternions; the component arithmetic does not preserve
+unit length, so normalise when a unit result is needed. The cheap value
+operations are inline; `make_angle_axis`, `from_mat33f`, `mat33f_from_quatf`,
+`slerp`, `exp`, `log`, and `pow` live in `src/math/quatf.c`.
+
+- Construction: `rc_quatf_make(x, y, z, w)`, `_make_identity`,
+  `_make_angle_axis(angle, axis)` (axis normalised internally), `_from_floats(p)`
+  (`x,y,z,w`), `_from_vec3f(xyz, w)`, `_from_mat33f(m)` (recovers the rotation
+  from an orthonormal matrix using Mike Day's branch method - one `sqrt`, stable
+  through 180-degree turns).
+- Conversion: `_as_floats(q)` -> `const float *` (`x,y,z,w`),
+  `rc_mat33f_from_quatf(q)` -> `rc_mat33f` (rotation matrix from a unit
+  quaternion).
+- Component arithmetic (4-vector, not unit-preserving): `_add`, `_sub`,
+  `_scalar_mul`, `_negate`, `_dot`, `_lengthsqr`, `_length`, `_normalize`.
+- Rotation: `_conjugate` (= inverse for unit `q`), `_inverse` (conjugate /
+  `|q|^2`), `_mul(a, b)` (compose; `b` applied first), `_vec3f_transform(q, v)`
+  (rotate `v` by the Rodrigues formula, no matrix), `_angle(q)` -> `float`,
+  `_axis(q)` -> `rc_vec3f` (unit X when there is no rotation).
+- Interpolation: `_lerp`, `_nlerp` (normalised lerp), `_slerp(a, b, t)`
+  (shorter-arc spherical interpolation, falls back to nlerp when nearly
+  parallel).
+- Exponential maps: `_exp`, `_log` (asserts `|q| != 0`), `_pow(q, t)`
+  (`exp(t * log(q))`).
+- Comparison: `_is_equal`, `_is_nearly_equal(a, b, tolerance)`.

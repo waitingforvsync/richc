@@ -5,6 +5,7 @@ add_library(richc STATIC
     src/file.c
     src/hash.c
     src/math/mat44f.c
+    src/math/quatf.c
     src/mstr.c
     src/str.c
     src/test.c
@@ -20,6 +21,7 @@ add_library(richc STATIC
     include/richc/math/mat33f.h
     include/richc/math/mat34f.h
     include/richc/math/mat44f.h
+    include/richc/math/quatf.h
     include/richc/math/vec2f.h
     include/richc/math/vec2i.h
     include/richc/math/vec3f.h
@@ -63,6 +65,7 @@ add_executable(richc_core_test
     test/test_mat44f.c
     test/test_mstr.c
     test/test_ops.c
+    test/test_quatf.c
     test/test_str.c
     test/test_vec2f.c
     test/test_vec2i.c
