@@ -921,3 +921,87 @@ general.
 - Scalar results (`float`): `_dot`, `_lengthsqr`, `_length`.
 - `_normalize(a)` -> `rc_vec4f` (asserts non-zero), `_normalize_safe(a, tolerance)`.
 - `_is_nearly_equal(a, b, tolerance)` -> `bool`, `_is_equal(a, b)` -> `bool`.
+
+---
+
+## richc/math/mat22f.h - 2x2 float matrix
+
+`rc_mat22f { rc_vec2f cx, cy; }`, column-major (`cx` is the first column). A
+column vector is transformed as `m * v = cx*v.x + cy*v.y`. All operations are
+inline.
+
+- Construction: `rc_mat22f_make(cx, cy)`, `_make_zero`, `_make_identity`,
+  `_make_rotation(a)` (counter-clockwise by `a` radians), `_from_floats(p)`
+  (from `float[4]`, column-major).
+- Conversion: `_as_floats(m)` -> `const float *` (column-major `float[4]`).
+- Operations: `_add`, `_sub`, `_scalar_mul`, `_vec2f_mul(m, v)` -> `rc_vec2f`
+  (`m * v`), `_mul(a, b)` (`a * b`), `_determinant` -> `float`, `_transpose`,
+  `_inverse` (asserts determinant != 0).
+
+---
+
+## richc/math/mat23f.h - 2D affine transform
+
+`rc_mat23f { rc_mat22f rot; rc_vec2f trans; }` - a linear part and a
+translation, applied as `rot * v + trans`. All operations are inline.
+
+- Construction: `rc_mat23f_make(rot, trans)`, `_make_identity`,
+  `_make_translation(v)`, `_from_mat22f(m)` (embed a linear map, zero
+  translation), `_from_floats(p)` (from `float[6]`, columns `rot.cx`, `rot.cy`,
+  `trans`).
+- Conversion: `_as_floats(m)` -> `const float *` (`float[6]`).
+- Operations: `_vec2f_mul(m, v)` (`rot * v + trans`), `_mul(a, b)` (compose
+  affine transforms), `rc_mat22f_mat23f_mul(L, b)` (left-multiply by a linear
+  map), `rc_mat23f_mat22f_mul(a, R)` (right-multiply, translation unchanged),
+  `_inverse` (delegates to `rc_mat22f_inverse`; asserts determinant != 0).
+
+---
+
+## richc/math/mat33f.h - 3x3 float matrix
+
+`rc_mat33f { rc_vec3f cx, cy, cz; }`, column-major. `m * v = cx*v.x + cy*v.y +
+cz*v.z`. All operations are inline.
+
+- Construction: `rc_mat33f_make(cx, cy, cz)`, `_make_transpose(rx, ry, rz)`
+  (from row vectors; transposes on store), `_make_zero`, `_make_identity`,
+  `_make_rotation_x/y/z(a)` (right-handed rotation about each axis, radians),
+  `_from_floats(p)` (from `float[9]`).
+- Conversion: `_as_floats(m)` -> `const float *` (column-major `float[9]`).
+- Operations: `_add`, `_sub`, `_scalar_mul`, `_vec3f_mul(m, v)`, `_mul(a, b)`,
+  `_determinant` (scalar triple product `cx . (cy x cz)`), `_transpose`,
+  `_inverse` (adjugate / cofactor method; asserts determinant != 0).
+
+---
+
+## richc/math/mat34f.h - 3D affine transform
+
+`rc_mat34f { rc_mat33f rot; rc_vec3f trans; }`, applied as `rot * v + trans`.
+All operations are inline.
+
+- Construction: `rc_mat34f_make(rot, trans)`, `_make_identity`,
+  `_make_translation(v)`, `_make_lookat(eye, focus, up)` (right-handed view
+  matrix mapping the eye to the origin with -Z toward `focus`; `up` is
+  orthogonalised), `_from_mat33f(m)`, `_from_floats(p)` (from `float[12]`).
+- Conversion: `_as_floats(m)` -> `const float *` (`float[12]`).
+- Operations: `_vec3f_mul(m, v)` (`rot * v + trans`), `_mul(a, b)`,
+  `rc_mat33f_mat34f_mul(L, b)` (left-multiply by a linear map),
+  `rc_mat34f_mat33f_mul(a, R)` (right-multiply, translation unchanged),
+  `_inverse` (delegates to `rc_mat33f_inverse`; asserts determinant != 0).
+
+---
+
+## richc/math/mat44f.h - 4x4 float matrix
+
+`rc_mat44f { rc_vec4f cx, cy, cz, cw; }`, column-major. `m * v = cx*v.x + cy*v.y
++ cz*v.z + cw*v.w`. The operations are inline except `determinant` and
+`inverse`, which live in `src/math/mat44f.c`.
+
+- Construction: `rc_mat44f_make(cx, cy, cz, cw)`, `_make_transpose(...)` (from
+  row vectors), `_make_zero`, `_make_identity`, `_make_translation(v)` (3D
+  translation), `_make_ortho(left, right, top, bottom, n, f)` and
+  `_make_perspective(y_fov, aspect, n, f)` (OpenGL-style projections, right-
+  handed with -Z forward and depth in [-1, 1]), `_from_mat22f/33f/34f(m)` (embed
+  a smaller matrix), `_from_floats(p)` (from `float[16]`).
+- Conversion: `_as_floats(m)` -> `const float *` (column-major `float[16]`).
+- Operations: `_add`, `_sub`, `_scalar_mul`, `_vec4f_mul(m, v)`, `_mul(a, b)`,
+  `_transpose`, `_determinant` -> `float`, `_inverse` (asserts determinant != 0).

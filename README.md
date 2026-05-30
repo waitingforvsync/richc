@@ -95,8 +95,11 @@ Available now in core:
   GCD, count-leading-zeros, and overflow checks.
 - **Math** (`richc/math/`) - integer vectors `rc_vec2i` / `rc_vec3i` (arithmetic,
   dot/wedge/cross, etc.), float vectors `rc_vec2f` / `rc_vec3f` / `rc_vec4f`
-  (the same plus length/normalize/lerp), and axis-aligned boxes `rc_box2i` /
-  `rc_box2f`; matrix and quaternion types to follow.
+  (the same plus length/normalize/lerp), axis-aligned boxes `rc_box2i` /
+  `rc_box2f`, and column-major float matrices `rc_mat22f` / `rc_mat33f` /
+  `rc_mat44f` with the 2D/3D affine transforms `rc_mat23f` / `rc_mat34f`
+  (multiply, determinant, inverse, rotation/projection/look-at builders);
+  quaternion types to follow.
 - **Hashing** (`richc/hash.h`) - `uint32_t` hashers for integers, floats,
   pointers, byte sequences, strings, and the vector types, plus
   `rc_hash_combine`.

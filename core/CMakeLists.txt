@@ -4,6 +4,7 @@ add_library(richc STATIC
     src/arena.c
     src/file.c
     src/hash.c
+    src/math/mat44f.c
     src/mstr.c
     src/str.c
     src/test.c
@@ -14,6 +15,11 @@ add_library(richc STATIC
     include/richc/macros.h
     include/richc/math/box2f.h
     include/richc/math/box2i.h
+    include/richc/math/mat22f.h
+    include/richc/math/mat23f.h
+    include/richc/math/mat33f.h
+    include/richc/math/mat34f.h
+    include/richc/math/mat44f.h
     include/richc/math/vec2f.h
     include/richc/math/vec2i.h
     include/richc/math/vec3f.h
@@ -50,6 +56,11 @@ add_executable(richc_core_test
     test/test_bytes.c
     test/test_file.c
     test/test_hash.c
+    test/test_mat22f.c
+    test/test_mat23f.c
+    test/test_mat33f.c
+    test/test_mat34f.c
+    test/test_mat44f.c
     test/test_mstr.c
     test/test_ops.c
     test/test_str.c
