@@ -1037,3 +1037,31 @@ operations are inline; `make_angle_axis`, `from_mat33f`, `mat33f_from_quatf`,
 - Exponential maps: `_exp`, `_log` (asserts `|q| != 0`), `_pow(q, t)`
   (`exp(t * log(q))`).
 - Comparison: `_is_equal`, `_is_nearly_equal(a, b, tolerance)`.
+
+---
+
+## richc/math/solve.h - polynomial root solvers
+
+Analytic real-root solvers for quadratics and cubics, implemented in
+`src/math/solve.c`. Each returns a small by-value struct holding the count and
+the roots.
+
+```c
+typedef struct rc_quadratic_roots { int num_roots; float root[2]; } rc_quadratic_roots;
+typedef struct rc_cubic_roots     { int num_roots; float root[3]; } rc_cubic_roots;
+
+rc_quadratic_roots rc_solve_quadratic(float a, float b, float c);  // a*t^2 + b*t + c = 0
+rc_cubic_roots     rc_solve_cubic(float a, float b, float c, float d);  // a*t^3 + ... = 0
+```
+
+- `rc_solve_quadratic` returns 0, 1, or 2 real roots. It uses sign-selection
+  (compute the larger-magnitude root, then the other via Vieta's theorem) to
+  avoid catastrophic cancellation, and falls back to the linear solution when
+  `|a|` is tiny.
+- `rc_solve_cubic` returns 1 or 3 real roots: Cardano's formula for the single
+  real root (positive discriminant) and the trigonometric method for three real
+  roots. It delegates to `rc_solve_quadratic` when `|a|` is tiny.
+
+The roots are returned in no particular order. Degenerate leading coefficients
+are handled gracefully rather than asserting, since a caller inspects
+`num_roots` regardless.
