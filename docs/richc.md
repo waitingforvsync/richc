@@ -794,6 +794,28 @@ corners are internal members (trailing underscore); read them via the accessors.
 
 ---
 
+## richc/math/box2f.h - 2D float box
+
+`rc_box2f { rc_vec2f min_; rc_vec2f max_; }` - the float counterpart of
+`rc_box2i`, an axis-aligned bounding box over the half-open region `[min, max)`
+(min inclusive, max exclusive). `min <= max` component-wise is an invariant the
+constructors establish and the queries assume; a caller that builds one directly
+must uphold it. The corners are internal members (trailing underscore); read
+them via the accessors.
+
+- Construction: `rc_box2f_make(a, b)` (sorts the two corners),
+  `rc_box2f_make_pos_size(pos, size)` (top-left + extent),
+  `rc_box2f_make_with_margin(a, b, margin)` (sorted corners expanded by `margin`
+  on each side).
+- Accessors: `rc_box2f_min(a)` and `rc_box2f_max(a)` -> `rc_vec2f` (the corners),
+  `rc_box2f_size(a)` -> `rc_vec2f` (the extent `max - min`).
+- Queries: `rc_box2f_contains(a, b)` -> `bool`, `rc_box2f_intersects(a, b)` ->
+  `bool` (touching edges do not count), `rc_box2f_contains_point(a, p)` -> `bool`.
+- Combination: `rc_box2f_union(a, b)` (smallest box containing both),
+  `rc_box2f_expand(a, p)` (smallest box containing `a` and the point `p`).
+
+---
+
 ## richc/math/vec2i.h - 2D integer vector
 
 `rc_vec2i { int32_t x, y; }`. All operations are inline.
