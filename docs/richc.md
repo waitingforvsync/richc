@@ -36,8 +36,10 @@ Headers:
 - [richc/arena.h - arena allocator](#richcarenah---arena-allocator)
 - [richc/bytes.h - byte buffers](#richcbytesh---byte-buffers)
 - [richc/file.h - file I/O](#richcfileh---file-io)
+- [richc/hash.h - hashing](#richchashh---hashing)
 - [richc/macros.h - preprocessor utilities and assertions](#richcmacrosh---preprocessor-utilities-and-assertions)
 - [richc/mstr.h - mutable string](#richcmstrh---mutable-string)
+- [richc/ops.h - scalar bit and math operations](#richcopsh---scalar-bit-and-math-operations)
 - [richc/str.h - string view](#richcstrh---string-view)
 - [richc/test.h - unit-test framework](#richctesth---unit-test-framework)
 
@@ -222,6 +224,38 @@ Both create or truncate the file.
 
 ---
 
+## richc/hash.h - hashing
+
+`uint32_t` hash functions for richc types, suitable as the hash expression for
+the hash-table templates.
+
+```c
+uint32_t rc_hash_u32(uint32_t x);          // Murmur3 32-bit finalizer
+uint32_t rc_hash_i32(int32_t x);
+uint32_t rc_hash_u64(uint64_t x);          // splitmix64 finalizer, folded to 32 bits
+uint32_t rc_hash_i64(int64_t x);
+uint32_t rc_hash_f32(float x);             // by bit pattern; -0.0f and +0.0f hash alike
+uint32_t rc_hash_f64(double x);
+uint32_t rc_hash_ptr(const void *p);       // hashes the pointer, not the pointee
+uint32_t rc_hash_bytes(const void *data, uint32_t len);   // FNV-1a 32-bit
+uint32_t rc_hash_str(rc_str s);            // hashes the string's bytes
+uint32_t rc_hash_combine(uint32_t seed, uint32_t hash);   // Boost hash_combine
+```
+
+`rc_hash_combine` mixes one hash into a running seed, for hashing a struct field
+by field:
+
+```c
+uint32_t h = rc_hash_i32(point.x);
+h = rc_hash_combine(h, rc_hash_i32(point.y));
+```
+
+Float values `-0.0` and `+0.0` are equal under `==`, so they are normalised to
+hash the same. Hash functions for further types are added here as those types
+are ported.
+
+---
+
 ## richc/macros.h - preprocessor utilities and assertions
 
 Small general-purpose preprocessor helpers used across the library.
@@ -314,6 +348,39 @@ void rc_mstr_replace(rc_mstr *s, rc_str find, rc_str replacement, rc_arena *a);
 
 The mutation functions require a valid `rc_mstr` and valid `rc_str` arguments
 (asserted), and allocate through the arena, which never returns NULL.
+
+---
+
+## richc/ops.h - scalar bit and math operations
+
+Small `static inline` scalar helpers. Functions carry a scalar type suffix
+(`i32`/`i64`/`u32`/`u64`/`f32`/`f64`), which also avoids the Windows `min`/`max`
+macros.
+
+```c
+uint32_t rc_bitcast_f32(float x);          // float  -> its uint32_t bit pattern
+uint64_t rc_bitcast_f64(double x);         // double -> its uint64_t bit pattern
+
+int32_t  rc_min_i32(int32_t a, int32_t b);     int32_t rc_max_i32(int32_t a, int32_t b);
+int64_t  rc_min_i64(int64_t a, int64_t b);     int64_t rc_max_i64(int64_t a, int64_t b);
+int32_t  rc_sgn_i32(int32_t a);                int64_t rc_sgn_i64(int64_t a);   // -1, 0, or +1
+
+int32_t  rc_gcd_i32(int32_t a, int32_t b);     // Euclidean GCD, always non-negative
+int64_t  rc_gcd_i64(int64_t a, int64_t b);
+
+uint32_t rc_clz_u32(uint32_t a);           // count leading zeros (32 for a == 0)
+uint32_t rc_clz_u64(uint64_t a);           // count leading zeros (64 for a == 0)
+
+bool rc_mul_overflows_u64(uint64_t a, uint64_t b);   bool rc_add_overflows_u64(uint64_t a, uint64_t b);
+bool rc_add_overflows_i64(int64_t a, int64_t b);     bool rc_sub_overflows_i64(int64_t a, int64_t b);
+bool rc_mul_overflows_i64(int64_t a, int64_t b);
+
+float rc_deg_to_rad(float degrees);
+```
+
+The overflow checks return true when the operation would overflow the result
+type. `rc_bitcast_f32` / `rc_bitcast_f64` reinterpret the float bits (via a
+union); they are used by the float hashes.
 
 ---
 

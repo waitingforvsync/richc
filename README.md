@@ -91,6 +91,10 @@ Available now in core:
 - **File I/O** (`richc/file.h`) - whole-file load and save with `rc_str`
   filenames; immutable and mutable load variants returning `rc_str`/`rc_mstr`
   and `rc_view_bytes`/`rc_array_bytes`.
+- **Scalar ops** (`richc/ops.h`) - bit reinterpretation, integer min/max/sign,
+  GCD, count-leading-zeros, and overflow checks.
+- **Hashing** (`richc/hash.h`) - `uint32_t` hashers for integers, floats,
+  pointers, byte sequences, and strings, plus `rc_hash_combine`.
 - **Unit-test framework** (`richc/test.h`) - tests that register themselves
   automatically via linker sections, typed `RC_CHECK` assertions, group
   fixtures, and a filtering test runner. Part of the core library; it costs
