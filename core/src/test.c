@@ -228,6 +228,40 @@ void rc_test_check_vec4f(rc_vec4f actual, const char *op, rc_vec4f expected, con
     longjmp(rc_test_jmp, 1);
 }
 
+/*
+ * Rationals are exactly ordered, so the full comparison set applies.  == / !=
+ * use rc_rational_is_equal; the inequalities use the overflow-safe
+ * rc_rational_compare.  Both assert their operands are valid.
+ */
+void rc_test_check_rational(rc_rational actual, const char *op, rc_rational expected, const char *expr, const char *file, int line)
+{
+    if (rc_test_op2(op, "==")) {
+        if (rc_rational_is_equal(actual, expected)) return;
+    }
+    else if (rc_test_op2(op, "!=")) {
+        if (!rc_rational_is_equal(actual, expected)) return;
+    }
+    else if (rc_test_op1(op, "<")) {
+        if (rc_rational_compare(actual, expected) < 0) return;
+    }
+    else if (rc_test_op1(op, ">")) {
+        if (rc_rational_compare(actual, expected) > 0) return;
+    }
+    else if (rc_test_op2(op, "<=")) {
+        if (rc_rational_compare(actual, expected) <= 0) return;
+    }
+    else if (rc_test_op2(op, ">=")) {
+        if (rc_rational_compare(actual, expected) >= 0) return;
+    }
+    else {
+        printf("[FAIL]\n%s:%d: unsupported operation: %s\n", file, line, op);
+    }
+
+    printf("[FAIL]\n%s:%d: %s: actual %" PRId64 "/%" PRId64 "\n",
+        file, line, expr, rc_rational_num(actual), rc_rational_denom(actual));
+    longjmp(rc_test_jmp, 1);
+}
+
 int rc_test_run(const char *filter_string)
 {
     rc_str filter = rc_str_make(filter_string);

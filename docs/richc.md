@@ -593,20 +593,24 @@ types and operators:
 | `rc_str` | `==` `!=` |
 | `rc_vec2i`, `rc_vec3i` | `==` `!=` |
 | `rc_vec2f`, `rc_vec3f`, `rc_vec4f` | `==` `!=` and `~=` |
+| `rc_rational` | `==` `!=` `<` `>` `<=` `>=` |
 
 `~=` is an approximate compare with a fixed epsilon of 0.0001; for the float
 vectors it holds when every component is within epsilon. The vector `==` / `!=`
-are exact, equivalent to the type's own `is_equal`. Plain `int` / `unsigned`
-literals match the `int32_t` / `uint32_t` entries. A failing assertion prints
-the file, line, expression, and actual value, then aborts the current test (the
-runner records it as a failure and continues with the next test).
+are exact, equivalent to the type's own `is_equal`. The `rc_rational` operators
+use the type's exact `is_equal` and overflow-safe `compare` (its operands must be
+valid). Plain `int` / `unsigned` literals match the `int32_t` / `uint32_t`
+entries. A failing assertion prints the file, line, expression, and actual value,
+then aborts the current test (the runner records it as a failure and continues
+with the next test).
 
-Because the vector types are first-class operands, a whole-vector comparison
-replaces a wrapped `is_equal` call or a set of per-component checks:
+Because the vector and rational types are first-class operands, a whole-value
+comparison replaces a wrapped `is_equal` call or a set of per-component checks:
 
 ```c
 RC_CHECK(rc_vec2f_add(a, b), ==, rc_vec2f_make(11.0f, 22.0f));
 RC_CHECK(rc_vec2f_normalize(rc_vec2f_make(3.0f, 4.0f)), ~=, rc_vec2f_make(0.6f, 0.8f));
+RC_CHECK(rc_rational_add(rc_rational_make(1, 2), rc_rational_make(1, 3)), ==, rc_rational_make(5, 6));
 ```
 
 ### Running
@@ -1065,3 +1069,36 @@ rc_cubic_roots     rc_solve_cubic(float a, float b, float c, float d);  // a*t^3
 The roots are returned in no particular order. Degenerate leading coefficients
 are handled gracefully rather than asserting, since a caller inspects
 `num_roots` regardless.
+
+---
+
+## richc/math/rational.h - rational arithmetic
+
+`rc_rational { int64_t num_; int64_t denom_; }` - an exact rational held in
+canonical form: `denom > 0` and `gcd(|num|, denom) == 1`. The members carry a
+trailing underscore because the canonical invariant is the type's
+responsibility; read the value through `rc_rational_num(a)` / `rc_rational_denom(a)`
+and build values through the constructors. Division by zero produces the invalid
+state `0/0`, for which `rc_rational_is_valid` returns false. Non-trivial
+operations live in `src/math/rational.c`.
+
+- Construction: `rc_rational_make(num, denom)` (canonicalises; `denom == 0` ->
+  invalid), `rc_rational_from_i64(n)`, `rc_rational_from_double(val, threshold)`
+  (simplest rational within `threshold` of `val`, via continued fractions).
+- Accessors / predicates: `rc_rational_num`, `rc_rational_denom`,
+  `rc_rational_is_valid`, `_is_zero`, `_is_integer`, `_is_positive`,
+  `_is_negative`.
+- Arithmetic: `_negate`, `_abs`, `_reciprocal`, `_mul`, `_int_mul`, `_div`,
+  `_int_div`, `_add`, `_int_add`, `_sub`, `_int_sub`. The `_int_*` variants take
+  an `int64_t` second operand. All keep the result canonical (GCD pre-reduction)
+  and assert against `int64_t` overflow of the result.
+- Comparison: `_compare(a, b)` -> `-1/0/+1` (overflow-safe - a continued-fraction
+  descent that never forms the cross product, so it works even when `a - b`
+  would overflow), `_is_equal`, `_is_less_than`, `_is_greater_than`, `_min`,
+  `_max`.
+- Conversion: `_to_double(a)`.
+
+Operations assert their inputs are valid and their results fit in `int64_t`; GCD
+pre-reduction keeps the products' and sums' intermediates as small as possible,
+but a genuine overflow is reported via `RC_ASSERT` rather than wrapping. The
+library uses `int64_t` throughout and does not fall back to a wider type.

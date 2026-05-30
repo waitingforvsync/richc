@@ -29,9 +29,10 @@
  *   RC_CHECK_FALSE(a)    assert a is falsy
  * The left operand selects the comparison via _Generic: bool, the fixed-width
  * integer types, float, double, rc_str, the integer vectors rc_vec2i/rc_vec3i
- * (== and !=), and the float vectors rc_vec2f/rc_vec3f/rc_vec4f (==, !=, and ~=,
- * the latter a per-component fixed-epsilon compare) are supported.  A failing
- * assertion prints file:line and the actual value, then aborts the current test.
+ * (== and !=), the float vectors rc_vec2f/rc_vec3f/rc_vec4f (==, !=, and ~=, the
+ * latter a per-component fixed-epsilon compare), and rc_rational (the full set
+ * == != < > <= >=) are supported.  A failing assertion prints file:line and the
+ * actual value, then aborts the current test.
  *
  * Running
  * -------
@@ -45,6 +46,7 @@
 #ifndef RC_TEST_H_
 #define RC_TEST_H_
 
+#include "richc/math/rational.h"
 #include "richc/math/vec4f.h"   // transitively brings the whole vec2f/3f/4f and vec2i/3i family
 #include "richc/str.h"          // also provides <stdint.h> / <stdbool.h>
 
@@ -180,7 +182,8 @@ struct rc_test {
         rc_vec3i: rc_test_check_vec3i, \
         rc_vec2f: rc_test_check_vec2f, \
         rc_vec3f: rc_test_check_vec3f, \
-        rc_vec4f: rc_test_check_vec4f \
+        rc_vec4f: rc_test_check_vec4f, \
+        rc_rational: rc_test_check_rational \
     )(a, #op, b, #a " " #op " " #b, file, line)
 
 void rc_test_check_bool(bool actual, const char *op, bool expected, const char *expr, const char *file, int line);
@@ -192,6 +195,7 @@ void rc_test_check_vec3i(rc_vec3i actual, const char *op, rc_vec3i expected, con
 void rc_test_check_vec2f(rc_vec2f actual, const char *op, rc_vec2f expected, const char *expr, const char *file, int line);
 void rc_test_check_vec3f(rc_vec3f actual, const char *op, rc_vec3f expected, const char *expr, const char *file, int line);
 void rc_test_check_vec4f(rc_vec4f actual, const char *op, rc_vec4f expected, const char *expr, const char *file, int line);
+void rc_test_check_rational(rc_rational actual, const char *op, rc_rational expected, const char *expr, const char *file, int line);
 
 /* ---- running ---- */
 
