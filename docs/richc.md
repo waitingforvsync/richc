@@ -50,6 +50,7 @@ Templates:
 - [richc/template/hash_trie.h - 16-way hash trie](#richctemplatehash_trieh---16-way-hash-trie)
 - [richc/template/lower_bound.h - binary search](#richctemplatelower_boundh---binary-search)
 - [richc/template/pool.h - free-list object pool](#richctemplatepoolh---free-list-object-pool)
+- [richc/template/sort.h - introsort](#richctemplatesorth---introsort)
 - [richc/template/upper_bound.h - binary search](#richctemplateupper_boundh---binary-search)
 
 Math:
@@ -1059,6 +1060,56 @@ thing        *rc_pool_thing_at(rc_pool_thing *pool, uint32_t index);    // point
   a caller error.
 - There is no iteration: a freed slot is indistinguishable from a live one, so
   walk `[0, items.num)` only with separate liveness information.
+
+---
+
+## richc/template/sort.h - introsort
+
+A preprocessor template (like `array.h`) that generates an in-place sort over a
+mutable `rc_span`. It is an introsort: quicksort with a median-of-three pivot for
+large spans, falling back to heapsort when the recursion depth exceeds
+`2*floor(log2(n))` (guaranteeing `O(n log n)` worst case), and insertion sort for
+spans of 16 elements or fewer - the same strategy as libstdc++ and libc++. The
+sort is not stable. Include it again (after redefining the control macros) for
+another element type.
+
+### Instantiation
+
+```c
+#define RC_SORT_TYPE int
+#include "richc/template/sort.h"
+// void rc_sort_int(rc_span_int span);
+```
+
+| Control macro | Required | Default | Meaning |
+|---------------|----------|---------|---------|
+| `RC_SORT_TYPE` | yes | - | element type |
+| `RC_SORT_CTX`  | no  | none | context type threaded to the comparator |
+| `RC_SORT_CMP`  | no  | `(a) < (b)` | comparator expression |
+| `RC_SORT_SPAN` | no  | `rc_span_<TYPE>` | span type to sort |
+| `RC_SORT_NAME` | no  | `rc_sort_<TYPE>` | generated function name |
+
+All macros defined before inclusion are undefined again by the header.
+
+### Comparator and context
+
+The comparator is `RC_SORT_CMP(a, b)`, true iff `a < b` (so the span is sorted
+ascending under it; pass a `>` comparator to sort descending). Defining
+`RC_SORT_CTX` adds a context pointer as the comparator's first argument and as a
+trailing function parameter, threaded through the whole sort:
+
+```c
+typedef struct { int sign; } sign_ctx;
+#define RC_SORT_TYPE          int
+#define RC_SORT_CTX           sign_ctx
+#define RC_SORT_CMP(c, a, b)  ((c)->sign * (a) < (c)->sign * (b))
+#define RC_SORT_NAME          rc_sort_signed
+#include "richc/template/sort.h"
+// void rc_sort_signed(rc_span_int span, sign_ctx *ctx);
+```
+
+The generated signature is `void NAME(SPAN span)` without a context, or
+`void NAME(SPAN span, CTX *ctx)` with one.
 
 ---
 

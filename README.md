@@ -98,6 +98,10 @@ Available now in core:
 - **Object pool** (`richc/template/pool.h`) - a template for an index-stable
   free-list pool over an `rc_array`: `alloc` returns a stable index, `free`
   recycles it, and freed slots are reused.
+- **Sort** (`richc/template/sort.h`) - a template generating an in-place
+  introsort over a mutable `rc_span` (quicksort with a heapsort fallback and
+  insertion sort for small spans), with an optional custom comparator and
+  context pointer.
 - **Binary search** (`richc/template/lower_bound.h`,
   `richc/template/upper_bound.h`) - templates generating `lower_bound` and
   `upper_bound` over a sorted `rc_view`: the first index whose element is

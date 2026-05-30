@@ -72,6 +72,10 @@
  * function body; when a context type is active it closes over the 'ctx'
  * parameter.  The default context comparator folds (void)ctx into the comma
  * expression to suppress the unused-parameter warning.
+ *
+ * RC_UPPER_BOUND_VIEW_CTX_PARAM_ is the leading parameter list - "VIEW view" or
+ * "VIEW view, CTX *ctx" - so the context, when present, follows the view; the
+ * search value is the final parameter either way.
  */
 #ifdef RC_UPPER_BOUND_CTX
 #  ifndef RC_UPPER_BOUND_CMP
@@ -80,19 +84,17 @@
 #  else
 #    define RC_UPPER_BOUND_CMP_(a, b)     RC_UPPER_BOUND_CMP(ctx, a, b)
 #  endif
+#  define RC_UPPER_BOUND_VIEW_CTX_PARAM_  RC_UPPER_BOUND_VIEW view, RC_UPPER_BOUND_CTX *ctx
 #else
 #  ifndef RC_UPPER_BOUND_CMP
 #    define RC_UPPER_BOUND_CMP(a, b) ((a) < (b))
 #  endif
 #  define RC_UPPER_BOUND_CMP_(a, b)       RC_UPPER_BOUND_CMP(a, b)
+#  define RC_UPPER_BOUND_VIEW_CTX_PARAM_  RC_UPPER_BOUND_VIEW view
 #endif
 
 static inline uint32_t
-#ifdef RC_UPPER_BOUND_CTX
-RC_UPPER_BOUND_NAME(RC_UPPER_BOUND_VIEW view, RC_UPPER_BOUND_CTX *ctx, RC_UPPER_BOUND_TYPE value)
-#else
-RC_UPPER_BOUND_NAME(RC_UPPER_BOUND_VIEW view, RC_UPPER_BOUND_TYPE value)
-#endif
+RC_UPPER_BOUND_NAME(RC_UPPER_BOUND_VIEW_CTX_PARAM_, RC_UPPER_BOUND_TYPE value)
 {
     uint32_t lo = 0;
     uint32_t hi = view.num;
@@ -112,6 +114,7 @@ RC_UPPER_BOUND_NAME(RC_UPPER_BOUND_VIEW view, RC_UPPER_BOUND_TYPE value)
 /* ---- cleanup ---- */
 
 #undef RC_UPPER_BOUND_CMP_
+#undef RC_UPPER_BOUND_VIEW_CTX_PARAM_
 #undef RC_UPPER_BOUND_CTX
 #undef RC_UPPER_BOUND_CMP
 #undef RC_UPPER_BOUND_VIEW
