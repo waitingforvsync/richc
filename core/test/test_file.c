@@ -21,9 +21,9 @@ RC_TEST_STEP(file, text_roundtrip, fix)
 {
     rc_str path = RC_STR("/tmp/richc_file_test.txt");
     rc_str content = RC_STR("hello\nworld");
-    RC_CHECK_TRUE(rc_save_text(path, content) == RC_FILE_OK);
+    RC_CHECK_TRUE(rc_file_save_text(path, content) == RC_FILE_OK);
 
-    rc_load_text_result r = rc_load_text(path, &fix->a);
+    rc_file_load_text_result r = rc_file_load_text(path, &fix->a);
     RC_CHECK_TRUE(r.error == RC_FILE_OK);
     RC_CHECK(r.text, ==, content);
     // The result is null-terminated, so as_cstr returns the buffer directly.
@@ -35,9 +35,9 @@ RC_TEST_STEP(file, text_roundtrip, fix)
 RC_TEST_STEP(file, text_mut, fix)
 {
     rc_str path = RC_STR("/tmp/richc_file_test.txt");
-    RC_CHECK_TRUE(rc_save_text(path, RC_STR("abc")) == RC_FILE_OK);
+    RC_CHECK_TRUE(rc_file_save_text(path, RC_STR("abc")) == RC_FILE_OK);
 
-    rc_load_text_mut_result r = rc_load_text_mut(path, 100, &fix->a);
+    rc_file_load_text_mut_result r = rc_file_load_text_mut(path, 100, &fix->a);
     RC_CHECK_TRUE(r.error == RC_FILE_OK);
     RC_CHECK(r.text.view, ==, RC_STR("abc"));
     RC_CHECK(r.text.len, ==, 3u);
@@ -51,9 +51,9 @@ RC_TEST_STEP(file, text_mut, fix)
 RC_TEST_STEP(file, empty_text, fix)
 {
     rc_str path = RC_STR("/tmp/richc_file_empty.txt");
-    RC_CHECK_TRUE(rc_save_text(path, RC_STR("")) == RC_FILE_OK);
+    RC_CHECK_TRUE(rc_file_save_text(path, RC_STR("")) == RC_FILE_OK);
 
-    rc_load_text_result r = rc_load_text(path, &fix->a);
+    rc_file_load_text_result r = rc_file_load_text(path, &fix->a);
     RC_CHECK_TRUE(r.error == RC_FILE_OK);
     RC_CHECK(r.text.len, ==, 0u);
     RC_CHECK_TRUE(rc_str_is_valid(r.text));      // valid empty, null-terminated
@@ -66,9 +66,9 @@ RC_TEST_STEP(file, binary_roundtrip, fix)
     rc_str path = RC_STR("/tmp/richc_file_test.bin");
     uint8_t bytes[] = {0, 1, 2, 253, 254, 255};
     rc_view_bytes content = RC_VIEW(bytes);
-    RC_CHECK_TRUE(rc_save_binary(path, content) == RC_FILE_OK);
+    RC_CHECK_TRUE(rc_file_save_binary(path, content) == RC_FILE_OK);
 
-    rc_load_binary_result r = rc_load_binary(path, &fix->a);
+    rc_file_load_binary_result r = rc_file_load_binary(path, &fix->a);
     RC_CHECK_TRUE(r.error == RC_FILE_OK);
     RC_CHECK(r.data.num, ==, 6u);
     RC_CHECK(rc_view_bytes_get(r.data, 3), ==, (uint8_t)253);
@@ -82,9 +82,9 @@ RC_TEST_STEP(file, binary_mut, fix)
     rc_str path = RC_STR("/tmp/richc_file_test.bin");
     uint8_t bytes[] = {10, 20, 30};
     rc_view_bytes content = RC_VIEW(bytes);
-    RC_CHECK_TRUE(rc_save_binary(path, content) == RC_FILE_OK);
+    RC_CHECK_TRUE(rc_file_save_binary(path, content) == RC_FILE_OK);
 
-    rc_load_binary_mut_result r = rc_load_binary_mut(path, 16, &fix->a);
+    rc_file_load_binary_mut_result r = rc_file_load_binary_mut(path, 16, &fix->a);
     RC_CHECK_TRUE(r.error == RC_FILE_OK);
     RC_CHECK(r.data.num, ==, 3u);
     RC_CHECK(r.data.cap, ==, 16u);               // minimum_capacity honoured
@@ -97,7 +97,40 @@ RC_TEST_STEP(file, binary_mut, fix)
 
 RC_TEST_STEP(file, not_found, fix)
 {
-    rc_load_text_result r = rc_load_text(RC_STR("/tmp/richc_no_such_file_zzz.txt"), &fix->a);
+    rc_file_load_text_result r = rc_file_load_text(RC_STR("/tmp/richc_no_such_file_zzz.txt"), &fix->a);
     RC_CHECK_TRUE(r.error == RC_FILE_ERROR_NOT_FOUND);
     RC_CHECK_FALSE(rc_str_is_valid(r.text));
+}
+
+RC_TEST(file, size)
+{
+    rc_str path = RC_STR("/tmp/richc_file_size.bin");
+    uint8_t bytes[] = {1, 2, 3, 4, 5, 6, 7};
+    rc_view_bytes content = RC_VIEW(bytes);
+    RC_CHECK_TRUE(rc_file_save_binary(path, content) == RC_FILE_OK);
+
+    rc_file_size_result r = rc_file_size(path);
+    RC_CHECK_TRUE(r.error == RC_FILE_OK);
+    RC_CHECK(r.size, ==, 7u);
+
+    remove("/tmp/richc_file_size.bin");
+}
+
+RC_TEST(file, size_empty)
+{
+    rc_str path = RC_STR("/tmp/richc_file_size_empty.bin");
+    RC_CHECK_TRUE(rc_file_save_text(path, RC_STR("")) == RC_FILE_OK);
+
+    rc_file_size_result r = rc_file_size(path);
+    RC_CHECK_TRUE(r.error == RC_FILE_OK);
+    RC_CHECK(r.size, ==, 0u);
+
+    remove("/tmp/richc_file_size_empty.bin");
+}
+
+RC_TEST(file, size_not_found)
+{
+    rc_file_size_result r = rc_file_size(RC_STR("/tmp/richc_no_such_file_zzz.bin"));
+    RC_CHECK_TRUE(r.error == RC_FILE_ERROR_NOT_FOUND);
+    RC_CHECK(r.size, ==, 0u);
 }

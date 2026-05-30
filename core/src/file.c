@@ -19,6 +19,30 @@ static FILE *file_open(rc_str filename, const char *mode)
     return fopen(rc_str_as_cstr(filename, path, sizeof path), mode);
 }
 
+// Translate a failed fopen into the matching rc_file_error.
+static rc_file_error file_open_error(void)
+{
+    return (errno == ENOENT) ? RC_FILE_ERROR_NOT_FOUND
+         : (errno == EACCES) ? RC_FILE_ERROR_ACCESS_DENIED
+         :                     RC_FILE_ERROR_IO;
+}
+
+// Measure an open file in bytes (leaving the read position at end), reporting
+// RC_FILE_ERROR_TOO_LARGE when it does not fit in a uint32_t.
+static rc_file_size_result file_measure(FILE *f)
+{
+    if (fseek(f, 0, SEEK_END) != 0)
+        return (rc_file_size_result) {.error = RC_FILE_ERROR_IO};
+
+    long size_long = ftell(f);
+    if (size_long < 0)
+        return (rc_file_size_result) {.error = RC_FILE_ERROR_IO};
+    if ((uint64_t)size_long > (uint64_t)UINT32_MAX)
+        return (rc_file_size_result) {.error = RC_FILE_ERROR_TOO_LARGE};
+
+    return (rc_file_size_result) {.size = (uint32_t)size_long, .error = RC_FILE_OK};
+}
+
 // Open filename, measure its size, allocate max(size, minimum_capacity) + extra
 // bytes from the arena, and read the file in.  `extra` reserves room beyond the
 // content (1 for a text null terminator, 0 for binary); when non-zero the byte
@@ -29,26 +53,13 @@ static load_raw_result load_raw(rc_str filename, uint32_t minimum_capacity,
     RC_ASSERT(arena);
 
     FILE *f = file_open(filename, "rb");
-    if (!f) {
-        rc_file_error error = (errno == ENOENT) ? RC_FILE_ERROR_NOT_FOUND
-                            : (errno == EACCES) ? RC_FILE_ERROR_ACCESS_DENIED
-                            :                     RC_FILE_ERROR_IO;
-        return (load_raw_result) {.error = error};
-    }
+    if (!f)
+        return (load_raw_result) {.error = file_open_error()};
 
-    if (fseek(f, 0, SEEK_END) != 0) {
+    rc_file_size_result measured = file_measure(f);
+    if (measured.error != RC_FILE_OK) {
         fclose(f);
-        return (load_raw_result) {.error = RC_FILE_ERROR_IO};
-    }
-
-    long size_long = ftell(f);
-    if (size_long < 0) {
-        fclose(f);
-        return (load_raw_result) {.error = RC_FILE_ERROR_IO};
-    }
-    if ((uint64_t)size_long > (uint64_t)UINT32_MAX) {
-        fclose(f);
-        return (load_raw_result) {.error = RC_FILE_ERROR_TOO_LARGE};
+        return (load_raw_result) {.error = measured.error};
     }
 
     if (fseek(f, 0, SEEK_SET) != 0) {
@@ -56,7 +67,7 @@ static load_raw_result load_raw(rc_str filename, uint32_t minimum_capacity,
         return (load_raw_result) {.error = RC_FILE_ERROR_IO};
     }
 
-    uint32_t size = (uint32_t)size_long;
+    uint32_t size = measured.size;
     uint32_t capacity = size > minimum_capacity ? size : minimum_capacity;
     if ((uint64_t)capacity + (uint64_t)extra > (uint64_t)UINT32_MAX) {
         fclose(f);
@@ -80,48 +91,59 @@ static load_raw_result load_raw(rc_str filename, uint32_t minimum_capacity,
     return (load_raw_result) {.data = data, .error = RC_FILE_OK};
 }
 
-rc_load_text_result rc_load_text(rc_str filename, rc_arena *arena)
+rc_file_size_result rc_file_size(rc_str filename)
+{
+    FILE *f = file_open(filename, "rb");
+    if (!f)
+        return (rc_file_size_result) {.error = file_open_error()};
+
+    rc_file_size_result result = file_measure(f);
+    fclose(f);
+    return result;
+}
+
+rc_file_load_text_result rc_file_load_text(rc_str filename, rc_arena *arena)
 {
     load_raw_result raw = load_raw(filename, 0, 1, arena);   // +1 for the null terminator
     if (raw.error != RC_FILE_OK)
-        return (rc_load_text_result) {.error = raw.error};
+        return (rc_file_load_text_result) {.error = raw.error};
 
     rc_str text = {.data = (const char *)raw.data.data, .len = raw.data.num};
-    return (rc_load_text_result) {.text = text, .error = RC_FILE_OK};
+    return (rc_file_load_text_result) {.text = text, .error = RC_FILE_OK};
 }
 
-rc_load_text_mut_result rc_load_text_mut(rc_str filename, uint32_t minimum_capacity, rc_arena *arena)
+rc_file_load_text_mut_result rc_file_load_text_mut(rc_str filename, uint32_t minimum_capacity, rc_arena *arena)
 {
     load_raw_result raw = load_raw(filename, minimum_capacity, 1, arena);
     if (raw.error != RC_FILE_OK)
-        return (rc_load_text_mut_result) {.error = raw.error};
+        return (rc_file_load_text_mut_result) {.error = raw.error};
 
     // cap excludes the terminator, so the allocation (cap + 1) is exactly the
     // rc_mstr invariant.
     rc_mstr text = {.data = (const char *)raw.data.data, .len = raw.data.num, .cap = raw.data.cap};
-    return (rc_load_text_mut_result) {.text = text, .error = RC_FILE_OK};
+    return (rc_file_load_text_mut_result) {.text = text, .error = RC_FILE_OK};
 }
 
-rc_load_binary_result rc_load_binary(rc_str filename, rc_arena *arena)
+rc_file_load_binary_result rc_file_load_binary(rc_str filename, rc_arena *arena)
 {
     load_raw_result raw = load_raw(filename, 0, 0, arena);
     if (raw.error != RC_FILE_OK)
-        return (rc_load_binary_result) {.error = raw.error};
+        return (rc_file_load_binary_result) {.error = raw.error};
 
     rc_view_bytes data = {.data = raw.data.data, .num = raw.data.num};
-    return (rc_load_binary_result) {.data = data, .error = RC_FILE_OK};
+    return (rc_file_load_binary_result) {.data = data, .error = RC_FILE_OK};
 }
 
-rc_load_binary_mut_result rc_load_binary_mut(rc_str filename, uint32_t minimum_capacity, rc_arena *arena)
+rc_file_load_binary_mut_result rc_file_load_binary_mut(rc_str filename, uint32_t minimum_capacity, rc_arena *arena)
 {
     load_raw_result raw = load_raw(filename, minimum_capacity, 0, arena);
     if (raw.error != RC_FILE_OK)
-        return (rc_load_binary_mut_result) {.error = raw.error};
+        return (rc_file_load_binary_mut_result) {.error = raw.error};
 
-    return (rc_load_binary_mut_result) {.data = raw.data, .error = RC_FILE_OK};
+    return (rc_file_load_binary_mut_result) {.data = raw.data, .error = RC_FILE_OK};
 }
 
-rc_file_error rc_save_text(rc_str filename, rc_str text)
+rc_file_error rc_file_save_text(rc_str filename, rc_str text)
 {
     RC_ASSERT(text.len == 0 || text.data != NULL);
 
@@ -138,7 +160,7 @@ rc_file_error rc_save_text(rc_str filename, rc_str text)
     return RC_FILE_OK;
 }
 
-rc_file_error rc_save_binary(rc_str filename, rc_view_bytes data)
+rc_file_error rc_file_save_binary(rc_str filename, rc_view_bytes data)
 {
     RC_ASSERT(data.num == 0 || data.data != NULL);
 

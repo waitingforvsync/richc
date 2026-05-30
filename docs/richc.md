@@ -271,6 +271,17 @@ Every function reports `rc_file_error`: `RC_FILE_OK` (0) on success, otherwise
 `RC_FILE_ERROR_NOT_FOUND`, `RC_FILE_ERROR_ACCESS_DENIED`,
 `RC_FILE_ERROR_TOO_LARGE`, or `RC_FILE_ERROR_IO`.
 
+### Size
+
+```c
+typedef struct { uint32_t size; rc_file_error error; } rc_file_size_result;
+
+rc_file_size_result rc_file_size(rc_str filename);
+```
+
+Measures the file in bytes without reading it; needs no arena.
+`RC_FILE_ERROR_TOO_LARGE` if the size does not fit in a `uint32_t`.
+
 ### Loading
 
 Each load has an immutable and a mutable form. The mutable form takes a
@@ -278,15 +289,15 @@ Each load has an immutable and a mutable form. The mutable form takes a
 reallocating.
 
 ```c
-typedef struct { rc_str         text; rc_file_error error; } rc_load_text_result;
-typedef struct { rc_mstr        text; rc_file_error error; } rc_load_text_mut_result;
-typedef struct { rc_view_bytes  data; rc_file_error error; } rc_load_binary_result;
-typedef struct { rc_array_bytes data; rc_file_error error; } rc_load_binary_mut_result;
+typedef struct { rc_str         text; rc_file_error error; } rc_file_load_text_result;
+typedef struct { rc_mstr        text; rc_file_error error; } rc_file_load_text_mut_result;
+typedef struct { rc_view_bytes  data; rc_file_error error; } rc_file_load_binary_result;
+typedef struct { rc_array_bytes data; rc_file_error error; } rc_file_load_binary_mut_result;
 
-rc_load_text_result       rc_load_text(rc_str filename, rc_arena *arena);
-rc_load_text_mut_result   rc_load_text_mut(rc_str filename, uint32_t minimum_capacity, rc_arena *arena);
-rc_load_binary_result     rc_load_binary(rc_str filename, rc_arena *arena);
-rc_load_binary_mut_result rc_load_binary_mut(rc_str filename, uint32_t minimum_capacity, rc_arena *arena);
+rc_file_load_text_result       rc_file_load_text(rc_str filename, rc_arena *arena);
+rc_file_load_text_mut_result   rc_file_load_text_mut(rc_str filename, uint32_t minimum_capacity, rc_arena *arena);
+rc_file_load_binary_result     rc_file_load_binary(rc_str filename, rc_arena *arena);
+rc_file_load_binary_mut_result rc_file_load_binary_mut(rc_str filename, uint32_t minimum_capacity, rc_arena *arena);
 ```
 
 Text loads are always null-terminated, so `rc_str_as_cstr` on the result takes
@@ -296,8 +307,8 @@ state and `error` is set.
 ### Saving
 
 ```c
-rc_file_error rc_save_text(rc_str filename, rc_str text);
-rc_file_error rc_save_binary(rc_str filename, rc_view_bytes data);
+rc_file_error rc_file_save_text(rc_str filename, rc_str text);
+rc_file_error rc_file_save_binary(rc_str filename, rc_view_bytes data);
 ```
 
 Both create or truncate the file.
