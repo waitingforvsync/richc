@@ -47,6 +47,11 @@ Templates:
 
 - [richc/template/array.h - view, span, array](#richctemplatearrayh---view-span-array)
 
+Math:
+
+- [richc/math/vec2i.h - 2D integer vector](#richcmathvec2ih---2d-integer-vector)
+- [richc/math/vec3i.h - 3D integer vector](#richcmathvec3ih---3d-integer-vector)
+
 ---
 
 ## richc/arena.h - arena allocator
@@ -752,3 +757,40 @@ Every operation that may reallocate takes `rc_arena *arena` last. Passing NULL
 is valid when no growth is required; a reallocation with `arena == NULL` asserts.
 Arena allocation never returns NULL (out of memory is a panic), so results are
 never NULL-checked.
+
+---
+
+## richc/math/vec2i.h - 2D integer vector
+
+`rc_vec2i { int32_t x, y; }`. All operations are inline.
+
+- Construction: `rc_vec2i_make(x, y)`, `_make_zero`, `_make_unitx`,
+  `_make_unity`, `_from_i32s(p)` (from `int32_t[2]`).
+- Conversion: `_as_i32s(a)` -> `const int32_t *` (the components as `int32_t[2]`).
+- Arithmetic (return `rc_vec2i`): `_add`, `_add3`, `_add4`, `_sub`,
+  `_scalar_mul`, `_scalar_div` (asserts the divisor is non-zero),
+  `_component_mul`, `_component_min`, `_component_max`, `_perp` (the CCW
+  perpendicular `(-y, x)`), `_negate`.
+- Scalar results (`int64_t`, asserting no overflow): `_dot`, `_wedge` (the 2D
+  cross product), `_lengthsqr`.
+- `_is_equal(a, b)` -> `bool`.
+
+`length` is not provided - the exact integer result is not representable in
+general.
+
+---
+
+## richc/math/vec3i.h - 3D integer vector
+
+`rc_vec3i { int32_t x, y, z; }`. All operations are inline.
+
+- Construction: `rc_vec3i_make(x, y, z)`, `_make_zero`, `_make_unitx/y/z`,
+  `_from_i32s(p)`, `_from_vec2i(v, z)` (extend a `rc_vec2i`).
+- Conversion: `_as_i32s(a)` -> `const int32_t *`.
+- Arithmetic (return `rc_vec3i`): `_add`, `_add3`, `_add4`, `_sub`,
+  `_scalar_mul`, `_scalar_div`, `_component_mul`, `_component_min`,
+  `_component_max`, `_negate`.
+- Scalar results (`int64_t`, asserting no overflow): `_dot`, `_lengthsqr`.
+- `_cross(a, b)` -> `rc_vec3i` - each component is computed in `int64_t` and
+  asserted to fit in `int32_t`.
+- `_is_equal(a, b)` -> `bool`.
