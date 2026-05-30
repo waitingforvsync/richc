@@ -47,6 +47,7 @@ Headers:
 Templates:
 
 - [richc/template/array.h - view, span, array](#richctemplatearrayh---view-span-array)
+- [richc/template/bitset_foreach.h - iterate set bits](#richctemplatebitset_foreachh---iterate-set-bits)
 - [richc/template/hash_trie.h - 16-way hash trie](#richctemplatehash_trieh---16-way-hash-trie)
 - [richc/template/lower_bound.h - binary search](#richctemplatelower_boundh---binary-search)
 - [richc/template/pool.h - free-list object pool](#richctemplatepoolh---free-list-object-pool)
@@ -247,6 +248,9 @@ for (uint32_t i = rc_bitset_get_first_set(&bs);
     // use i
 }
 ```
+
+The [`bitset_foreach`](#richctemplatebitset_foreachh---iterate-set-bits) template
+wraps this idiom to call a macro on each set bit, with an optional context.
 
 ---
 
@@ -884,6 +888,54 @@ survive growth. If several growable arrays share one arena, growing one that is
 no longer the latest allocation relocates it (a copy to a new address), which
 invalidates outstanding pointers into it - so prefer holding an index over a
 pointer across growth in that case. Element indices are always stable.
+
+---
+
+## richc/template/bitset_foreach.h - iterate set bits
+
+A preprocessor template (like `sort.h`) that generates a function to visit the set
+bits of an [`rc_bitset`](#richcbitseth---growable-bit-array) in ascending index
+order. It uses the bitset iteration idiom (`get_first_set` / `get_next_set`) and
+invokes a caller-supplied macro on each set bit's index, with an optional context.
+Include it again (after redefining the control macros) to generate another
+iterator.
+
+### Instantiation
+
+```c
+typedef struct { uint32_t count; } counter;
+static void bump(counter *c, uint32_t i) { (void)i; c->count++; }
+
+#define RC_BITSET_FOREACH_CTX        counter
+#define RC_BITSET_FOREACH_FUNC(c, i) bump(c, i)
+#include "richc/template/bitset_foreach.h"
+// void rc_bitset_foreach(const rc_bitset *bs, counter *ctx);
+```
+
+| Control macro | Required | Default | Meaning |
+|---------------|----------|---------|---------|
+| `RC_BITSET_FOREACH_FUNC` | yes | - | per-bit callback (see below) |
+| `RC_BITSET_FOREACH_CTX`  | no  | none | context type threaded to the callback |
+| `RC_BITSET_FOREACH_NAME` | no  | `rc_bitset_foreach` | generated function name |
+
+All macros defined before inclusion are undefined again by the header. Unlike the
+type-parameterised templates there is no `TYPE`, so the default name is fixed;
+give an explicit `RC_BITSET_FOREACH_NAME` to generate more than one iterator in a
+translation unit.
+
+### Callback and context
+
+Without a context the callback is `RC_BITSET_FOREACH_FUNC(index)`, where `index`
+is the `uint32_t` set-bit index. Defining `RC_BITSET_FOREACH_CTX` adds a context
+pointer as the callback's first argument and as a function parameter:
+
+```c
+#define RC_BITSET_FOREACH_FUNC(ctx, index)  ...   // ctx is RC_BITSET_FOREACH_CTX *
+```
+
+The generated signature is `void NAME(const rc_bitset *bs)` without a context, or
+`void NAME(const rc_bitset *bs, CTX *ctx)` with one. Iteration is read-only and
+allocates nothing.
 
 ---
 

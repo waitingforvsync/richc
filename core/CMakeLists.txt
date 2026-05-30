@@ -37,6 +37,7 @@ add_library(richc STATIC
     include/richc/ops.h
     include/richc/str.h
     include/richc/template/array.h
+    include/richc/template/bitset_foreach.h
     include/richc/template/hash_trie.h
     include/richc/template/lower_bound.h
     include/richc/template/pool.h
@@ -66,6 +67,7 @@ add_executable(richc_core_test
     test/test_arena.c
     test/test_array.c
     test/test_bitset.c
+    test/test_bitset_foreach.c
     test/test_box2f.c
     test/test_box2i.c
     test/test_bytes.c

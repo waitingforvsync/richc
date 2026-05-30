@@ -90,7 +90,8 @@ Available now in core:
   `rc_array_bytes`, the array template instantiated for `uint8_t`.
 - **Bit array** (`richc/bitset.h`) - `rc_bitset`, a growable arena-backed array
   of bits packed into `uint32_t` words, with set/clear/test, geometric `push`,
-  and whole-word set-bit iteration.
+  and whole-word set-bit iteration. `bitset_foreach.h` adds an iterator template
+  that calls a macro on each set bit, with an optional context.
 - **Hash trie** (`richc/template/hash_trie.h`) - a template for a 16-way
   arena-backed map or set keyed by a 64-bit hash; nodes are pooled 16 to a block
   in an internal `rc_pool` (so blocks emptied by delete are recycled), and one
