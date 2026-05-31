@@ -46,7 +46,7 @@
  *   #define RC_POOL_FOREACH_TYPE          thing
  *   #define RC_POOL_FOREACH_CTX           sum_ctx
  *   #define RC_POOL_FOREACH_FUNC(c, p, i) add_cost(c, p, i)
- *   #include "richc/template/pool_foreach.h"
+ *   #include "richc/template/algorithm/pool_foreach.h"
  *   // void rc_pool_foreach_thing(rc_pool_thing *pool, sum_ctx *ctx, rc_arena scratch);
  */
 
@@ -55,12 +55,12 @@
 
 #ifndef RC_POOL_FOREACH_TYPE
 #  define RC_POOL_FOREACH_TYPE int   // to keep intellisense happy
-#  error "RC_POOL_FOREACH_TYPE must be defined before including richc/template/pool_foreach.h"
+#  error "RC_POOL_FOREACH_TYPE must be defined before including richc/template/algorithm/pool_foreach.h"
 #endif
 
 #ifndef RC_POOL_FOREACH_FUNC
 #  define RC_POOL_FOREACH_FUNC(pool, index) ((void)(pool), (void)(index))   // to keep intellisense happy
-#  error "RC_POOL_FOREACH_FUNC must be defined before including richc/template/pool_foreach.h"
+#  error "RC_POOL_FOREACH_FUNC must be defined before including richc/template/algorithm/pool_foreach.h"
 #endif
 
 #ifndef RC_POOL_FOREACH_POOL

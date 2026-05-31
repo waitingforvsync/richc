@@ -37,7 +37,7 @@
  *
  * Example (no context):
  *   #define RC_UPPER_BOUND_TYPE int
- *   #include "richc/template/upper_bound.h"
+ *   #include "richc/template/algorithm/upper_bound.h"
  *   // uint32_t rc_upper_bound_int(rc_view_int view, int value);
  *
  * Example (context comparator):
@@ -46,7 +46,7 @@
  *   #define RC_UPPER_BOUND_CTX          record_cmp_ctx
  *   #define RC_UPPER_BOUND_CMP(ctx, a, b)  (key(ctx, a) < key(ctx, b))
  *   #define RC_UPPER_BOUND_NAME         rc_upper_bound_record
- *   #include "richc/template/upper_bound.h"
+ *   #include "richc/template/algorithm/upper_bound.h"
  *   // uint32_t rc_upper_bound_record(rc_view_record, record_cmp_ctx *, record);
  */
 
@@ -56,7 +56,7 @@
 
 #ifndef RC_UPPER_BOUND_TYPE
 #  define RC_UPPER_BOUND_TYPE int   // to keep intellisense happy
-#  error "RC_UPPER_BOUND_TYPE must be defined before including richc/template/upper_bound.h"
+#  error "RC_UPPER_BOUND_TYPE must be defined before including richc/template/algorithm/upper_bound.h"
 #endif
 
 #ifndef RC_UPPER_BOUND_VIEW

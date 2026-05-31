@@ -5,7 +5,7 @@
 
 // plain int upper bound (default comparator)
 #define RC_UPPER_BOUND_TYPE int
-#include "richc/template/upper_bound.h"
+#include "richc/template/algorithm/upper_bound.h"
 
 // custom comparator (no context): a key/value record sorted by key
 typedef struct { int key; int val; } kv;
@@ -14,7 +14,7 @@ typedef struct { int key; int val; } kv;
 
 #define RC_UPPER_BOUND_TYPE     kv
 #define RC_UPPER_BOUND_CMP(a, b) ((a).key < (b).key)
-#include "richc/template/upper_bound.h"
+#include "richc/template/algorithm/upper_bound.h"
 
 // context comparator: ctx->sign flips the ordering so the same routine searches
 // an ascending (sign +1) or descending (sign -1) array
@@ -23,13 +23,13 @@ typedef struct { int sign; } sign_ctx;
 #define RC_UPPER_BOUND_CTX           sign_ctx
 #define RC_UPPER_BOUND_CMP(c, a, b)  ((c)->sign * (a) < (c)->sign * (b))
 #define RC_UPPER_BOUND_NAME          rc_upper_bound_signed
-#include "richc/template/upper_bound.h"
+#include "richc/template/algorithm/upper_bound.h"
 
 // context type with the default comparator (exercises the (void)ctx path)
 #define RC_UPPER_BOUND_TYPE int
 #define RC_UPPER_BOUND_CTX  sign_ctx
 #define RC_UPPER_BOUND_NAME rc_upper_bound_ctxdef
-#include "richc/template/upper_bound.h"
+#include "richc/template/algorithm/upper_bound.h"
 
 RC_TEST(upper_bound, empty)
 {

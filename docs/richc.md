@@ -106,18 +106,21 @@ Headers:
 - [richc/str.h - string view](#richcstrh---string-view)
 - [richc/test.h - unit-test framework](#richctesth---unit-test-framework)
 
-Templates:
+Container templates:
 
 - [richc/template/array.h - view, span, array](#richctemplatearrayh---view-span-array)
-- [richc/template/bitset_foreach.h - iterate set bits](#richctemplatebitset_foreachh---iterate-set-bits)
 - [richc/template/hash_trie.h - 16-way hash trie](#richctemplatehash_trieh---16-way-hash-trie)
-- [richc/template/lower_bound.h - binary search](#richctemplatelower_boundh---binary-search)
-- [richc/template/max_element.h - index of the maximum](#richctemplatemax_elementh---index-of-the-maximum)
-- [richc/template/min_element.h - index of the minimum](#richctemplatemin_elementh---index-of-the-minimum)
 - [richc/template/pool.h - free-list object pool](#richctemplatepoolh---free-list-object-pool)
-- [richc/template/pool_foreach.h - iterate live pool entries](#richctemplatepool_foreachh---iterate-live-pool-entries)
-- [richc/template/sort.h - introsort](#richctemplatesorth---introsort)
-- [richc/template/upper_bound.h - binary search](#richctemplateupper_boundh---binary-search)
+
+Algorithm templates:
+
+- [richc/template/algorithm/bitset_foreach.h - iterate set bits](#richctemplatealgorithmbitset_foreachh---iterate-set-bits)
+- [richc/template/algorithm/lower_bound.h - binary search](#richctemplatealgorithmlower_boundh---binary-search)
+- [richc/template/algorithm/max_element.h - index of the maximum](#richctemplatealgorithmmax_elementh---index-of-the-maximum)
+- [richc/template/algorithm/min_element.h - index of the minimum](#richctemplatealgorithmmin_elementh---index-of-the-minimum)
+- [richc/template/algorithm/pool_foreach.h - iterate live pool entries](#richctemplatealgorithmpool_foreachh---iterate-live-pool-entries)
+- [richc/template/algorithm/sort.h - introsort](#richctemplatealgorithmsorth---introsort)
+- [richc/template/algorithm/upper_bound.h - binary search](#richctemplatealgorithmupper_boundh---binary-search)
 
 Math:
 
@@ -325,7 +328,7 @@ for (uint32_t i = rc_bitset_get_first_set(&bs);
 }
 ```
 
-The [`bitset_foreach`](#richctemplatebitset_foreachh---iterate-set-bits) template
+The [`bitset_foreach`](#richctemplatealgorithmbitset_foreachh---iterate-set-bits) template
 wraps this idiom to call a macro on each set bit, with an optional context.
 
 ---
@@ -1022,54 +1025,6 @@ pointer across growth in that case. Element indices are always stable.
 
 ---
 
-## richc/template/bitset_foreach.h - iterate set bits
-
-A preprocessor template (like `sort.h`) that generates a function to visit the set
-bits of an [`rc_bitset`](#richcbitseth---growable-bit-array) in ascending index
-order. It uses the bitset iteration idiom (`get_first_set` / `get_next_set`) and
-invokes a caller-supplied macro on each set bit's index, with an optional context.
-Include it again (after redefining the control macros) to generate another
-iterator.
-
-### Instantiation
-
-```c
-typedef struct { uint32_t count; } counter;
-static void bump(counter *c, uint32_t i) { (void)i; c->count++; }
-
-#define RC_BITSET_FOREACH_CTX        counter
-#define RC_BITSET_FOREACH_FUNC(c, i) bump(c, i)
-#include "richc/template/bitset_foreach.h"
-// void rc_bitset_foreach(const rc_bitset *bs, counter *ctx);
-```
-
-| Control macro | Required | Default | Meaning |
-|---------------|----------|---------|---------|
-| `RC_BITSET_FOREACH_FUNC` | yes | - | per-bit callback (see below) |
-| `RC_BITSET_FOREACH_CTX`  | no  | none | context type threaded to the callback |
-| `RC_BITSET_FOREACH_NAME` | no  | `rc_bitset_foreach` | generated function name |
-
-All macros defined before inclusion are undefined again by the header. Unlike the
-type-parameterised templates there is no `TYPE`, so the default name is fixed;
-give an explicit `RC_BITSET_FOREACH_NAME` to generate more than one iterator in a
-translation unit.
-
-### Callback and context
-
-Without a context the callback is `RC_BITSET_FOREACH_FUNC(index)`, where `index`
-is the `uint32_t` set-bit index. Defining `RC_BITSET_FOREACH_CTX` adds a context
-pointer as the callback's first argument and as a function parameter:
-
-```c
-#define RC_BITSET_FOREACH_FUNC(ctx, index)  ...   // ctx is RC_BITSET_FOREACH_CTX *
-```
-
-The generated signature is `void NAME(const rc_bitset *bs)` without a context, or
-`void NAME(const rc_bitset *bs, CTX *ctx)` with one. Iteration is read-only and
-allocates nothing.
-
----
-
 ## richc/template/hash_trie.h - 16-way hash trie
 
 A preprocessor template (like `array.h`) for an arena-backed map or set keyed by
@@ -1145,105 +1100,6 @@ int             *rc_trie_u64_value_at(rc_trie_u64 *t, uint32_t index);
 
 ---
 
-## richc/template/lower_bound.h - binary search
-
-A preprocessor template (like `array.h`) that generates a binary search over a
-sorted `rc_view`. It finds the first element `e` for which `!(e < value)` - the
-first element `>= value` when the view is sorted ascending under the comparison -
-and returns its index, or `view.num` if every element is less than `value`.
-Include it again (after redefining the control macros) for another element type.
-
-### Instantiation
-
-```c
-#define RC_LOWER_BOUND_TYPE int
-#include "richc/template/lower_bound.h"
-// uint32_t rc_lower_bound_int(rc_view_int view, int value);
-```
-
-| Control macro | Required | Default | Meaning |
-|---------------|----------|---------|---------|
-| `RC_LOWER_BOUND_TYPE` | yes | - | element type |
-| `RC_LOWER_BOUND_CTX`  | no  | none | context type threaded to the comparator |
-| `RC_LOWER_BOUND_CMP`  | no  | `(a) < (b)` | comparator expression |
-| `RC_LOWER_BOUND_VIEW` | no  | `rc_view_<TYPE>` | view type to search |
-| `RC_LOWER_BOUND_NAME` | no  | `rc_lower_bound_<TYPE>` | generated function name |
-
-All macros defined before inclusion are undefined again by the header. The
-default `VIEW` and `NAME` paste `<TYPE>`, so they require a single-identifier
-type; give an explicit `RC_LOWER_BOUND_VIEW` / `RC_LOWER_BOUND_NAME` for a
-multi-token element type.
-
-### Comparator and context
-
-Without a context the comparator is `RC_LOWER_BOUND_CMP(a, b)`, true iff `a < b`.
-Defining `RC_LOWER_BOUND_CTX` adds a context pointer as the comparator's first
-argument and as a function parameter:
-
-```c
-typedef struct { int sign; } sign_ctx;
-#define RC_LOWER_BOUND_TYPE          int
-#define RC_LOWER_BOUND_CTX           sign_ctx
-#define RC_LOWER_BOUND_CMP(c, a, b)  ((c)->sign * (a) < (c)->sign * (b))
-#define RC_LOWER_BOUND_NAME          rc_lower_bound_signed
-#include "richc/template/lower_bound.h"
-// uint32_t rc_lower_bound_signed(rc_view_int view, sign_ctx *ctx, int value);
-```
-
-The generated signature is `uint32_t NAME(VIEW view, TYPE value)` without a
-context, or `uint32_t NAME(VIEW view, CTX *ctx, TYPE value)` with one.
-
----
-
-## richc/template/max_element.h - index of the maximum
-
-A preprocessor template (like `array.h`) that scans an `rc_view` and returns the
-index of the *first* element that no other element is greater than - the leftmost
-maximum under the comparison - or `RC_INDEX_NONE` if the view is empty. Include it
-again (after redefining the control macros) for another element type.
-
-### Instantiation
-
-```c
-#define RC_MAX_ELEMENT_TYPE int
-#include "richc/template/max_element.h"
-// uint32_t rc_max_element_int(rc_view_int view);
-```
-
-| Control macro | Required | Default | Meaning |
-|---------------|----------|---------|---------|
-| `RC_MAX_ELEMENT_TYPE` | yes | - | element type |
-| `RC_MAX_ELEMENT_CTX`  | no  | none | context type threaded to the comparator |
-| `RC_MAX_ELEMENT_CMP`  | no  | `(a) < (b)` | comparator expression (still "less than"; the template applies it the other way round) |
-| `RC_MAX_ELEMENT_VIEW` | no  | `rc_view_<TYPE>` | view type to scan |
-| `RC_MAX_ELEMENT_NAME` | no  | `rc_max_element_<TYPE>` | generated function name |
-
-The comparator and context conventions are identical to `lower_bound.h`: the
-comparator is true iff `a < b`, and defining `RC_MAX_ELEMENT_CTX` adds a context
-pointer as both the comparator's first argument and a function parameter. All
-macros defined before inclusion are undefined again by the header. The generated
-signature is `uint32_t NAME(VIEW view)` without a context, or
-`uint32_t NAME(VIEW view, CTX *ctx)` with one.
-
----
-
-## richc/template/min_element.h - index of the minimum
-
-A preprocessor template (like `array.h`) that scans an `rc_view` and returns the
-index of the *first* element that no other element is less than - the leftmost
-minimum under the comparison - or `RC_INDEX_NONE` if the view is empty. It is the
-companion to `max_element.h` with an identical interface (`RC_MIN_ELEMENT_TYPE` /
-`_CTX` / `_CMP` / `_VIEW` / `_NAME`, default name `rc_min_element_<TYPE>`); only
-the chosen extreme differs.
-
-```c
-#define RC_MIN_ELEMENT_TYPE int
-#include "richc/template/min_element.h"
-// uint32_t rc_min_element_int(rc_view_int view);
-```
-
----
-
 ## richc/template/pool.h - free-list object pool
 
 A preprocessor template (like `array.h`) for an index-stable object pool backed
@@ -1296,12 +1152,159 @@ rc_bitset     rc_pool_thing_free_bitset(const rc_pool_thing *pool, rc_arena *are
   one by inspection), but `free_bitset` exposes the liveness information: it
   returns an `rc_bitset`, sized to `items.num` and allocated from `arena`, whose
   set bits are exactly the free-list (dead) slots - so a clear bit is a live slot.
-  The [`pool_foreach`](#richctemplatepool_foreachh---iterate-live-pool-entries)
+  The [`pool_foreach`](#richctemplatealgorithmpool_foreachh---iterate-live-pool-entries)
   template builds on it to visit the live elements.
 
 ---
 
-## richc/template/pool_foreach.h - iterate live pool entries
+## richc/template/algorithm/bitset_foreach.h - iterate set bits
+
+A preprocessor template (like `sort.h`) that generates a function to visit the set
+bits of an [`rc_bitset`](#richcbitseth---growable-bit-array) in ascending index
+order. It uses the bitset iteration idiom (`get_first_set` / `get_next_set`) and
+invokes a caller-supplied macro on each set bit's index, with an optional context.
+Include it again (after redefining the control macros) to generate another
+iterator.
+
+### Instantiation
+
+```c
+typedef struct { uint32_t count; } counter;
+static void bump(counter *c, uint32_t i) { (void)i; c->count++; }
+
+#define RC_BITSET_FOREACH_CTX        counter
+#define RC_BITSET_FOREACH_FUNC(c, i) bump(c, i)
+#include "richc/template/algorithm/bitset_foreach.h"
+// void rc_bitset_foreach(const rc_bitset *bs, counter *ctx);
+```
+
+| Control macro | Required | Default | Meaning |
+|---------------|----------|---------|---------|
+| `RC_BITSET_FOREACH_FUNC` | yes | - | per-bit callback (see below) |
+| `RC_BITSET_FOREACH_CTX`  | no  | none | context type threaded to the callback |
+| `RC_BITSET_FOREACH_NAME` | no  | `rc_bitset_foreach` | generated function name |
+
+All macros defined before inclusion are undefined again by the header. Unlike the
+type-parameterised templates there is no `TYPE`, so the default name is fixed;
+give an explicit `RC_BITSET_FOREACH_NAME` to generate more than one iterator in a
+translation unit.
+
+### Callback and context
+
+Without a context the callback is `RC_BITSET_FOREACH_FUNC(index)`, where `index`
+is the `uint32_t` set-bit index. Defining `RC_BITSET_FOREACH_CTX` adds a context
+pointer as the callback's first argument and as a function parameter:
+
+```c
+#define RC_BITSET_FOREACH_FUNC(ctx, index)  ...   // ctx is RC_BITSET_FOREACH_CTX *
+```
+
+The generated signature is `void NAME(const rc_bitset *bs)` without a context, or
+`void NAME(const rc_bitset *bs, CTX *ctx)` with one. Iteration is read-only and
+allocates nothing.
+
+---
+
+## richc/template/algorithm/lower_bound.h - binary search
+
+A preprocessor template (like `array.h`) that generates a binary search over a
+sorted `rc_view`. It finds the first element `e` for which `!(e < value)` - the
+first element `>= value` when the view is sorted ascending under the comparison -
+and returns its index, or `view.num` if every element is less than `value`.
+Include it again (after redefining the control macros) for another element type.
+
+### Instantiation
+
+```c
+#define RC_LOWER_BOUND_TYPE int
+#include "richc/template/algorithm/lower_bound.h"
+// uint32_t rc_lower_bound_int(rc_view_int view, int value);
+```
+
+| Control macro | Required | Default | Meaning |
+|---------------|----------|---------|---------|
+| `RC_LOWER_BOUND_TYPE` | yes | - | element type |
+| `RC_LOWER_BOUND_CTX`  | no  | none | context type threaded to the comparator |
+| `RC_LOWER_BOUND_CMP`  | no  | `(a) < (b)` | comparator expression |
+| `RC_LOWER_BOUND_VIEW` | no  | `rc_view_<TYPE>` | view type to search |
+| `RC_LOWER_BOUND_NAME` | no  | `rc_lower_bound_<TYPE>` | generated function name |
+
+All macros defined before inclusion are undefined again by the header. The
+default `VIEW` and `NAME` paste `<TYPE>`, so they require a single-identifier
+type; give an explicit `RC_LOWER_BOUND_VIEW` / `RC_LOWER_BOUND_NAME` for a
+multi-token element type.
+
+### Comparator and context
+
+Without a context the comparator is `RC_LOWER_BOUND_CMP(a, b)`, true iff `a < b`.
+Defining `RC_LOWER_BOUND_CTX` adds a context pointer as the comparator's first
+argument and as a function parameter:
+
+```c
+typedef struct { int sign; } sign_ctx;
+#define RC_LOWER_BOUND_TYPE          int
+#define RC_LOWER_BOUND_CTX           sign_ctx
+#define RC_LOWER_BOUND_CMP(c, a, b)  ((c)->sign * (a) < (c)->sign * (b))
+#define RC_LOWER_BOUND_NAME          rc_lower_bound_signed
+#include "richc/template/algorithm/lower_bound.h"
+// uint32_t rc_lower_bound_signed(rc_view_int view, sign_ctx *ctx, int value);
+```
+
+The generated signature is `uint32_t NAME(VIEW view, TYPE value)` without a
+context, or `uint32_t NAME(VIEW view, CTX *ctx, TYPE value)` with one.
+
+---
+
+## richc/template/algorithm/max_element.h - index of the maximum
+
+A preprocessor template (like `array.h`) that scans an `rc_view` and returns the
+index of the *first* element that no other element is greater than - the leftmost
+maximum under the comparison - or `RC_INDEX_NONE` if the view is empty. Include it
+again (after redefining the control macros) for another element type.
+
+### Instantiation
+
+```c
+#define RC_MAX_ELEMENT_TYPE int
+#include "richc/template/algorithm/max_element.h"
+// uint32_t rc_max_element_int(rc_view_int view);
+```
+
+| Control macro | Required | Default | Meaning |
+|---------------|----------|---------|---------|
+| `RC_MAX_ELEMENT_TYPE` | yes | - | element type |
+| `RC_MAX_ELEMENT_CTX`  | no  | none | context type threaded to the comparator |
+| `RC_MAX_ELEMENT_CMP`  | no  | `(a) < (b)` | comparator expression (still "less than"; the template applies it the other way round) |
+| `RC_MAX_ELEMENT_VIEW` | no  | `rc_view_<TYPE>` | view type to scan |
+| `RC_MAX_ELEMENT_NAME` | no  | `rc_max_element_<TYPE>` | generated function name |
+
+The comparator and context conventions are identical to `lower_bound.h`: the
+comparator is true iff `a < b`, and defining `RC_MAX_ELEMENT_CTX` adds a context
+pointer as both the comparator's first argument and a function parameter. All
+macros defined before inclusion are undefined again by the header. The generated
+signature is `uint32_t NAME(VIEW view)` without a context, or
+`uint32_t NAME(VIEW view, CTX *ctx)` with one.
+
+---
+
+## richc/template/algorithm/min_element.h - index of the minimum
+
+A preprocessor template (like `array.h`) that scans an `rc_view` and returns the
+index of the *first* element that no other element is less than - the leftmost
+minimum under the comparison - or `RC_INDEX_NONE` if the view is empty. It is the
+companion to `max_element.h` with an identical interface (`RC_MIN_ELEMENT_TYPE` /
+`_CTX` / `_CMP` / `_VIEW` / `_NAME`, default name `rc_min_element_<TYPE>`); only
+the chosen extreme differs.
+
+```c
+#define RC_MIN_ELEMENT_TYPE int
+#include "richc/template/algorithm/min_element.h"
+// uint32_t rc_min_element_int(rc_view_int view);
+```
+
+---
+
+## richc/template/algorithm/pool_foreach.h - iterate live pool entries
 
 A preprocessor template (like `sort.h`) that generates a function to visit the
 *live* entries of an `rc_pool`. The pool has no built-in iteration because a freed
@@ -1323,7 +1326,7 @@ static void add_cost(sum_ctx *c, rc_pool_thing *pool, uint32_t i)
 #define RC_POOL_FOREACH_TYPE          thing
 #define RC_POOL_FOREACH_CTX           sum_ctx
 #define RC_POOL_FOREACH_FUNC(c, p, i) add_cost(c, p, i)
-#include "richc/template/pool_foreach.h"
+#include "richc/template/algorithm/pool_foreach.h"
 // void rc_pool_foreach_thing(rc_pool_thing *pool, sum_ctx *ctx, rc_arena scratch);
 ```
 
@@ -1358,7 +1361,7 @@ caller's arena untouched.
 
 ---
 
-## richc/template/sort.h - introsort
+## richc/template/algorithm/sort.h - introsort
 
 A preprocessor template (like `array.h`) that generates an in-place sort over a
 mutable `rc_span`. It is an introsort: quicksort with a median-of-three pivot for
@@ -1372,7 +1375,7 @@ another element type.
 
 ```c
 #define RC_SORT_TYPE int
-#include "richc/template/sort.h"
+#include "richc/template/algorithm/sort.h"
 // void rc_sort_int(rc_span_int span);
 ```
 
@@ -1399,7 +1402,7 @@ typedef struct { int sign; } sign_ctx;
 #define RC_SORT_CTX           sign_ctx
 #define RC_SORT_CMP(c, a, b)  ((c)->sign * (a) < (c)->sign * (b))
 #define RC_SORT_NAME          rc_sort_signed
-#include "richc/template/sort.h"
+#include "richc/template/algorithm/sort.h"
 // void rc_sort_signed(rc_span_int span, sign_ctx *ctx);
 ```
 
@@ -1408,7 +1411,7 @@ The generated signature is `void NAME(SPAN span)` without a context, or
 
 ---
 
-## richc/template/upper_bound.h - binary search
+## richc/template/algorithm/upper_bound.h - binary search
 
 A preprocessor template (like `array.h`) that generates a binary search over a
 sorted `rc_view`. It finds the first element `e` for which `!(e <= value)` - the
@@ -1422,7 +1425,7 @@ just past the last, so `[lower, upper)` is the equal range.
 
 ```c
 #define RC_UPPER_BOUND_TYPE int
-#include "richc/template/upper_bound.h"
+#include "richc/template/algorithm/upper_bound.h"
 // uint32_t rc_upper_bound_int(rc_view_int view, int value);
 ```
 

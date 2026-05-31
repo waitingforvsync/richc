@@ -30,7 +30,7 @@ failing test makes the build report an error.
 
 ## Using the library
 
-Add `core/include` to your include path and link against the `richc` target.
+Add `src/core/include` to your include path and link against the `richc` target.
 All headers are included under the `richc/` namespace.
 
 ```c
@@ -116,17 +116,17 @@ Available now in core:
   recycles it, and freed slots are reused. `pool_foreach.h` adds an iterator
   template that visits the live entries (via a scratch-arena bitset of the dead
   slots), calling a macro on each with an optional context.
-- **Sort** (`richc/template/sort.h`) - a template generating an in-place
+- **Sort** (`richc/template/algorithm/sort.h`) - a template generating an in-place
   introsort over a mutable `rc_span` (quicksort with a heapsort fallback and
   insertion sort for small spans), with an optional custom comparator and
   context pointer.
-- **Binary search** (`richc/template/lower_bound.h`,
-  `richc/template/upper_bound.h`) - templates generating `lower_bound` and
+- **Binary search** (`richc/template/algorithm/lower_bound.h`,
+  `richc/template/algorithm/upper_bound.h`) - templates generating `lower_bound` and
   `upper_bound` over a sorted `rc_view`: the first index whose element is
   `>= value` and the first whose element is `> value`, with an optional custom
   comparator and context pointer.
-- **Min / max element** (`richc/template/min_element.h`,
-  `richc/template/max_element.h`) - templates returning the index of the leftmost
+- **Min / max element** (`richc/template/algorithm/min_element.h`,
+  `richc/template/algorithm/max_element.h`) - templates returning the index of the leftmost
   minimum or maximum of an `rc_view` (`RC_INDEX_NONE` if empty), with an optional
   custom comparator and context pointer.
 - **File I/O** (`richc/file.h`) - whole-file load and save with `rc_str`

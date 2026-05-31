@@ -8,7 +8,7 @@ static void collect(collect_ctx *c, uint32_t i) { c->indices[c->count++] = i; }
 
 #define RC_BITSET_FOREACH_CTX        collect_ctx
 #define RC_BITSET_FOREACH_FUNC(c, i) collect(c, i)
-#include "richc/template/bitset_foreach.h"   // rc_bitset_foreach
+#include "richc/template/algorithm/bitset_foreach.h"   // rc_bitset_foreach
 
 // non-context callback accumulating through file-scope state
 static uint32_t g_count;
@@ -17,7 +17,7 @@ static void note(uint32_t i) { g_count++; g_mask |= (uint64_t)1 << i; }
 
 #define RC_BITSET_FOREACH_FUNC(i) note(i)
 #define RC_BITSET_FOREACH_NAME    rc_bitset_foreach_note
-#include "richc/template/bitset_foreach.h"
+#include "richc/template/algorithm/bitset_foreach.h"
 
 RC_TEST_GROUP_DATA(bitset_foreach) {
     rc_arena a;

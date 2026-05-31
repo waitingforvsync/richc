@@ -33,7 +33,7 @@
  *
  * Example (no context):
  *   #define RC_MIN_ELEMENT_TYPE int
- *   #include "richc/template/min_element.h"
+ *   #include "richc/template/algorithm/min_element.h"
  *   // uint32_t rc_min_element_int(rc_view_int view);
  *
  * Example (context comparator):
@@ -41,7 +41,7 @@
  *   #define RC_MIN_ELEMENT_CTX          record_cmp_ctx
  *   #define RC_MIN_ELEMENT_CMP(ctx, a, b)  ((a).key < (b).key)
  *   #define RC_MIN_ELEMENT_NAME         rc_min_element_record
- *   #include "richc/template/min_element.h"
+ *   #include "richc/template/algorithm/min_element.h"
  *   // uint32_t rc_min_element_record(rc_view_record view, record_cmp_ctx *ctx);
  */
 
@@ -51,7 +51,7 @@
 
 #ifndef RC_MIN_ELEMENT_TYPE
 #  define RC_MIN_ELEMENT_TYPE int   // to keep intellisense happy
-#  error "RC_MIN_ELEMENT_TYPE must be defined before including richc/template/min_element.h"
+#  error "RC_MIN_ELEMENT_TYPE must be defined before including richc/template/algorithm/min_element.h"
 #endif
 
 #ifndef RC_MIN_ELEMENT_VIEW

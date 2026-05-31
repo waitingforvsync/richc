@@ -35,7 +35,7 @@
  *
  * Example (no context):
  *   #define RC_MAX_ELEMENT_TYPE int
- *   #include "richc/template/max_element.h"
+ *   #include "richc/template/algorithm/max_element.h"
  *   // uint32_t rc_max_element_int(rc_view_int view);
  *
  * Example (context comparator):
@@ -43,7 +43,7 @@
  *   #define RC_MAX_ELEMENT_CTX          record_cmp_ctx
  *   #define RC_MAX_ELEMENT_CMP(ctx, a, b)  ((a).key < (b).key)
  *   #define RC_MAX_ELEMENT_NAME         rc_max_element_record
- *   #include "richc/template/max_element.h"
+ *   #include "richc/template/algorithm/max_element.h"
  *   // uint32_t rc_max_element_record(rc_view_record view, record_cmp_ctx *ctx);
  */
 
@@ -53,7 +53,7 @@
 
 #ifndef RC_MAX_ELEMENT_TYPE
 #  define RC_MAX_ELEMENT_TYPE int   // to keep intellisense happy
-#  error "RC_MAX_ELEMENT_TYPE must be defined before including richc/template/max_element.h"
+#  error "RC_MAX_ELEMENT_TYPE must be defined before including richc/template/algorithm/max_element.h"
 #endif
 
 #ifndef RC_MAX_ELEMENT_VIEW

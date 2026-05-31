@@ -38,7 +38,7 @@
  *
  * Example (no context):
  *   #define RC_SORT_TYPE int
- *   #include "richc/template/sort.h"
+ *   #include "richc/template/algorithm/sort.h"
  *   // void rc_sort_int(rc_span_int span);
  *
  * Example (context comparator):
@@ -46,7 +46,7 @@
  *   #define RC_SORT_CTX          widget_cmp_ctx
  *   #define RC_SORT_CMP(ctx, a, b)  widget_less(ctx, a, b)
  *   #define RC_SORT_NAME         rc_sort_widget
- *   #include "richc/template/sort.h"
+ *   #include "richc/template/algorithm/sort.h"
  *   // void rc_sort_widget(rc_span_widget span, widget_cmp_ctx *ctx);
  */
 
@@ -56,7 +56,7 @@
 
 #ifndef RC_SORT_TYPE
 #  define RC_SORT_TYPE int   // to keep intellisense happy
-#  error "RC_SORT_TYPE must be defined before including richc/template/sort.h"
+#  error "RC_SORT_TYPE must be defined before including richc/template/algorithm/sort.h"
 #endif
 
 #ifndef RC_SORT_SPAN

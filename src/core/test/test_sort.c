@@ -5,13 +5,13 @@
 
 // plain int sort (default ascending comparator)
 #define RC_SORT_TYPE int
-#include "richc/template/sort.h"
+#include "richc/template/algorithm/sort.h"
 
 // custom comparator (no context): descending order
 #define RC_SORT_TYPE     int
 #define RC_SORT_CMP(a, b) ((a) > (b))
 #define RC_SORT_NAME     rc_sort_desc
-#include "richc/template/sort.h"
+#include "richc/template/algorithm/sort.h"
 
 // context comparator: ctx->sign chooses ascending (+1) or descending (-1)
 typedef struct { int sign; } sign_ctx;
@@ -19,13 +19,13 @@ typedef struct { int sign; } sign_ctx;
 #define RC_SORT_CTX           sign_ctx
 #define RC_SORT_CMP(c, a, b)  ((c)->sign * (a) < (c)->sign * (b))
 #define RC_SORT_NAME          rc_sort_signed
-#include "richc/template/sort.h"
+#include "richc/template/algorithm/sort.h"
 
 // context type with the default comparator (exercises the (void)ctx path)
 #define RC_SORT_TYPE int
 #define RC_SORT_CTX  sign_ctx
 #define RC_SORT_NAME rc_sort_ctxdef
-#include "richc/template/sort.h"
+#include "richc/template/algorithm/sort.h"
 
 static bool is_sorted_asc(rc_span_int s)
 {

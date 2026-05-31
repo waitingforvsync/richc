@@ -33,7 +33,7 @@
  *
  *   #define RC_BITSET_FOREACH_CTX        counter
  *   #define RC_BITSET_FOREACH_FUNC(c, i) bump(c, i)
- *   #include "richc/template/bitset_foreach.h"
+ *   #include "richc/template/algorithm/bitset_foreach.h"
  *   // void rc_bitset_foreach(const rc_bitset *bs, counter *ctx);
  */
 
@@ -41,7 +41,7 @@
 
 #ifndef RC_BITSET_FOREACH_FUNC
 #  define RC_BITSET_FOREACH_FUNC(index) ((void)(index))   // to keep intellisense happy
-#  error "RC_BITSET_FOREACH_FUNC must be defined before including richc/template/bitset_foreach.h"
+#  error "RC_BITSET_FOREACH_FUNC must be defined before including richc/template/algorithm/bitset_foreach.h"
 #endif
 
 #ifndef RC_BITSET_FOREACH_NAME

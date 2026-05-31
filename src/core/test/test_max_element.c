@@ -4,7 +4,7 @@
 #include "richc/template/array.h"
 
 #define RC_MAX_ELEMENT_TYPE int
-#include "richc/template/max_element.h"
+#include "richc/template/algorithm/max_element.h"
 
 // custom comparator (no context): a key/value record compared by key
 typedef struct { int key; int val; } kv;
@@ -13,7 +13,7 @@ typedef struct { int key; int val; } kv;
 
 #define RC_MAX_ELEMENT_TYPE     kv
 #define RC_MAX_ELEMENT_CMP(a, b) ((a).key < (b).key)
-#include "richc/template/max_element.h"
+#include "richc/template/algorithm/max_element.h"
 
 // context comparator: ctx->sign flips the ordering (sign -1 turns max into min)
 typedef struct { int sign; } sign_ctx;
@@ -21,7 +21,7 @@ typedef struct { int sign; } sign_ctx;
 #define RC_MAX_ELEMENT_CTX           sign_ctx
 #define RC_MAX_ELEMENT_CMP(c, a, b)  ((c)->sign * (a) < (c)->sign * (b))
 #define RC_MAX_ELEMENT_NAME          rc_max_element_signed
-#include "richc/template/max_element.h"
+#include "richc/template/algorithm/max_element.h"
 
 RC_TEST(max_element, empty)
 {

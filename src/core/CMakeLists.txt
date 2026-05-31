@@ -37,15 +37,15 @@ add_library(richc STATIC
     include/richc/ops.h
     include/richc/str.h
     include/richc/template/array.h
-    include/richc/template/bitset_foreach.h
+    include/richc/template/algorithm/bitset_foreach.h
     include/richc/template/hash_trie.h
-    include/richc/template/lower_bound.h
-    include/richc/template/max_element.h
-    include/richc/template/min_element.h
+    include/richc/template/algorithm/lower_bound.h
+    include/richc/template/algorithm/max_element.h
+    include/richc/template/algorithm/min_element.h
     include/richc/template/pool.h
-    include/richc/template/pool_foreach.h
-    include/richc/template/sort.h
-    include/richc/template/upper_bound.h
+    include/richc/template/algorithm/pool_foreach.h
+    include/richc/template/algorithm/sort.h
+    include/richc/template/algorithm/upper_bound.h
     include/richc/test.h
 )
 

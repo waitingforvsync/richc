@@ -18,7 +18,7 @@ static void visit_record(visit_ctx *c, rc_pool_int *pool, uint32_t index)
 #define RC_POOL_FOREACH_TYPE          int
 #define RC_POOL_FOREACH_CTX           visit_ctx
 #define RC_POOL_FOREACH_FUNC(c, p, i) visit_record(c, p, i)
-#include "richc/template/pool_foreach.h"   // rc_pool_foreach_int
+#include "richc/template/algorithm/pool_foreach.h"   // rc_pool_foreach_int
 
 // non-context callback accumulating through file-scope state
 static int      g_sum;
@@ -28,13 +28,13 @@ static void sum_one(rc_pool_int *pool, uint32_t index) { g_sum += rc_pool_int_ge
 #define RC_POOL_FOREACH_TYPE       int
 #define RC_POOL_FOREACH_FUNC(p, i) sum_one(p, i)
 #define RC_POOL_FOREACH_NAME       rc_pool_foreach_int_sum
-#include "richc/template/pool_foreach.h"
+#include "richc/template/algorithm/pool_foreach.h"
 
 // non-context callback mutating the element in place, via the pool's at
 #define RC_POOL_FOREACH_TYPE       int
 #define RC_POOL_FOREACH_FUNC(p, i) (*rc_pool_int_at(p, i) *= 2)
 #define RC_POOL_FOREACH_NAME       rc_pool_foreach_int_double
-#include "richc/template/pool_foreach.h"
+#include "richc/template/algorithm/pool_foreach.h"
 
 RC_TEST_GROUP_DATA(pool_foreach) {
     rc_arena a;
