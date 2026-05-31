@@ -43,10 +43,10 @@ static rc_file_size_result file_measure(FILE *f)
     return (rc_file_size_result) {.size = (uint32_t)size_long, .error = RC_FILE_OK};
 }
 
-// Open filename, measure its size, allocate max(size, minimum_capacity) + extra
-// bytes from the arena, and read the file in.  `extra` reserves room beyond the
-// content (1 for a text null terminator, 0 for binary); when non-zero the byte
-// at data[size] is set to '\0'.  The returned array's cap excludes `extra`.
+// Open filename, measure its size, and read it into a fresh rc_array_bytes with
+// num == size and capacity max(size, minimum_capacity) + extra.  The `extra`
+// trailing bytes are left for the caller to fill (rc_file_load_text appends its
+// '\0' there; binary passes extra == 0).
 static load_raw_result load_raw(rc_str filename, uint32_t minimum_capacity,
                                 uint32_t extra, rc_arena *arena)
 {
@@ -74,9 +74,8 @@ static load_raw_result load_raw(rc_str filename, uint32_t minimum_capacity,
         return (load_raw_result) {.error = RC_FILE_ERROR_TOO_LARGE};
     }
 
-    // Allocate capacity + extra bytes; `extra` reserves room for a text null
-    // terminator at data[size] that the reported capacity (set below) excludes.
     rc_array_bytes contents = rc_array_bytes_make(capacity + extra, arena);
+    rc_array_bytes_push_n(&contents, size, arena);   // num = size (the room is already reserved)
 
     // size > 0 implies a non-empty allocation, so contents.data is non-NULL here.
     if (size > 0 && fread(contents.data, 1, size, f) != (size_t)size) {
@@ -84,9 +83,6 @@ static load_raw_result load_raw(rc_str filename, uint32_t minimum_capacity,
         fclose(f);
         return (load_raw_result) {.error = RC_FILE_ERROR_IO};
     }
-    contents.num = size;
-    if (extra > 0) contents.data[size] = '\0';
-    contents.cap = capacity;   // hide the terminator byte from the usable capacity
 
     fclose(f);
     return (load_raw_result) {.contents = contents};
@@ -103,44 +99,29 @@ rc_file_size_result rc_file_size(rc_str filename)
     return result;
 }
 
-rc_file_load_text_result rc_file_load_text(rc_str filename, rc_arena *arena)
+rc_file_load_text_result rc_file_load_text(rc_str filename, uint32_t minimum_capacity, rc_arena *arena)
 {
-    load_raw_result raw = load_raw(filename, 0, 1, arena);   // +1 for the null terminator
+    load_raw_result raw = load_raw(filename, minimum_capacity, 1, arena);   // +1 for the null terminator
     if (raw.error != RC_FILE_OK)
         return (rc_file_load_text_result) {.error = raw.error};
 
-    return (rc_file_load_text_result) {.text = rc_str_make((const char *)raw.contents.data, raw.contents.num)};
-}
-
-rc_file_load_text_mut_result rc_file_load_text_mut(rc_str filename, uint32_t minimum_capacity, rc_arena *arena)
-{
-    load_raw_result raw = load_raw(filename, minimum_capacity, 1, arena);
-    if (raw.error != RC_FILE_OK)
-        return (rc_file_load_text_mut_result) {.error = raw.error};
-
-    // cap excludes the terminator, so the allocation (cap + 1) is exactly the
-    // rc_mstr invariant.
-    return (rc_file_load_text_mut_result) {
-        .text = {.data = (char *)raw.contents.data, .len = raw.contents.num, .cap = raw.contents.cap}
+    // Take ownership of the buffer as an rc_mstr: append the '\0' terminator
+    // (load_raw reserved the byte, so this never grows), then drop it from len/cap
+    // (the allocation, cap + 1, holds it - the rc_mstr invariant).
+    rc_array_bytes c = raw.contents;
+    rc_array_bytes_push(&c, 0, arena);
+    return (rc_file_load_text_result) {
+        .text = {.data = (char *)c.data, .len = c.num - 1, .cap = c.cap - 1}
     };
 }
 
-rc_file_load_binary_result rc_file_load_binary(rc_str filename, rc_arena *arena)
-{
-    load_raw_result raw = load_raw(filename, 0, 0, arena);
-    if (raw.error != RC_FILE_OK)
-        return (rc_file_load_binary_result) {.error = raw.error};
-
-    return (rc_file_load_binary_result) {.contents = raw.contents.view};
-}
-
-rc_file_load_binary_mut_result rc_file_load_binary_mut(rc_str filename, uint32_t minimum_capacity, rc_arena *arena)
+rc_file_load_binary_result rc_file_load_binary(rc_str filename, uint32_t minimum_capacity, rc_arena *arena)
 {
     load_raw_result raw = load_raw(filename, minimum_capacity, 0, arena);
     if (raw.error != RC_FILE_OK)
-        return (rc_file_load_binary_mut_result) {.error = raw.error};
+        return (rc_file_load_binary_result) {.error = raw.error};
 
-    return (rc_file_load_binary_mut_result) {.contents = raw.contents};
+    return (rc_file_load_binary_result) {.contents = raw.contents};
 }
 
 rc_file_error rc_file_save_text(rc_str filename, rc_str text)

@@ -23,25 +23,25 @@ RC_TEST_STEP(file, text_roundtrip, fix)
     rc_str content = RC_STR("hello\nworld");
     RC_CHECK_TRUE(rc_file_save_text(path, content) == RC_FILE_OK);
 
-    rc_file_load_text_result r = rc_file_load_text(path, &fix->a);
+    rc_file_load_text_result r = rc_file_load_text(path, 0, &fix->a);
     RC_CHECK_TRUE(r.error == RC_FILE_OK);
-    RC_CHECK(r.text, ==, content);
+    RC_CHECK(r.text.view, ==, content);
     // The result is null-terminated, so as_cstr returns the buffer directly.
-    RC_CHECK_TRUE(rc_str_as_cstr(r.text, NULL, 0) == r.text.data);
+    RC_CHECK_TRUE(rc_str_as_cstr(r.text.view, NULL, 0) == r.text.view.data);
 
     remove("/tmp/richc_file_test.txt");
 }
 
-RC_TEST_STEP(file, text_mut, fix)
+RC_TEST_STEP(file, text_capacity, fix)
 {
     rc_str path = RC_STR("/tmp/richc_file_test.txt");
     RC_CHECK_TRUE(rc_file_save_text(path, RC_STR("abc")) == RC_FILE_OK);
 
-    rc_file_load_text_mut_result r = rc_file_load_text_mut(path, 100, &fix->a);
+    rc_file_load_text_result r = rc_file_load_text(path, 100, &fix->a);
     RC_CHECK_TRUE(r.error == RC_FILE_OK);
     RC_CHECK(r.text.view, ==, RC_STR("abc"));
     RC_CHECK(r.text.len, ==, 3u);
-    RC_CHECK(r.text.cap, ==, 100u);              // minimum_capacity honoured
+    RC_CHECK(r.text.cap, ==, 100u);              // minimum_capacity honoured (terminator is beyond cap)
     rc_mstr_append(&r.text, RC_STR("def"), &fix->a);
     RC_CHECK(r.text.view, ==, RC_STR("abcdef"));
 
@@ -53,10 +53,10 @@ RC_TEST_STEP(file, empty_text, fix)
     rc_str path = RC_STR("/tmp/richc_file_empty.txt");
     RC_CHECK_TRUE(rc_file_save_text(path, RC_STR("")) == RC_FILE_OK);
 
-    rc_file_load_text_result r = rc_file_load_text(path, &fix->a);
+    rc_file_load_text_result r = rc_file_load_text(path, 0, &fix->a);
     RC_CHECK_TRUE(r.error == RC_FILE_OK);
     RC_CHECK(r.text.len, ==, 0u);
-    RC_CHECK_TRUE(rc_str_is_valid(r.text));      // valid empty, null-terminated
+    RC_CHECK_TRUE(rc_mstr_is_valid(&r.text));     // valid empty, null-terminated
 
     remove("/tmp/richc_file_empty.txt");
 }
@@ -68,27 +68,27 @@ RC_TEST_STEP(file, binary_roundtrip, fix)
     rc_view_bytes content = RC_VIEW(bytes);
     RC_CHECK_TRUE(rc_file_save_binary(path, content) == RC_FILE_OK);
 
-    rc_file_load_binary_result r = rc_file_load_binary(path, &fix->a);
+    rc_file_load_binary_result r = rc_file_load_binary(path, 0, &fix->a);
     RC_CHECK_TRUE(r.error == RC_FILE_OK);
     RC_CHECK(r.contents.num, ==, 6u);
-    RC_CHECK(rc_view_bytes_get(r.contents, 3), ==, (uint8_t)253);
-    RC_CHECK(rc_view_bytes_get(r.contents, 5), ==, (uint8_t)255);
+    RC_CHECK(rc_array_bytes_get(&r.contents, 3), ==, (uint8_t)253);
+    RC_CHECK(rc_array_bytes_get(&r.contents, 5), ==, (uint8_t)255);
 
     remove("/tmp/richc_file_test.bin");
 }
 
-RC_TEST_STEP(file, binary_mut, fix)
+RC_TEST_STEP(file, binary_capacity, fix)
 {
     rc_str path = RC_STR("/tmp/richc_file_test.bin");
     uint8_t bytes[] = {10, 20, 30};
     rc_view_bytes content = RC_VIEW(bytes);
     RC_CHECK_TRUE(rc_file_save_binary(path, content) == RC_FILE_OK);
 
-    rc_file_load_binary_mut_result r = rc_file_load_binary_mut(path, 16, &fix->a);
+    rc_file_load_binary_result r = rc_file_load_binary(path, 16, &fix->a);
     RC_CHECK_TRUE(r.error == RC_FILE_OK);
     RC_CHECK(r.contents.num, ==, 3u);
     RC_CHECK(r.contents.cap, ==, 16u);               // minimum_capacity honoured
-    rc_array_bytes_push(&r.contents, 40, &fix->a);   // mutable
+    rc_array_bytes_push(&r.contents, 40, &fix->a);   // growable
     RC_CHECK(r.contents.num, ==, 4u);
     RC_CHECK(rc_array_bytes_get(&r.contents, 3), ==, (uint8_t)40);
 
@@ -97,9 +97,9 @@ RC_TEST_STEP(file, binary_mut, fix)
 
 RC_TEST_STEP(file, not_found, fix)
 {
-    rc_file_load_text_result r = rc_file_load_text(RC_STR("/tmp/richc_no_such_file_zzz.txt"), &fix->a);
+    rc_file_load_text_result r = rc_file_load_text(RC_STR("/tmp/richc_no_such_file_zzz.txt"), 0, &fix->a);
     RC_CHECK_TRUE(r.error == RC_FILE_ERROR_NOT_FOUND);
-    RC_CHECK_FALSE(rc_str_is_valid(r.text));
+    RC_CHECK_FALSE(rc_mstr_is_valid(&r.text));
 }
 
 RC_TEST(file, size)

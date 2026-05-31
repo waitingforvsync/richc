@@ -130,8 +130,8 @@ Available now in core:
   minimum or maximum of an `rc_view` (`RC_INDEX_NONE` if empty), with an optional
   custom comparator and context pointer.
 - **File I/O** (`richc/file.h`) - whole-file load and save with `rc_str`
-  filenames; immutable and mutable load variants returning `rc_str`/`rc_mstr`
-  and `rc_view_bytes`/`rc_array_bytes`.
+  filenames; loads return an owning, growable `rc_mstr` (text) or `rc_array_bytes`
+  (binary), from which a read-only view is available via `.view`.
 - **Scalar ops** (`richc/ops.h`) - bit reinterpretation, integer min/max/sign,
   GCD, count-leading-zeros, count-trailing-zeros, and overflow checks.
 - **Math** (`richc/math/`) - integer vectors `rc_vec2i` / `rc_vec3i` (arithmetic,

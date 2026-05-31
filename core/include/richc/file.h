@@ -16,12 +16,14 @@
  *
  * Loading
  * -------
- * Each load has an immutable and a mutable form:
- *   rc_file_load_text   -> rc_str            rc_file_load_text_mut   -> rc_mstr
- *   rc_file_load_binary -> rc_view_bytes     rc_file_load_binary_mut -> rc_array_bytes
- * The mutable forms take a minimum_capacity, so the returned rc_mstr /
- * rc_array_bytes can grow a little before reallocating.  Text loads are always
- * null-terminated, so rc_str_as_cstr on the result takes its no-copy fast path.
+ *   rc_file_load_text   -> rc_mstr
+ *   rc_file_load_binary -> rc_array_bytes
+ * A load returns an owning, growable result, so the caller can grow it or
+ * rc_*_deinit it; for read-only access take the view from the result
+ * (result.text.view / result.contents.view).  minimum_capacity sets a floor on
+ * the result's capacity, letting it grow a little before reallocating.  Text
+ * loads keep a trailing '\0' (the rc_mstr invariant), so rc_str_as_cstr on
+ * result.text.view takes its no-copy fast path.
  *
  * Saving
  * ------
@@ -48,20 +50,16 @@ typedef enum {
 
 /* ---- result types ---- */
 
-typedef struct rc_file_size_result            { uint32_t       size; rc_file_error error; } rc_file_size_result;
-typedef struct rc_file_load_text_result       { rc_str         text; rc_file_error error; } rc_file_load_text_result;
-typedef struct rc_file_load_text_mut_result   { rc_mstr        text; rc_file_error error; } rc_file_load_text_mut_result;
-typedef struct rc_file_load_binary_result     { rc_view_bytes  contents; rc_file_error error; } rc_file_load_binary_result;
-typedef struct rc_file_load_binary_mut_result { rc_array_bytes contents; rc_file_error error; } rc_file_load_binary_mut_result;
+typedef struct rc_file_size_result        { uint32_t       size;     rc_file_error error; } rc_file_size_result;
+typedef struct rc_file_load_text_result   { rc_mstr        text;     rc_file_error error; } rc_file_load_text_result;
+typedef struct rc_file_load_binary_result { rc_array_bytes contents; rc_file_error error; } rc_file_load_binary_result;
 
 /* ---- functions ---- */
 
 rc_file_size_result rc_file_size(rc_str filename);
 
-rc_file_load_text_result       rc_file_load_text(rc_str filename, rc_arena *arena);
-rc_file_load_text_mut_result   rc_file_load_text_mut(rc_str filename, uint32_t minimum_capacity, rc_arena *arena);
-rc_file_load_binary_result     rc_file_load_binary(rc_str filename, rc_arena *arena);
-rc_file_load_binary_mut_result rc_file_load_binary_mut(rc_str filename, uint32_t minimum_capacity, rc_arena *arena);
+rc_file_load_text_result   rc_file_load_text(rc_str filename, uint32_t minimum_capacity, rc_arena *arena);
+rc_file_load_binary_result rc_file_load_binary(rc_str filename, uint32_t minimum_capacity, rc_arena *arena);
 
 rc_file_error rc_file_save_text(rc_str filename, rc_str text);
 rc_file_error rc_file_save_binary(rc_str filename, rc_view_bytes data);

@@ -365,25 +365,25 @@ Measures the file in bytes without reading it; needs no arena.
 
 ### Loading
 
-Each load has an immutable and a mutable form. The mutable form takes a
-`minimum_capacity` so the returned `rc_mstr` / `rc_array_bytes` can grow before
-reallocating.
+A load returns an owning, growable result - an `rc_mstr` for text, an
+`rc_array_bytes` for binary - so the caller can grow it, `rc_*_deinit` it, or take
+a read-only view from it (`result.text.view` / `result.contents.view`).
+`minimum_capacity` is a floor on the result's capacity (`max(size,
+minimum_capacity)`), letting it grow a little before reallocating; for text the
+trailing `'\0'` lives in a reserved byte beyond that capacity, exactly as for any
+other `rc_mstr`.
 
 ```c
-typedef struct { rc_str         text; rc_file_error error; } rc_file_load_text_result;
-typedef struct { rc_mstr        text; rc_file_error error; } rc_file_load_text_mut_result;
-typedef struct { rc_view_bytes  contents; rc_file_error error; } rc_file_load_binary_result;
-typedef struct { rc_array_bytes contents; rc_file_error error; } rc_file_load_binary_mut_result;
+typedef struct { rc_mstr        text;     rc_file_error error; } rc_file_load_text_result;
+typedef struct { rc_array_bytes contents; rc_file_error error; } rc_file_load_binary_result;
 
-rc_file_load_text_result       rc_file_load_text(rc_str filename, rc_arena *arena);
-rc_file_load_text_mut_result   rc_file_load_text_mut(rc_str filename, uint32_t minimum_capacity, rc_arena *arena);
-rc_file_load_binary_result     rc_file_load_binary(rc_str filename, rc_arena *arena);
-rc_file_load_binary_mut_result rc_file_load_binary_mut(rc_str filename, uint32_t minimum_capacity, rc_arena *arena);
+rc_file_load_text_result   rc_file_load_text(rc_str filename, uint32_t minimum_capacity, rc_arena *arena);
+rc_file_load_binary_result rc_file_load_binary(rc_str filename, uint32_t minimum_capacity, rc_arena *arena);
 ```
 
-Text loads are always null-terminated, so `rc_str_as_cstr` on the result takes
-its no-copy fast path. On failure the returned `text` / `contents` is the empty
-(invalid) state and `error` is set.
+Text loads keep a trailing `'\0'` (the `rc_mstr` invariant), so `rc_str_as_cstr`
+on `result.text.view` takes its no-copy fast path. On failure the returned `text`
+/ `contents` is the empty (invalid) state and `error` is set.
 
 ### Saving
 
