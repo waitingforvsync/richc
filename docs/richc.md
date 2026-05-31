@@ -851,7 +851,18 @@ T           rc_span_<s>_get(rc_span_<s> span, uint32_t index);   // by value
 void        rc_span_<s>_set(rc_span_<s> span, uint32_t index, T value);
 T          *rc_span_<s>_at(rc_span_<s> span, uint32_t index);
 T          *rc_span_<s>_last_at(rc_span_<s> span);               // asserts non-empty
+void        rc_span_<s>_reverse(rc_span_<s> span);               // reverse in place
+void        rc_span_<s>_rotate(rc_span_<s> span, uint32_t k);     // left rotation by k
 ```
+
+`rotate` rotates the span left by `k` in place - the element at index `k` moves to
+index 0, the rest following in the same relative order - in `O(n)` time and `O(1)`
+space, a no-op when `k == 0` or `k >= num` (`k` is not reduced modulo `num`). It
+uses the Gries-Mills block swap (the span splits into `[0, k)` and `[k, num)`, and
+the smaller block is swapped into place before continuing on the shorter remainder,
+Euclidean-style): exactly `num - gcd(num, k)` element swaps, each a sequential,
+cache-friendly pass - never more than the textbook three-reversal, and fewer when
+`gcd` is large.
 
 ### View operations
 

@@ -76,6 +76,8 @@
  *   rc_span_<s>_set(span, index, value)               -> void
  *   rc_span_<s>_at(span, index)                       -> RC_ARRAY_TYPE *
  *   rc_span_<s>_last_at(span)                         -> RC_ARRAY_TYPE * (asserts non-empty)
+ *   rc_span_<s>_reverse(span)                         -> void (reverse in place)
+ *   rc_span_<s>_rotate(span, k)                       -> void (left rotation by k)
  *
  * View operations (read-only; the view is passed by value)
  * --------------------------------------------------------
@@ -177,6 +179,9 @@
 #define RC_SPAN_SET_            RC_CONCAT(RC_SPAN_, _set)
 #define RC_SPAN_AT_             RC_CONCAT(RC_SPAN_, _at)
 #define RC_SPAN_LAST_AT_        RC_CONCAT(RC_SPAN_, _last_at)
+#define RC_SPAN_REVERSE_        RC_CONCAT(RC_SPAN_, _reverse)
+#define RC_SPAN_ROTATE_         RC_CONCAT(RC_SPAN_, _rotate)
+#define RC_SPAN_SWAP_RANGES_    RC_CONCAT(RC_SPAN_, _swap_ranges_)   /* private; see rotate */
 
 #define RC_VIEW_MAKE_           RC_CONCAT(RC_VIEW_, _make)
 #define RC_VIEW_IS_VALID_       RC_CONCAT(RC_VIEW_, _is_valid)
@@ -557,6 +562,62 @@ static inline RC_ARRAY_TYPE *RC_SPAN_LAST_AT_(RC_SPAN_ span)
     return &span.data[span.num - 1];
 }
 
+// Reverse the order of the span's elements in place.  A no-op for 0 or 1 element.
+static inline void RC_SPAN_REVERSE_(RC_SPAN_ span)
+{
+    uint32_t lo = 0;
+    uint32_t hi = span.num;
+    while (lo + 1 < hi) {
+        hi--;
+        RC_ARRAY_TYPE tmp = span.data[lo];
+        span.data[lo] = span.data[hi];
+        span.data[hi] = tmp;
+        lo++;
+    }
+}
+
+// Swap the first min(x.num, y.num) elements of x and y, element by element.
+// Private helper for rotate (trailing underscore: not part of the span API).
+static inline void RC_SPAN_SWAP_RANGES_(RC_SPAN_ x, RC_SPAN_ y)
+{
+    uint32_t count = x.num < y.num ? x.num : y.num;
+    for (uint32_t i = 0; i < count; i++) {
+        RC_ARRAY_TYPE tmp = x.data[i];
+        x.data[i] = y.data[i];
+        y.data[i] = tmp;
+    }
+}
+
+// Rotate the span left by k: the element at index k moves to index 0, the rest
+// follow in the same relative order.  O(n) time, O(1) space; a no-op when k == 0
+// or k >= num (k is not reduced modulo num).  Uses the Gries-Mills block swap -
+// the span splits into A = [0, k) and B = [k, num), and the smaller block is
+// swapped into its final place before continuing on the remaining shorter span,
+// Euclidean-style.  This performs exactly num - gcd(num, k) element swaps, each a
+// sequential, cache-friendly pass over a block.
+static inline void RC_SPAN_ROTATE_(RC_SPAN_ span, uint32_t k)
+{
+    if (k == 0 || k >= span.num) {
+        return;
+    }
+    while (k != 0 && k != span.num) {
+        uint32_t b = span.num - k;   // size of B = [k, num)
+        if (k <= b) {
+            // A (size k) <= B: swap A with B's first block [k, 2k), placing that
+            // block at the front, then continue on the tail [k, num).
+            RC_SPAN_SWAP_RANGES_(RC_SPAN_GET_HEAD_(span, k), RC_SPAN_GET_TAIL_(span, k));
+            span = RC_SPAN_GET_TAIL_(span, k);
+        }
+        else {
+            // A (size k) > B: swap A's last b elements [k - b, k) with B, placing
+            // B at the end, then continue on the head [0, k) with k -= b.
+            RC_SPAN_SWAP_RANGES_(RC_SPAN_GET_SUBSPAN_(span, k - b, k), RC_SPAN_GET_TAIL_(span, k));
+            span = RC_SPAN_GET_HEAD_(span, k);
+            k -= b;
+        }
+    }
+}
+
 /* ---- generated view operations ---- */
 
 // Wrap an existing pointer and count as a view (no allocation).  The function
@@ -651,6 +712,9 @@ static inline const RC_ARRAY_TYPE *RC_VIEW_LAST_AT_(RC_VIEW_ view)
 #undef RC_SPAN_SET_
 #undef RC_SPAN_AT_
 #undef RC_SPAN_LAST_AT_
+#undef RC_SPAN_REVERSE_
+#undef RC_SPAN_ROTATE_
+#undef RC_SPAN_SWAP_RANGES_
 
 #undef RC_VIEW_MAKE_
 #undef RC_VIEW_IS_VALID_

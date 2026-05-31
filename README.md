@@ -85,7 +85,8 @@ Available now in core:
   read-only `rc_view`, a mutable `rc_span`, and a growable arena-backed
   `rc_array`, sharing an anonymous union so conversions between them are
   typesafe field accesses. Arrays grow geometrically; spans and views are
-  non-owning windows.
+  non-owning windows. Spans also include in-place `reverse` and `rotate`
+  (Gries-Mills block swap).
 - **Byte buffers** (`richc/bytes.h`) - `rc_view_bytes` / `rc_span_bytes` /
   `rc_array_bytes`, the array template instantiated for `uint8_t`.
 - **Bit array** (`richc/bitset.h`) - `rc_bitset`, a growable arena-backed array

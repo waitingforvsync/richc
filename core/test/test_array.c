@@ -3,6 +3,11 @@
 #define RC_ARRAY_TYPE int
 #include "richc/template/array.h"
 
+// a struct element type, used by the rotate tests to confirm whole-element swaps
+typedef struct { int x, y; } pt;
+#define RC_ARRAY_TYPE pt
+#include "richc/template/array.h"
+
 // Most tests run against a fresh default arena provided by this fixture.
 RC_TEST_GROUP_DATA(array) {
     rc_arena a;
@@ -471,4 +476,75 @@ RC_TEST(view, last_at)
     rc_view_int v = RC_VIEW(raw);
     RC_CHECK_TRUE(rc_view_int_last_at(v) == &raw[2]);
     RC_CHECK(*rc_view_int_last_at(v), ==, 7);
+}
+
+/* ---- span reverse ---- */
+
+RC_TEST(span, reverse)
+{
+    // exhaustive: reversing puts element n-1-i at index i; 0/1 elements unchanged
+    for (uint32_t n = 0; n <= 33; n++) {
+        int a[40];
+        for (uint32_t i = 0; i < n; i++) a[i] = (int)i;
+        rc_span_int_reverse(rc_span_int_make(a, n));
+        for (uint32_t i = 0; i < n; i++) RC_CHECK(a[i], ==, (int)(n - 1 - i));
+    }
+
+    rc_span_int_reverse(rc_span_int_make(NULL, 0));   // empty: must not crash
+}
+
+/* ---- span rotate ---- */
+
+RC_TEST(span, rotate_example)
+{
+    int a[] = {1, 2, 3, 4, 5};
+    rc_span_int_rotate(rc_span_int_make(a, 5), 2);
+    int expect[] = {3, 4, 5, 1, 2};
+    for (uint32_t i = 0; i < 5; i++) RC_CHECK(a[i], ==, expect[i]);
+}
+
+RC_TEST(span, rotate_noops)
+{
+    int a[] = {1, 2, 3, 4};
+    rc_span_int_rotate(rc_span_int_make(a, 4), 0);     // k == 0
+    rc_span_int_rotate(rc_span_int_make(a, 4), 4);     // k == num
+    rc_span_int_rotate(rc_span_int_make(a, 4), 100);   // k > num (not reduced mod num)
+    int expect[] = {1, 2, 3, 4};
+    for (uint32_t i = 0; i < 4; i++) RC_CHECK(a[i], ==, expect[i]);
+
+    int one[] = {7};
+    rc_span_int_rotate(rc_span_int_make(one, 1), 1);
+    RC_CHECK(one[0], ==, 7);
+
+    rc_span_int_rotate(rc_span_int_make(NULL, 0), 3);   // empty span: must not crash
+}
+
+// Exhaustive: a left rotation by k must place the element originally at
+// (i + k) % num at index i (no-op when k == 0 or k >= num).
+RC_TEST(span, rotate_exhaustive)
+{
+    for (uint32_t n = 0; n <= 33; n++) {
+        for (uint32_t k = 0; k <= n + 2; k++) {
+            int a[40];
+            for (uint32_t i = 0; i < n; i++) a[i] = (int)i;
+
+            rc_span_int_rotate(rc_span_int_make(a, n), k);
+
+            for (uint32_t i = 0; i < n; i++) {
+                uint32_t want = (k == 0 || k >= n) ? i : (i + k) % n;
+                RC_CHECK(a[i], ==, (int)want);
+            }
+        }
+    }
+}
+
+RC_TEST(span, rotate_struct_elements)
+{
+    pt a[] = {{1, 1}, {2, 2}, {3, 3}, {4, 4}};
+    rc_span_pt_rotate(rc_span_pt_make(a, 4), 3);   // -> {4,4},{1,1},{2,2},{3,3}
+    int expect[] = {4, 1, 2, 3};
+    for (uint32_t i = 0; i < 4; i++) {
+        RC_CHECK(a[i].x, ==, expect[i]);
+        RC_CHECK(a[i].y, ==, expect[i]);
+    }
 }
