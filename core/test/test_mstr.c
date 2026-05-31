@@ -32,10 +32,24 @@ RC_TEST_STEP(mstr, make, fix)
 
 RC_TEST_STEP(mstr, make_zero_cap, fix)
 {
+    // capacity 0 yields the invalid (zero) mstr; nothing is allocated
     rc_mstr s = rc_mstr_make(0, &fix->a);
-    RC_CHECK_TRUE(rc_mstr_is_valid(&s));
+    RC_CHECK_FALSE(rc_mstr_is_valid(&s));
     RC_CHECK(s.cap, ==, 0u);
-    RC_CHECK_TRUE(s.data[0] == '\0');
+    RC_CHECK_TRUE(s.data == NULL);
+}
+
+RC_TEST_STEP(mstr, append_to_invalid, fix)
+{
+    // a zero-initialised mstr is invalid but can be appended to; grow allocates
+    rc_mstr s = {0};
+    RC_CHECK_FALSE(rc_mstr_is_valid(&s));
+    rc_mstr_append(&s, RC_STR("hello"), &fix->a);
+    RC_CHECK_TRUE(rc_mstr_is_valid(&s));
+    RC_CHECK(s.view, ==, RC_STR("hello"));
+    RC_CHECK(s.len, ==, 5u);
+    RC_CHECK_TRUE(s.len + 1 <= s.cap);          // used size fits in the real capacity
+    RC_CHECK_TRUE(s.data[s.len] == '\0');
 }
 
 RC_TEST_STEP(mstr, from_cstr, fix)
@@ -43,7 +57,7 @@ RC_TEST_STEP(mstr, from_cstr, fix)
     rc_mstr s = rc_mstr_from_cstr("hello", 0, &fix->a);
     RC_CHECK(s.view, ==, RC_STR("hello"));
     RC_CHECK(s.len, ==, 5u);
-    RC_CHECK(s.cap, ==, 5u);          // max(5, 0)
+    RC_CHECK(s.cap, ==, 6u);          // max(len + 1, 0)
     RC_CHECK_TRUE(s.data[5] == '\0');
 }
 
@@ -52,7 +66,7 @@ RC_TEST_STEP(mstr, from_cstr_max_cap, fix)
     rc_mstr s = rc_mstr_from_cstr("hi", 10, &fix->a);
     RC_CHECK(s.view, ==, RC_STR("hi"));
     RC_CHECK(s.len, ==, 2u);
-    RC_CHECK(s.cap, ==, 10u);         // max(2, 10)
+    RC_CHECK(s.cap, ==, 10u);         // max(len + 1, 10)
 }
 
 RC_TEST_STEP(mstr, from_cstr_null, fix)
@@ -67,7 +81,7 @@ RC_TEST_STEP(mstr, from_str, fix)
     rc_mstr s = rc_mstr_from_str(RC_STR("world"), 2, &fix->a);
     RC_CHECK(s.view, ==, RC_STR("world"));
     RC_CHECK(s.len, ==, 5u);
-    RC_CHECK(s.cap, ==, 5u);          // max(5, 2)
+    RC_CHECK(s.cap, ==, 6u);          // max(len + 1, 2)
     RC_CHECK_TRUE(s.data[5] == '\0');
 }
 

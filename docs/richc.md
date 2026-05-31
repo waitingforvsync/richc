@@ -368,10 +368,10 @@ Measures the file in bytes without reading it; needs no arena.
 A load returns an owning, growable result - an `rc_mstr` for text, an
 `rc_array_bytes` for binary - so the caller can grow it, `rc_*_deinit` it, or take
 a read-only view from it (`result.text.view` / `result.contents.view`).
-`minimum_capacity` is a floor on the result's capacity (`max(size,
-minimum_capacity)`), letting it grow a little before reallocating; for text the
-trailing `'\0'` lives in a reserved byte beyond that capacity, exactly as for any
-other `rc_mstr`.
+`minimum_capacity` is a byte-capacity floor on the result (`result_cap >=
+minimum_capacity`), interpreted the same way as `rc_mstr_make` / `rc_array_*`: the
+buffer is `max(size + terminator, minimum_capacity)` bytes, where `terminator` is
+1 for text (the `rc_mstr` always keeps a `'\0'`) and 0 for binary.
 
 ```c
 typedef struct { rc_mstr        text;     rc_file_error error; } rc_file_load_text_result;
@@ -467,10 +467,11 @@ Small general-purpose preprocessor helpers used across the library.
 
 ## richc/mstr.h - mutable string
 
-`rc_mstr` is an arena-backed growable string. Its `{ data, len }` fields share
-layout with `rc_str` and are exposed as `s.view`, so a non-owning view of the
-current contents is always available without copying. The buffer always holds a
-`'\0'` at `data[len]`, so `rc_str_as_cstr(s.view, ...)` takes the no-copy fast
+`rc_mstr` is an arena-backed growable string, implemented like `rc_array` but
+keeping a `'\0'` terminator one byte past the content. Its `{ data, len }` fields
+share layout with `rc_str` and are exposed as `s.view`, so a non-owning view of
+the current contents is always available without copying. The buffer always holds
+a `'\0'` at `data[len]`, so `rc_str_as_cstr(s.view, ...)` takes the no-copy fast
 path.
 
 ### Type
@@ -478,29 +479,35 @@ path.
 ```c
 typedef struct rc_mstr {
     union {
-        struct { const char *data; uint32_t len; };
+        struct { char *data; uint32_t len; };
         rc_str view;
     };
     uint32_t cap;
 } rc_mstr;
 ```
 
-`cap` is the character capacity, excluding the null terminator; the backing
-allocation is always `cap + 1` bytes. A zeroed `rc_mstr` is the invalid state
-(`{ NULL, 0, 0 }`); a valid one has non-NULL `data` and `len <= cap`.
+`cap` is the real byte capacity of the allocation (`allocation == cap`), exactly
+as for `rc_array`. The terminator is accounted on the length side: the used size
+is `len + 1`, so a valid string always satisfies `cap >= len + 1` and a `cap`-byte
+buffer holds up to `cap - 1` characters. The invariant is: `data == NULL` is the
+invalid (zero-initialised) state; `data != NULL` means at least one byte is
+allocated, `data[len] == '\0'`, and `cap >= len + 1`. Growth is geometric (the
+larger of `2*cap`, the request, or 8). All capacity parameters below are byte
+capacities (the `cap` value).
 
 ### Construction
 
 ```c
-rc_mstr rc_mstr_make(uint32_t cap, rc_arena *a);
-rc_mstr rc_mstr_from_cstr(const char *s, uint32_t max_cap, rc_arena *a);
-rc_mstr rc_mstr_from_str(rc_str s, uint32_t max_cap, rc_arena *a);
+rc_mstr rc_mstr_make(uint32_t capacity, rc_arena *a);
+rc_mstr rc_mstr_from_cstr(const char *s, uint32_t minimum_capacity, rc_arena *a);
+rc_mstr rc_mstr_from_str(rc_str s, uint32_t minimum_capacity, rc_arena *a);
 ```
 
-- `rc_mstr_make` returns an empty string with the given initial capacity.
+- `rc_mstr_make` returns an empty string in a `capacity`-byte buffer; `capacity ==
+  0` yields the invalid `{ 0 }` (no allocation).
 - `rc_mstr_from_cstr` / `rc_mstr_from_str` copy the source, sizing the buffer to
-  `max(source length, max_cap)`. They return the invalid state when given a NULL
-  C string or an invalid `rc_str`.
+  `max(source length + 1, minimum_capacity)`. They return the invalid state when
+  given a NULL C string or an invalid `rc_str`.
 
 ### Predicates
 
@@ -513,23 +520,25 @@ bool rc_mstr_is_empty(const rc_mstr *s);   // inline; true when len is 0
 
 ```c
 void rc_mstr_reset(rc_mstr *s);
-void rc_mstr_reserve(rc_mstr *s, uint32_t new_cap, rc_arena *a);
+void rc_mstr_reserve(rc_mstr *s, uint32_t capacity, rc_arena *a);
 void rc_mstr_append(rc_mstr *s, rc_str str, rc_arena *a);
 void rc_mstr_append_char(rc_mstr *s, char c, rc_arena *a);
 void rc_mstr_replace(rc_mstr *s, rc_str find, rc_str replacement, rc_arena *a);
 ```
 
 - `rc_mstr_reset` sets `len` to 0 and keeps the buffer.
-- `rc_mstr_reserve` ensures capacity for at least `new_cap` characters (no-op if
-  already large enough); it may move the buffer.
-- `rc_mstr_append` / `rc_mstr_append_char` append, growing by doubling (minimum
-  8) as needed; appending an empty `rc_str` is a no-op.
+- `rc_mstr_reserve` ensures the buffer is at least `capacity` bytes (exact, no-op
+  if already large enough); it may move the buffer.
+- `rc_mstr_append` / `rc_mstr_append_char` append, growing geometrically as
+  needed; appending an empty `rc_str` is a no-op. They accept an invalid
+  (zero-initialised) `rc_mstr` and allocate on first use, like `rc_array` push.
 - `rc_mstr_replace` replaces every non-overlapping occurrence of `find` with
   `replacement`, rewriting in place (left-to-right when the result is no larger,
   otherwise reserving and rewriting right-to-left). An empty `find` is a no-op.
 
-The mutation functions require a valid `rc_mstr` and valid `rc_str` arguments
-(asserted), and allocate through the arena, which never returns NULL.
+`rc_str` arguments must be valid (asserted); the `rc_mstr` itself may be invalid
+(zero-initialised) for `reset` / `reserve` / `append` / `append_char` / `replace`.
+Allocations go through the arena, which never returns NULL.
 
 ### Teardown
 

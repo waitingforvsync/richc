@@ -4,34 +4,44 @@
 
 #include "richc/arena.h"
 
-rc_mstr rc_mstr_make(uint32_t cap, rc_arena *arena)
+// Internal: ensure capacity for at least `capacity` bytes, growing to the larger
+// of double the current capacity, the request, or 8 - the rc_array growth policy.
+static void grow(rc_mstr *s, uint32_t capacity, rc_arena *arena)
 {
-    RC_ASSERT(arena);
-    char *buf = rc_arena_alloc(arena, cap + 1);
-    buf[0] = '\0';
-    return (rc_mstr) {.data = buf, .len = 0, .cap = cap};
+    if (capacity <= s->cap) return;
+    uint32_t doubled = s->cap * 2;                       // wraps; the request dominates below
+    uint32_t new_cap = capacity > doubled ? capacity : doubled;
+    if (new_cap < 8) new_cap = 8;
+    rc_mstr_reserve(s, new_cap, arena);
 }
 
-rc_mstr rc_mstr_from_cstr(const char *s, uint32_t max_cap, rc_arena *arena)
+rc_mstr rc_mstr_make(uint32_t capacity, rc_arena *arena)
 {
-    RC_ASSERT(arena);
-    if (!s) return (rc_mstr) {.data = NULL, .len = 0, .cap = 0};
+    rc_mstr s = {0};
+    rc_mstr_reserve(&s, capacity, arena);   // capacity 0 leaves it { 0 } (invalid)
+    return s;
+}
+
+rc_mstr rc_mstr_from_cstr(const char *s, uint32_t minimum_capacity, rc_arena *arena)
+{
+    if (!s) return (rc_mstr) {0};
     uint32_t len = (uint32_t)strlen(s);
-    uint32_t cap = len > max_cap ? len : max_cap;
-    char *buf = rc_arena_alloc(arena, cap + 1);
-    memcpy(buf, s, len + 1);   // copies the '\0' too
-    return (rc_mstr) {.data = buf, .len = len, .cap = cap};
+    uint32_t needed = len + 1;   // content + terminator
+    rc_mstr m = rc_mstr_make(needed > minimum_capacity ? needed : minimum_capacity, arena);
+    memcpy(m.data, s, needed);   // copies the '\0' too
+    m.len = len;
+    return m;
 }
 
-rc_mstr rc_mstr_from_str(rc_str s, uint32_t max_cap, rc_arena *arena)
+rc_mstr rc_mstr_from_str(rc_str s, uint32_t minimum_capacity, rc_arena *arena)
 {
-    RC_ASSERT(arena);
-    if (!s.data) return (rc_mstr) {.data = NULL, .len = 0, .cap = 0};
-    uint32_t cap = s.len > max_cap ? s.len : max_cap;
-    char *buf = rc_arena_alloc(arena, cap + 1);
-    if (s.len > 0) memcpy(buf, s.data, s.len);
-    buf[s.len] = '\0';
-    return (rc_mstr) {.data = buf, .len = s.len, .cap = cap};
+    if (!s.data) return (rc_mstr) {0};
+    uint32_t needed = s.len + 1;   // content + terminator
+    rc_mstr m = rc_mstr_make(needed > minimum_capacity ? needed : minimum_capacity, arena);
+    if (s.len > 0) memcpy(m.data, s.data, s.len);
+    m.data[s.len] = '\0';
+    m.len = s.len;
+    return m;
 }
 
 void rc_mstr_reset(rc_mstr *s)
@@ -46,36 +56,33 @@ void rc_mstr_reset(rc_mstr *s)
 void rc_mstr_deinit(rc_mstr *s, rc_arena *arena)
 {
     RC_ASSERT(s);
-    // the allocation is cap + 1 bytes (the trailing '\0'); free guards NULL
+    // cap is the real allocation in bytes; free guards NULL
     if (s->data) {
-        rc_arena_free(arena, s->data, s->cap + 1);
+        rc_arena_free(arena, s->data, s->cap);
     }
     *s = (rc_mstr) {0};
 }
 
-void rc_mstr_reserve(rc_mstr *s, uint32_t new_cap, rc_arena *arena)
+void rc_mstr_reserve(rc_mstr *s, uint32_t capacity, rc_arena *arena)
 {
     RC_ASSERT(s);
-    RC_ASSERT(rc_mstr_is_valid(s));
-    if (new_cap <= s->cap) return;
+    if (capacity <= s->cap) return;
     RC_ASSERT(arena);
-    char *buf = rc_arena_realloc(arena, s->data, s->cap + 1, new_cap + 1);
-    s->data = buf;
-    s->cap  = new_cap;
+    bool was_invalid = (s->data == NULL);
+    // realloc calls alloc when data == NULL (cap is 0 then), so this covers both
+    // growth and the first allocation off an invalid string.
+    s->data = rc_arena_realloc(arena, s->data, s->cap, capacity);
+    s->cap  = capacity;
+    if (was_invalid) s->data[s->len] = '\0';   // len == 0 here: establish the terminator
 }
 
 void rc_mstr_append(rc_mstr *s, rc_str str, rc_arena *arena)
 {
     RC_ASSERT(s);
-    RC_ASSERT(rc_mstr_is_valid(s));
     RC_ASSERT(rc_str_is_valid(str));
     if (str.len == 0) return;
     uint32_t new_len = s->len + str.len;
-    if (new_len > s->cap) {
-        uint32_t new_cap = s->cap < 8 ? 8 : s->cap * 2;
-        if (new_cap < new_len) new_cap = new_len;
-        rc_mstr_reserve(s, new_cap, arena);
-    }
+    grow(s, new_len + 1, arena);   // room for the content and the terminator
     memcpy(s->data + s->len, str.data, str.len);
     s->len = new_len;
     s->data[new_len] = '\0';
@@ -84,11 +91,7 @@ void rc_mstr_append(rc_mstr *s, rc_str str, rc_arena *arena)
 void rc_mstr_append_char(rc_mstr *s, char c, rc_arena *arena)
 {
     RC_ASSERT(s);
-    RC_ASSERT(rc_mstr_is_valid(s));
-    if (s->len == s->cap) {
-        uint32_t new_cap = s->cap < 8 ? 8 : s->cap * 2;
-        rc_mstr_reserve(s, new_cap, arena);
-    }
+    grow(s, s->len + 2, arena);    // room for the new char and the terminator
     s->data[s->len] = c;
     s->len++;
     s->data[s->len] = '\0';
@@ -97,7 +100,6 @@ void rc_mstr_append_char(rc_mstr *s, char c, rc_arena *arena)
 void rc_mstr_replace(rc_mstr *s, rc_str find, rc_str replacement, rc_arena *arena)
 {
     RC_ASSERT(s);
-    RC_ASSERT(rc_mstr_is_valid(s));
     RC_ASSERT(rc_str_is_valid(find));
     RC_ASSERT(rc_str_is_valid(replacement));
     if (find.len == 0 || s->len == 0) return;
@@ -150,7 +152,7 @@ void rc_mstr_replace(rc_mstr *s, rc_str find, rc_str replacement, rc_arena *aren
         // Invariant: dst is always >= remaining.data + remaining.len, so memmove
         // handles the overlap correctly and no source byte is overwritten before
         // it is read.
-        rc_mstr_reserve(s, new_len, arena);   // may update s->data
+        grow(s, new_len + 1, arena);          // may update s->data
         uint32_t old_len   = s->len;
         char    *base      = s->data;
         char    *dst       = base + new_len;

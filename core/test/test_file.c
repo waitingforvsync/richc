@@ -41,7 +41,7 @@ RC_TEST_STEP(file, text_capacity, fix)
     RC_CHECK_TRUE(r.error == RC_FILE_OK);
     RC_CHECK(r.text.view, ==, RC_STR("abc"));
     RC_CHECK(r.text.len, ==, 3u);
-    RC_CHECK(r.text.cap, ==, 100u);              // minimum_capacity honoured (terminator is beyond cap)
+    RC_CHECK(r.text.cap, ==, 100u);              // minimum_capacity is a byte floor, like rc_mstr_make
     rc_mstr_append(&r.text, RC_STR("def"), &fix->a);
     RC_CHECK(r.text.view, ==, RC_STR("abcdef"));
 
