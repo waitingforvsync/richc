@@ -1307,8 +1307,8 @@ A preprocessor template (like `sort.h`) that generates a function to visit the
 *live* entries of an `rc_pool`. The pool has no built-in iteration because a freed
 slot is byte-identical to a live one; this template bridges that by calling the
 pool's `free_bitset` to find the dead slots in a scratch arena, then invoking a
-caller-supplied macro on a pointer to each live element. Include it again (after
-redefining the control macros) to generate another iterator.
+caller-supplied macro with the pool and each live slot's index. Include it again
+(after redefining the control macros) to generate another iterator.
 
 ### Instantiation
 
@@ -1317,11 +1317,12 @@ redefining the control macros) to generate another iterator.
 #include "richc/template/pool.h"            // rc_pool_thing + rc_pool_thing_free_bitset
 
 typedef struct { int total; } sum_ctx;
-static void add_cost(sum_ctx *c, thing *t) { c->total += t->cost; }
+static void add_cost(sum_ctx *c, rc_pool_thing *pool, uint32_t i)
+{ c->total += rc_pool_thing_at(pool, i)->cost; }
 
-#define RC_POOL_FOREACH_TYPE       thing
-#define RC_POOL_FOREACH_CTX        sum_ctx
-#define RC_POOL_FOREACH_FUNC(c, e) add_cost(c, e)
+#define RC_POOL_FOREACH_TYPE          thing
+#define RC_POOL_FOREACH_CTX           sum_ctx
+#define RC_POOL_FOREACH_FUNC(c, p, i) add_cost(c, p, i)
 #include "richc/template/pool_foreach.h"
 // void rc_pool_foreach_thing(rc_pool_thing *pool, sum_ctx *ctx, rc_arena scratch);
 ```
@@ -1338,13 +1339,15 @@ All macros defined before inclusion are undefined again by the header.
 
 ### Callback and context
 
-Without a context the callback is `RC_POOL_FOREACH_FUNC(elem)`, where `elem` is a
-`RC_POOL_TYPE *` pointing at the live element (writable, so it can mutate in
-place). Defining `RC_POOL_FOREACH_CTX` adds a context pointer as the callback's
-first argument and as a function parameter:
+Without a context the callback is `RC_POOL_FOREACH_FUNC(pool, index)`, where `pool`
+is the `POOL *` and `index` is the live element's `uint32_t` slot - the callback
+reaches the object through the pool's `get` / `set` / `at` (the index-over-pointer
+convention; `at` is writable, so it can mutate in place). Defining
+`RC_POOL_FOREACH_CTX` adds a context pointer as the callback's first argument and
+as a function parameter:
 
 ```c
-#define RC_POOL_FOREACH_FUNC(ctx, elem)  ...   // ctx is RC_POOL_FOREACH_CTX *
+#define RC_POOL_FOREACH_FUNC(ctx, pool, index)  ...   // ctx is RC_POOL_FOREACH_CTX *
 ```
 
 The generated signature is `void NAME(POOL *pool, rc_arena scratch)` without a

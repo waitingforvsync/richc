@@ -3,34 +3,37 @@
 #define RC_POOL_TYPE int
 #include "richc/template/pool.h"
 
-// context callback: record each visited element's value, in visit order
-typedef struct { int values[32]; uint32_t count; int sum; } visit_ctx;
-static void visit_record(visit_ctx *c, int *e)
+// context callback: record each visited element's value and pool index, in order
+// (reaching the object through the pool + index, not a raw pointer)
+typedef struct { int values[32]; uint32_t indices[32]; uint32_t count; int sum; } visit_ctx;
+static void visit_record(visit_ctx *c, rc_pool_int *pool, uint32_t index)
 {
-    c->values[c->count] = *e;
+    int v = rc_pool_int_get(pool, index);
+    c->values[c->count]  = v;
+    c->indices[c->count] = index;
     c->count++;
-    c->sum += *e;
+    c->sum += v;
 }
 
-#define RC_POOL_FOREACH_TYPE       int
-#define RC_POOL_FOREACH_CTX        visit_ctx
-#define RC_POOL_FOREACH_FUNC(c, e) visit_record(c, e)
+#define RC_POOL_FOREACH_TYPE          int
+#define RC_POOL_FOREACH_CTX           visit_ctx
+#define RC_POOL_FOREACH_FUNC(c, p, i) visit_record(c, p, i)
 #include "richc/template/pool_foreach.h"   // rc_pool_foreach_int
 
 // non-context callback accumulating through file-scope state
 static int      g_sum;
 static uint32_t g_count;
-static void sum_one(int *e) { g_sum += *e; g_count++; }
+static void sum_one(rc_pool_int *pool, uint32_t index) { g_sum += rc_pool_int_get(pool, index); g_count++; }
 
-#define RC_POOL_FOREACH_TYPE    int
-#define RC_POOL_FOREACH_FUNC(e) sum_one(e)
-#define RC_POOL_FOREACH_NAME    rc_pool_foreach_int_sum
+#define RC_POOL_FOREACH_TYPE       int
+#define RC_POOL_FOREACH_FUNC(p, i) sum_one(p, i)
+#define RC_POOL_FOREACH_NAME       rc_pool_foreach_int_sum
 #include "richc/template/pool_foreach.h"
 
-// non-context callback mutating the element in place
-#define RC_POOL_FOREACH_TYPE    int
-#define RC_POOL_FOREACH_FUNC(e) (*(e) *= 2)
-#define RC_POOL_FOREACH_NAME    rc_pool_foreach_int_double
+// non-context callback mutating the element in place, via the pool's at
+#define RC_POOL_FOREACH_TYPE       int
+#define RC_POOL_FOREACH_FUNC(p, i) (*rc_pool_int_at(p, i) *= 2)
+#define RC_POOL_FOREACH_NAME       rc_pool_foreach_int_double
 #include "richc/template/pool_foreach.h"
 
 RC_TEST_GROUP_DATA(pool_foreach) {
@@ -75,6 +78,7 @@ RC_TEST_STEP(pool_foreach, all_live, fix)
     RC_CHECK(ctx.sum, ==, 450);             // 0 + 10 + ... + 90
     for (uint32_t i = 0; i < 10; i++) {
         RC_CHECK(ctx.values[i], ==, (int)(i * 10));   // visited in index order
+        RC_CHECK(ctx.indices[i], ==, i);              // the callback gets the slot index
     }
 }
 
@@ -88,8 +92,12 @@ RC_TEST_STEP(pool_foreach, holes, fix)
     visit_ctx ctx = {0};
     rc_pool_foreach_int(&pool, &ctx, fix->a);
     RC_CHECK(ctx.count, ==, 7u);
-    int expect[] = {0, 10, 30, 40, 60, 80, 90};
-    for (uint32_t i = 0; i < 7; i++) RC_CHECK(ctx.values[i], ==, expect[i]);
+    int expect[]            = {0, 10, 30, 40, 60, 80, 90};
+    uint32_t expect_idx[]   = {0, 1, 3, 4, 6, 8, 9};   // the live slots (2,5,7 freed)
+    for (uint32_t i = 0; i < 7; i++) {
+        RC_CHECK(ctx.values[i], ==, expect[i]);
+        RC_CHECK(ctx.indices[i], ==, expect_idx[i]);
+    }
     RC_CHECK(ctx.sum, ==, 0 + 10 + 30 + 40 + 60 + 80 + 90);
 }
 

@@ -19,12 +19,15 @@
  *
  * Callback conventions
  * --------------------
+ * Each callback receives the pool pointer and the live element's index (not a raw
+ * element pointer), so it reaches the object through the pool's get/set/at - the
+ * index-over-pointer convention.
  * Without RC_POOL_FOREACH_CTX:
- *   RC_POOL_FOREACH_FUNC(elem)        - elem is RC_POOL_TYPE *, pointing at the
- *                                       live element.
+ *   RC_POOL_FOREACH_FUNC(pool, index)       - pool is POOL *; index is the uint32_t
+ *                                             slot of a live element.
  * With RC_POOL_FOREACH_CTX:
- *   RC_POOL_FOREACH_FUNC(ctx, elem)   - ctx is a pointer to RC_POOL_FOREACH_CTX and
- *                                       is the first argument.
+ *   RC_POOL_FOREACH_FUNC(ctx, pool, index)  - ctx is a pointer to
+ *                                             RC_POOL_FOREACH_CTX, the first argument.
  *
  * Generated function signature
  * ----------------------------
@@ -37,11 +40,12 @@
  *
  * Example (context):
  *   typedef struct { int total; } sum_ctx;
- *   static void add_cost(sum_ctx *c, thing *t) { c->total += t->cost; }
+ *   static void add_cost(sum_ctx *c, rc_pool_thing *pool, uint32_t i)
+ *   { c->total += rc_pool_thing_at(pool, i)->cost; }
  *
- *   #define RC_POOL_FOREACH_TYPE       thing
- *   #define RC_POOL_FOREACH_CTX        sum_ctx
- *   #define RC_POOL_FOREACH_FUNC(c, e) add_cost(c, e)
+ *   #define RC_POOL_FOREACH_TYPE          thing
+ *   #define RC_POOL_FOREACH_CTX           sum_ctx
+ *   #define RC_POOL_FOREACH_FUNC(c, p, i) add_cost(c, p, i)
  *   #include "richc/template/pool_foreach.h"
  *   // void rc_pool_foreach_thing(rc_pool_thing *pool, sum_ctx *ctx, rc_arena scratch);
  */
@@ -55,7 +59,7 @@
 #endif
 
 #ifndef RC_POOL_FOREACH_FUNC
-#  define RC_POOL_FOREACH_FUNC(elem) ((void)(elem))   // to keep intellisense happy
+#  define RC_POOL_FOREACH_FUNC(pool, index) ((void)(pool), (void)(index))   // to keep intellisense happy
 #  error "RC_POOL_FOREACH_FUNC must be defined before including richc/template/pool_foreach.h"
 #endif
 
@@ -69,34 +73,33 @@
 
 /*
  * Threading of the optional context, mirroring the sort/bounds templates:
- *   RC_POOL_FOREACH_FUNC_(elem)        - the callback as used in the body; closes
- *                                        over 'ctx' when a context type is active.
- *   RC_POOL_FOREACH_POOL_CTX_PARAM_    - the leading parameter list, "POOL *pool"
- *                                        or "POOL *pool, CTX *ctx".
+ *   RC_POOL_FOREACH_FUNC_(index) - the callback as used in the body; closes over
+ *                                  'pool' (and 'ctx' when a context type is active).
+ *   RC_POOL_FOREACH_POOL_CTX_PARAM_ - the leading parameter list, "POOL *pool" or
+ *                                     "POOL *pool, CTX *ctx".
  */
 #ifdef RC_POOL_FOREACH_CTX
-#  define RC_POOL_FOREACH_FUNC_(elem)     RC_POOL_FOREACH_FUNC(ctx, elem)
+#  define RC_POOL_FOREACH_FUNC_(index)    RC_POOL_FOREACH_FUNC(ctx, pool, index)
 #  define RC_POOL_FOREACH_POOL_CTX_PARAM_ RC_POOL_FOREACH_POOL *pool, RC_POOL_FOREACH_CTX *ctx
 #else
-#  define RC_POOL_FOREACH_FUNC_(elem)     RC_POOL_FOREACH_FUNC(elem)
+#  define RC_POOL_FOREACH_FUNC_(index)    RC_POOL_FOREACH_FUNC(pool, index)
 #  define RC_POOL_FOREACH_POOL_CTX_PARAM_ RC_POOL_FOREACH_POOL *pool
 #endif
 
-/* Pool operations, named after the pool type. */
-#define RC_POOL_FOREACH_AT_          RC_CONCAT(RC_POOL_FOREACH_POOL, _at)
+/* The free-list bitset op, named after the pool type. */
 #define RC_POOL_FOREACH_FREE_BITSET_ RC_CONCAT(RC_POOL_FOREACH_POOL, _free_bitset)
 
 /*
- * Call RC_POOL_FOREACH_FUNC on each live element.  The dead-slot bitset's bit
- * count equals the pool's slot count, so it doubles as the loop bound and the body
- * never touches the pool's internals.
+ * Call RC_POOL_FOREACH_FUNC with the pool and each live slot's index.  The
+ * dead-slot bitset's bit count equals the pool's slot count, so it doubles as the
+ * loop bound.
  */
 static inline void RC_POOL_FOREACH_NAME(RC_POOL_FOREACH_POOL_CTX_PARAM_, rc_arena scratch)
 {
     rc_bitset dead = RC_POOL_FOREACH_FREE_BITSET_(pool, &scratch);
     for (uint32_t i = 0; i < dead.num; i++) {
         if (!rc_bitset_is_set(&dead, i)) {
-            RC_POOL_FOREACH_FUNC_(RC_POOL_FOREACH_AT_(pool, i));
+            RC_POOL_FOREACH_FUNC_(i);
         }
     }
 }
@@ -105,7 +108,6 @@ static inline void RC_POOL_FOREACH_NAME(RC_POOL_FOREACH_POOL_CTX_PARAM_, rc_aren
 
 #undef RC_POOL_FOREACH_FUNC_
 #undef RC_POOL_FOREACH_POOL_CTX_PARAM_
-#undef RC_POOL_FOREACH_AT_
 #undef RC_POOL_FOREACH_FREE_BITSET_
 #undef RC_POOL_FOREACH_NAME
 #undef RC_POOL_FOREACH_POOL
