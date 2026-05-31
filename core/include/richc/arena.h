@@ -27,7 +27,7 @@
  *
  *   rc_arena_free_to(&a, mark);  // cheaply discard buf and str
  *   rc_arena_reset(&a);          // return physical pages to OS
- *   rc_arena_destroy(&a);        // release virtual address space
+ *   rc_arena_deinit(&a);        // release virtual address space
  *
  * Scratch pattern
  * ---------------
@@ -104,7 +104,7 @@ typedef struct rc_arena {
 rc_arena  rc_arena_make(uint32_t reserve_size);
 
 /* Release all virtual memory and zero the struct. */
-void      rc_arena_destroy(rc_arena *a);
+void      rc_arena_deinit(rc_arena *a);
 
 /* Bump-allocate size bytes and return a valid pointer; the result is NOT
  * guaranteed to be zeroed.  size must be non-zero (asserted) and the arena

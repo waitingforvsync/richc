@@ -44,7 +44,7 @@ RC_TEST_GROUP_INIT(pool_foreach, fix)
 
 RC_TEST_GROUP_DEINIT(pool_foreach, fix)
 {
-    rc_arena_destroy(&fix->a);
+    rc_arena_deinit(&fix->a);
 }
 
 // Fill a fresh pool with n live elements valued 0, 10, 20, ...

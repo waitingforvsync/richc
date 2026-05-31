@@ -30,7 +30,7 @@ RC_TEST_GROUP_INIT(bitset_foreach, fix)
 
 RC_TEST_GROUP_DEINIT(bitset_foreach, fix)
 {
-    rc_arena_destroy(&fix->a);
+    rc_arena_deinit(&fix->a);
 }
 
 RC_TEST(bitset_foreach, empty)

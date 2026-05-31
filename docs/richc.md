@@ -167,12 +167,12 @@ creation.
 ```c
 rc_arena rc_arena_make(uint32_t reserve_size);
 rc_arena rc_arena_make_default(void);   // inline; rc_arena_make(RC_ARENA_DEFAULT_RESERVE)
-void     rc_arena_destroy(rc_arena *a);
+void     rc_arena_deinit(rc_arena *a);
 ```
 
 `rc_arena_make` reserves `reserve_size` bytes (rounded up to a page) and commits
 the first page. On failure it returns a zeroed arena, so test `a.base` - this is
-the one place arena setup may fail and be handled. `rc_arena_destroy` releases
+the one place arena setup may fail and be handled. `rc_arena_deinit` releases
 all virtual memory and zeroes the struct.
 
 ### Allocation

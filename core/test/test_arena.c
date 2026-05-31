@@ -13,7 +13,7 @@ RC_TEST_GROUP_INIT(arena, data)
 
 RC_TEST_GROUP_DEINIT(arena, data)
 {
-    rc_arena_destroy(&data->a);
+    rc_arena_deinit(&data->a);
 }
 
 /* ---- lifecycle (manage their own arenas) ---- */
@@ -25,7 +25,7 @@ RC_TEST(arena, make_default)
     RC_CHECK(a.top, ==, 0u);
     RC_CHECK_TRUE(a.committed > 0u);
     RC_CHECK(a.reserved, ==, RC_ARENA_DEFAULT_RESERVE);
-    rc_arena_destroy(&a);
+    rc_arena_deinit(&a);
 }
 
 RC_TEST(arena, make_rounds_to_page)
@@ -36,7 +36,7 @@ RC_TEST(arena, make_rounds_to_page)
     RC_CHECK_TRUE(a.reserved >= 100u);
     RC_CHECK(a.reserved, ==, a.committed);
     RC_CHECK(a.top, ==, 0u);
-    rc_arena_destroy(&a);
+    rc_arena_deinit(&a);
 }
 
 RC_TEST(arena, make_zero)
@@ -49,7 +49,7 @@ RC_TEST(arena, make_zero)
 RC_TEST(arena, destroy)
 {
     rc_arena a = rc_arena_make_default();
-    rc_arena_destroy(&a);
+    rc_arena_deinit(&a);
     RC_CHECK_TRUE(a.base == NULL);
     RC_CHECK(a.top, ==, 0u);
     RC_CHECK(a.committed, ==, 0u);
@@ -63,7 +63,7 @@ RC_TEST(arena, alloc_fills_reservation)
     // Allocating exactly the whole reservation succeeds (and never returns NULL).
     void *p = rc_arena_alloc(&a, a.reserved);
     RC_CHECK_TRUE(p != NULL);
-    rc_arena_destroy(&a);
+    rc_arena_deinit(&a);
 }
 
 /* ---- alloc ---- */

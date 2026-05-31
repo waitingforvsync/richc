@@ -14,7 +14,7 @@ RC_TEST_GROUP_INIT(mstr, fix)
 
 RC_TEST_GROUP_DEINIT(mstr, fix)
 {
-    rc_arena_destroy(&fix->a);
+    rc_arena_deinit(&fix->a);
 }
 
 /* ---- construction ---- */

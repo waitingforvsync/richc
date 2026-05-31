@@ -31,7 +31,7 @@ RC_TEST_GROUP_INIT(hash_trie, fix)
 
 RC_TEST_GROUP_DEINIT(hash_trie, fix)
 {
-    rc_arena_destroy(&fix->a);
+    rc_arena_deinit(&fix->a);
 }
 
 RC_TEST_STEP(hash_trie, empty, fix)

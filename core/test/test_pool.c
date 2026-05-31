@@ -20,7 +20,7 @@ RC_TEST_GROUP_INIT(pool, fix)
 
 RC_TEST_GROUP_DEINIT(pool, fix)
 {
-    rc_arena_destroy(&fix->a);
+    rc_arena_deinit(&fix->a);
 }
 
 RC_TEST_STEP(pool, alloc_sequential, fix)

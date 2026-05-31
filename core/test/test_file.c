@@ -14,7 +14,7 @@ RC_TEST_GROUP_INIT(file, fix)
 
 RC_TEST_GROUP_DEINIT(file, fix)
 {
-    rc_arena_destroy(&fix->a);
+    rc_arena_deinit(&fix->a);
 }
 
 RC_TEST_STEP(file, text_roundtrip, fix)

@@ -12,7 +12,7 @@ RC_TEST_GROUP_INIT(bytes, fix)
 
 RC_TEST_GROUP_DEINIT(bytes, fix)
 {
-    rc_arena_destroy(&fix->a);
+    rc_arena_deinit(&fix->a);
 }
 
 RC_TEST_STEP(bytes, array, fix)

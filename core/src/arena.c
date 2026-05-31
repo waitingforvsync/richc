@@ -183,7 +183,7 @@ rc_arena rc_arena_make(uint32_t reserve_size)
     return a;
 }
 
-void rc_arena_destroy(rc_arena *a)
+void rc_arena_deinit(rc_arena *a)
 {
     RC_ASSERT(a);
     if (a->base)
