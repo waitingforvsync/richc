@@ -78,9 +78,19 @@ supply a name for multi-token types such as `unsigned char`).
 
 Available now in core:
 
+- **Arena allocator** (`richc/arena.h`) - `rc_arena`, a virtual-memory-backed
+  bump allocator that reserves a large address range up front and commits pages
+  on demand. It is the library's only allocation primitive; every allocating
+  operation takes an `rc_arena *`. Allocation never returns NULL (running out of
+  space panics), and the latest allocation grows in place. Passing an arena by
+  value gives a scratch snapshot whose allocations are discarded on return.
 - **String view** (`richc/str.h`) - `rc_str`, a non-owning pointer-and-length
   view with comparison, slicing, searching, trimming, splitting, and conversion
   to a C string. Never allocates.
+- **Mutable string** (`richc/mstr.h`) - `rc_mstr`, an arena-backed growable
+  string that shares its layout with `rc_str` (its current contents are always a
+  valid `rc_str` view) and keeps a trailing null terminator. Append, append-char,
+  replace, reserve, and reset.
 - **View / span / array** (`richc/template/array.h`) - the template above. A
   read-only `rc_view`, a mutable `rc_span`, and a growable arena-backed
   `rc_array`, sharing an anonymous union so conversions between them are
@@ -93,6 +103,10 @@ Available now in core:
   of bits packed into `uint32_t` words, with set/clear/test, geometric `push`,
   and whole-word set-bit iteration. `bitset_foreach.h` adds an iterator template
   that calls a macro on each set bit, with an optional context.
+- **Hashing** (`richc/hash.h`) - `static inline` 32-bit hash functions for the
+  fixed-width integers, floats, pointers, byte ranges, `rc_str`, and the vector
+  and rational types, plus `hash_combine`. Usable directly as the hash expression
+  for the hash-table templates.
 - **Hash trie** (`richc/template/hash_trie.h`) - a template for a 16-way
   arena-backed map or set keyed by a 64-bit hash; nodes are pooled 16 to a block
   in an internal `rc_pool` (so blocks emptied by delete are recycled), and one
@@ -130,6 +144,12 @@ Available now in core:
   matrix conversion both ways), exact rationals `rc_rational` (canonical form,
   overflow-checked arithmetic, overflow-safe comparison), plus analytic
   quadratic and cubic root solvers.
+- **Unit-test framework** (`richc/test.h`) - a small assertion-based test runner
+  (`RC_TEST`, `RC_TEST_STEP`, group fixtures, and `RC_CHECK` with type-aware
+  comparison) used by the core test suite and available for your own tests.
+- **Macros and assertions** (`richc/macros.h`) - `RC_ASSERT` (debug-only, traps
+  on failure) and `RC_PANIC` (always active), plus `RC_CONCAT`, `RC_STRINGIFY`,
+  and the `RC_INDEX_NONE` sentinel.
 - **Hashing** (`richc/hash.h`) - `uint32_t` hashers for integers, floats,
   pointers, byte sequences, strings, and the vector types, plus
   `rc_hash_combine`.
