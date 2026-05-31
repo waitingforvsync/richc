@@ -7,15 +7,17 @@
 
 /* Section boundaries.  On Windows the sentinels are placed either side of the
  * test items in name order ($a < $b < $c); on ELF the linker provides the
- * __start_/__stop_ symbols for the named section. */
+ * __start_/__stop_ symbols for the named section.  The ELF symbols are declared
+ * weak so a test executable that registers no tests at all still links: with the
+ * section absent they resolve to 0, and the run loop just iterates zero times. */
 #if defined(_WIN32)
 RC_TEST_SECTION_("rc_test$a") static const rc_test *rc_test_section_start;
 RC_TEST_SECTION_("rc_test$c") static const rc_test *rc_test_section_stop;
 #  define RC_TEST_BEGIN (&rc_test_section_start)
 #  define RC_TEST_END   (&rc_test_section_stop)
 #else
-extern const rc_test *__start_rc_test;
-extern const rc_test *__stop_rc_test;
+extern const rc_test *__start_rc_test __attribute__((weak));
+extern const rc_test *__stop_rc_test __attribute__((weak));
 #  define RC_TEST_BEGIN (&__start_rc_test)
 #  define RC_TEST_END   (&__stop_rc_test)
 #endif

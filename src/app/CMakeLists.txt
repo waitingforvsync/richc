@@ -14,8 +14,9 @@ add_subdirectory(extern/glad)
 # ---- richc_app static library ----
 
 add_library(richc_app STATIC
-    src/app/app.c
+    src/app/app_glfw.c
     include/richc/app/app.h
+    include/richc/app/keys.h
 )
 
 target_include_directories(richc_app PUBLIC include)
@@ -33,13 +34,20 @@ else()
     target_compile_options(richc_app PRIVATE -Wall -Wextra)
 endif()
 
+# ---- app test executable ----
+
+add_subdirectory(test)
+
 # ---- example application (development sandbox) ----
 
 add_executable(richc_app_example
     example/main.c
 )
 
-target_link_libraries(richc_app_example PRIVATE richc_app)
+# The example links glad directly so the sandbox can issue raw GL calls (e.g.
+# clearing the screen) before the gfx abstraction exists. glad's loader state is
+# shared with richc_app, which calls gladLoadGL during rc_app_init.
+target_link_libraries(richc_app_example PRIVATE richc_app glad)
 
 target_compile_definitions(richc_app_example PRIVATE _CRT_SECURE_NO_WARNINGS _DEFAULT_SOURCE)
 

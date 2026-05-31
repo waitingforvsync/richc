@@ -270,5 +270,3 @@ RC_TEST(str, as_cstr_null)
     const char *c = rc_str_as_cstr(s, NULL, 0);
     RC_CHECK_TRUE(c == NULL);
 }
-
-RC_TEST_MAIN()
