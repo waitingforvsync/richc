@@ -35,8 +35,7 @@
 #ifndef RC_FILE_H_
 #define RC_FILE_H_
 
-#include "richc/bytes.h"
-#include "richc/mstr.h"
+#include "richc/bytes.h"   // also provides rc_mstr (via rc_array_bytes_to_mstr)
 
 /* ---- error codes ---- */
 

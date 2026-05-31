@@ -81,7 +81,10 @@ genuinely expected to handle, like a file that fails to open.
   - `rc_<type>_from_<other>(...)` acts like a conversion constructor - it builds
     an `rc_<type>` from a value of a different type.
   - `rc_<type>_as_<other>(...)` acts like a cast - it reinterprets the value as
-    another type without allocating or copying.
+    another type without allocating or copying, leaving the source usable.
+  - `rc_<type>_to_<other>(...)` converts into another type by *moving* - it
+    consumes the source (resetting `*src`) so only the result owns the resource
+    (e.g. `rc_array_bytes_to_mstr`).
   - `rc_<type>_is_<predicate>(...)` returns a `bool` (e.g. `is_valid`,
     `is_empty`).
 - A trailing underscore denotes an internal (private) symbol that happens to be
@@ -342,6 +345,25 @@ Every view/span/array operation applies, named `rc_array_bytes_*`,
 `rc_span_bytes_*`, and `rc_view_bytes_*` (e.g. `rc_array_bytes_push`,
 `rc_view_bytes_get_subview`). Include the header once.
 
+It also defines bridges to the string types:
+
+```c
+rc_str  rc_view_bytes_as_str(rc_view_bytes bytes);
+rc_str  rc_span_bytes_as_str(rc_span_bytes bytes);
+rc_mstr rc_array_bytes_to_mstr(rc_array_bytes *bytes, rc_arena *a);
+```
+
+- `rc_view_bytes_as_str` / `rc_span_bytes_as_str` reinterpret the bytes as a
+  read-only `rc_str` with no copy and no allocation (the bytes need not be
+  null-terminated, since `rc_str` carries its own length). The source stays usable
+  - it is a non-destructive cast.
+- `rc_array_bytes_to_mstr` *moves* a byte buffer into an `rc_mstr`: it appends a
+  `'\0'` terminator (growing by one byte only if the buffer was exactly full),
+  reinterprets the preceding bytes as the string, and resets `*bytes` to the empty
+  `{ 0 }`. The returned `rc_mstr` is the buffer's sole owner (`len` excludes the
+  terminator, `cap` is the array's real capacity), so there is never a second
+  handle to the same allocation.
+
 ---
 
 ## richc/file.h - file I/O
@@ -370,8 +392,9 @@ A load returns an owning, growable result - an `rc_mstr` for text, an
 a read-only view from it (`result.text.view` / `result.contents.view`).
 `minimum_capacity` is a byte-capacity floor on the result (`result_cap >=
 minimum_capacity`), interpreted the same way as `rc_mstr_make` / `rc_array_*`: the
-buffer is `max(size + terminator, minimum_capacity)` bytes, where `terminator` is
-1 for text (the `rc_mstr` always keeps a `'\0'`) and 0 for binary.
+buffer is `max(size + 1, minimum_capacity)` bytes - the content plus one spare
+byte, which text turns into the `rc_mstr`'s `'\0'` terminator and binary leaves as
+unused headroom.
 
 ```c
 typedef struct { rc_mstr        text;     rc_file_error error; } rc_file_load_text_result;

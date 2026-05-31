@@ -44,12 +44,11 @@ static rc_file_size_result file_measure(FILE *f)
 }
 
 // Open filename, measure its size, and read it into a fresh rc_array_bytes with
-// num == size and capacity max(size + extra, minimum_capacity), so minimum_capacity
-// is a byte-capacity floor on the result.  The `extra` trailing bytes are left for
-// the caller to fill (rc_file_load_text appends its '\0' there; binary passes
-// extra == 0).
-static load_raw_result load_raw(rc_str filename, uint32_t minimum_capacity,
-                                uint32_t extra, rc_arena *arena)
+// num == size and capacity max(size + 1, minimum_capacity).  One spare byte beyond
+// the content is always reserved: rc_file_load_text turns it into the '\0'
+// terminator, rc_file_load_binary just leaves it unused.  minimum_capacity is a
+// byte-capacity floor on the result.
+static load_raw_result load_raw(rc_str filename, uint32_t minimum_capacity, rc_arena *arena)
 {
     RC_ASSERT(arena);
 
@@ -69,11 +68,11 @@ static load_raw_result load_raw(rc_str filename, uint32_t minimum_capacity,
     }
 
     uint32_t size = measured.size;
-    if ((uint64_t)size + (uint64_t)extra > (uint64_t)UINT32_MAX) {
+    if ((uint64_t)size + 1 > (uint64_t)UINT32_MAX) {
         fclose(f);
         return (load_raw_result) {.error = RC_FILE_ERROR_TOO_LARGE};
     }
-    uint32_t needed   = size + extra;
+    uint32_t needed   = size + 1;   // always reserve a spare byte for a terminator
     uint32_t capacity = needed > minimum_capacity ? needed : minimum_capacity;
 
     rc_array_bytes contents = rc_array_bytes_make(capacity, arena);
@@ -103,24 +102,17 @@ rc_file_size_result rc_file_size(rc_str filename)
 
 rc_file_load_text_result rc_file_load_text(rc_str filename, uint32_t minimum_capacity, rc_arena *arena)
 {
-    load_raw_result raw = load_raw(filename, minimum_capacity, 1, arena);   // +1 for the null terminator
+    load_raw_result raw = load_raw(filename, minimum_capacity, arena);
     if (raw.error != RC_FILE_OK)
         return (rc_file_load_text_result) {.error = raw.error};
 
-    // Take ownership of the buffer as an rc_mstr: append the '\0' terminator
-    // (load_raw reserved the byte, so this never grows).  cap is the real
-    // allocation for both types, so it maps straight across; len excludes the
-    // terminator that push counted in num.
-    rc_array_bytes c = raw.contents;
-    rc_array_bytes_push(&c, 0, arena);
-    return (rc_file_load_text_result) {
-        .text = {.data = (char *)c.data, .len = c.num - 1, .cap = c.cap}
-    };
+    // load_raw reserved the spare byte, so to_mstr's terminator push never grows.
+    return (rc_file_load_text_result) {.text = rc_array_bytes_to_mstr(&raw.contents, arena)};
 }
 
 rc_file_load_binary_result rc_file_load_binary(rc_str filename, uint32_t minimum_capacity, rc_arena *arena)
 {
-    load_raw_result raw = load_raw(filename, minimum_capacity, 0, arena);
+    load_raw_result raw = load_raw(filename, minimum_capacity, arena);
     if (raw.error != RC_FILE_OK)
         return (rc_file_load_binary_result) {.error = raw.error};
 
