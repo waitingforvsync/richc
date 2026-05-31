@@ -41,6 +41,11 @@
  *   rc_mstr_replace     - replace all non-overlapping occurrences of find with
  *                         replacement, rewriting in place.
  * The mutation functions require a valid rc_mstr and valid rc_str arguments.
+ *
+ * Teardown
+ * --------
+ *   rc_mstr_deinit - free the backing allocation and zero the struct back to the
+ *                    invalid state.  Use rc_mstr_reset to keep the buffer.
  */
 
 #ifndef RC_MSTR_H_
@@ -56,7 +61,10 @@ typedef struct rc_arena rc_arena;
 
 typedef struct rc_mstr {
     union {
-        struct { const char *data; uint32_t len; };
+        // data is the writable, owned buffer; view aliases it as a read-only
+        // rc_str (char * and const char * share representation), so the current
+        // contents are always available as s.view without a copy.
+        struct { char *data; uint32_t len; };
         rc_str view;
     };
     uint32_t cap;
@@ -89,5 +97,9 @@ void rc_mstr_reserve(rc_mstr *s, uint32_t new_cap, rc_arena *arena);
 void rc_mstr_append(rc_mstr *s, rc_str str, rc_arena *arena);
 void rc_mstr_append_char(rc_mstr *s, char c, rc_arena *arena);
 void rc_mstr_replace(rc_mstr *s, rc_str find, rc_str replacement, rc_arena *arena);
+
+/* ---- teardown ---- */
+
+void rc_mstr_deinit(rc_mstr *s, rc_arena *arena);
 
 #endif /* RC_MSTR_H_ */

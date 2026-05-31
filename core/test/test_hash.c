@@ -41,7 +41,7 @@ RC_TEST(hash, bytes_and_str)
     RC_CHECK_TRUE(rc_hash_str(RC_STR("hello")) != rc_hash_str(RC_STR("world")));
 
     // the empty sequence and an invalid string both hash to the FNV basis
-    RC_CHECK(rc_hash_bytes(NULL, 0), ==, rc_hash_str(rc_str_make(NULL)));
+    RC_CHECK(rc_hash_bytes(NULL, 0), ==, rc_hash_str(rc_str_from_cstr(NULL)));
 }
 
 RC_TEST(hash, combine)

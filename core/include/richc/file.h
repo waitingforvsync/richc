@@ -51,8 +51,8 @@ typedef enum {
 typedef struct rc_file_size_result            { uint32_t       size; rc_file_error error; } rc_file_size_result;
 typedef struct rc_file_load_text_result       { rc_str         text; rc_file_error error; } rc_file_load_text_result;
 typedef struct rc_file_load_text_mut_result   { rc_mstr        text; rc_file_error error; } rc_file_load_text_mut_result;
-typedef struct rc_file_load_binary_result     { rc_view_bytes  data; rc_file_error error; } rc_file_load_binary_result;
-typedef struct rc_file_load_binary_mut_result { rc_array_bytes data; rc_file_error error; } rc_file_load_binary_mut_result;
+typedef struct rc_file_load_binary_result     { rc_view_bytes  contents; rc_file_error error; } rc_file_load_binary_result;
+typedef struct rc_file_load_binary_mut_result { rc_array_bytes contents; rc_file_error error; } rc_file_load_binary_mut_result;
 
 /* ---- functions ---- */
 

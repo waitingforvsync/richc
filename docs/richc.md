@@ -372,8 +372,8 @@ reallocating.
 ```c
 typedef struct { rc_str         text; rc_file_error error; } rc_file_load_text_result;
 typedef struct { rc_mstr        text; rc_file_error error; } rc_file_load_text_mut_result;
-typedef struct { rc_view_bytes  data; rc_file_error error; } rc_file_load_binary_result;
-typedef struct { rc_array_bytes data; rc_file_error error; } rc_file_load_binary_mut_result;
+typedef struct { rc_view_bytes  contents; rc_file_error error; } rc_file_load_binary_result;
+typedef struct { rc_array_bytes contents; rc_file_error error; } rc_file_load_binary_mut_result;
 
 rc_file_load_text_result       rc_file_load_text(rc_str filename, rc_arena *arena);
 rc_file_load_text_mut_result   rc_file_load_text_mut(rc_str filename, uint32_t minimum_capacity, rc_arena *arena);
@@ -382,8 +382,8 @@ rc_file_load_binary_mut_result rc_file_load_binary_mut(rc_str filename, uint32_t
 ```
 
 Text loads are always null-terminated, so `rc_str_as_cstr` on the result takes
-its no-copy fast path. On failure the returned text/data is the empty (invalid)
-state and `error` is set.
+its no-copy fast path. On failure the returned `text` / `contents` is the empty
+(invalid) state and `error` is set.
 
 ### Saving
 
@@ -531,6 +531,17 @@ void rc_mstr_replace(rc_mstr *s, rc_str find, rc_str replacement, rc_arena *a);
 The mutation functions require a valid `rc_mstr` and valid `rc_str` arguments
 (asserted), and allocate through the arena, which never returns NULL.
 
+### Teardown
+
+```c
+void rc_mstr_deinit(rc_mstr *s, rc_arena *a);
+```
+
+`rc_mstr_deinit` frees the backing allocation (best-effort, see `rc_arena_free`)
+and zeroes the struct back to the invalid state; it is a safe no-op on an already
+invalid (zeroed) string. Use `rc_mstr_reset` instead to clear the contents while
+keeping the buffer.
+
 ---
 
 ## richc/ops.h - scalar bit and math operations
@@ -596,13 +607,17 @@ A view is in one of three states:
 
 ```c
 #define RC_STR(literal)        // compile-time view from a string literal
-rc_str rc_str_make(const char *s);
+rc_str rc_str_make(const char *data, uint32_t len);   // inline
+rc_str rc_str_from_cstr(const char *s);
 ```
 
 - `RC_STR(literal)` builds a view at compile time. Pass only string literals or
   `char[]` arrays; do not pass a `char *` pointer, since the length is computed
   from `sizeof`.
-- `rc_str_make(s)` builds a view over a null-terminated C string. Returns the
+- `rc_str_make(data, len)` builds a view over an explicit pointer and length; the
+  data need not be null-terminated. It is the preferred way to construct an
+  `rc_str` from a pointer and count, over a raw struct literal.
+- `rc_str_from_cstr(s)` builds a view over a null-terminated C string. Returns the
   invalid view `{ NULL, 0 }` when `s` is NULL.
 
 ### Predicates

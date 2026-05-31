@@ -3,9 +3,9 @@
 #include <errno.h>
 #include <stdio.h>
 
-// Result of load_raw: a byte array that owns the loaded data, plus an error.
+// Result of load_raw: a byte array that owns the loaded contents, plus an error.
 typedef struct {
-    rc_array_bytes data;
+    rc_array_bytes contents;
     rc_file_error  error;
 } load_raw_result;
 
@@ -74,21 +74,22 @@ static load_raw_result load_raw(rc_str filename, uint32_t minimum_capacity,
         return (load_raw_result) {.error = RC_FILE_ERROR_TOO_LARGE};
     }
 
-    uint32_t alloc = capacity + extra;
-    uint8_t *buf = alloc > 0 ? rc_arena_alloc(arena, alloc) : NULL;
+    // Allocate capacity + extra bytes; `extra` reserves room for a text null
+    // terminator at data[size] that the reported capacity (set below) excludes.
+    rc_array_bytes contents = rc_array_bytes_make(capacity + extra, arena);
 
-    // size > 0 implies alloc > 0, so buf is non-NULL when we read.
-    if (size > 0 && fread(buf, 1, size, f) != (size_t)size) {
-        (void)rc_arena_free(arena, buf, alloc);
+    // size > 0 implies a non-empty allocation, so contents.data is non-NULL here.
+    if (size > 0 && fread(contents.data, 1, size, f) != (size_t)size) {
+        rc_array_bytes_deinit(&contents, arena);
         fclose(f);
         return (load_raw_result) {.error = RC_FILE_ERROR_IO};
     }
-    if (extra > 0) buf[size] = '\0';
+    contents.num = size;
+    if (extra > 0) contents.data[size] = '\0';
+    contents.cap = capacity;   // hide the terminator byte from the usable capacity
 
     fclose(f);
-
-    rc_array_bytes data = {.data = buf, .num = size, .cap = capacity};
-    return (load_raw_result) {.data = data, .error = RC_FILE_OK};
+    return (load_raw_result) {.contents = contents};
 }
 
 rc_file_size_result rc_file_size(rc_str filename)
@@ -108,8 +109,7 @@ rc_file_load_text_result rc_file_load_text(rc_str filename, rc_arena *arena)
     if (raw.error != RC_FILE_OK)
         return (rc_file_load_text_result) {.error = raw.error};
 
-    rc_str text = {.data = (const char *)raw.data.data, .len = raw.data.num};
-    return (rc_file_load_text_result) {.text = text, .error = RC_FILE_OK};
+    return (rc_file_load_text_result) {.text = rc_str_make((const char *)raw.contents.data, raw.contents.num)};
 }
 
 rc_file_load_text_mut_result rc_file_load_text_mut(rc_str filename, uint32_t minimum_capacity, rc_arena *arena)
@@ -120,8 +120,9 @@ rc_file_load_text_mut_result rc_file_load_text_mut(rc_str filename, uint32_t min
 
     // cap excludes the terminator, so the allocation (cap + 1) is exactly the
     // rc_mstr invariant.
-    rc_mstr text = {.data = (const char *)raw.data.data, .len = raw.data.num, .cap = raw.data.cap};
-    return (rc_file_load_text_mut_result) {.text = text, .error = RC_FILE_OK};
+    return (rc_file_load_text_mut_result) {
+        .text = {.data = (char *)raw.contents.data, .len = raw.contents.num, .cap = raw.contents.cap}
+    };
 }
 
 rc_file_load_binary_result rc_file_load_binary(rc_str filename, rc_arena *arena)
@@ -130,8 +131,7 @@ rc_file_load_binary_result rc_file_load_binary(rc_str filename, rc_arena *arena)
     if (raw.error != RC_FILE_OK)
         return (rc_file_load_binary_result) {.error = raw.error};
 
-    rc_view_bytes data = {.data = raw.data.data, .num = raw.data.num};
-    return (rc_file_load_binary_result) {.data = data, .error = RC_FILE_OK};
+    return (rc_file_load_binary_result) {.contents = raw.contents.view};
 }
 
 rc_file_load_binary_mut_result rc_file_load_binary_mut(rc_str filename, uint32_t minimum_capacity, rc_arena *arena)
@@ -140,7 +140,7 @@ rc_file_load_binary_mut_result rc_file_load_binary_mut(rc_str filename, uint32_t
     if (raw.error != RC_FILE_OK)
         return (rc_file_load_binary_mut_result) {.error = raw.error};
 
-    return (rc_file_load_binary_mut_result) {.data = raw.data, .error = RC_FILE_OK};
+    return (rc_file_load_binary_mut_result) {.contents = raw.contents};
 }
 
 rc_file_error rc_file_save_text(rc_str filename, rc_str text)

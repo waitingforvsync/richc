@@ -264,7 +264,7 @@ void rc_test_check_rational(rc_rational actual, const char *op, rc_rational expe
 
 int rc_test_run(const char *filter_string)
 {
-    rc_str filter = rc_str_make(filter_string);
+    rc_str filter = rc_str_from_cstr(filter_string);
     int num_fail = 0;
     int num_pass = 0;
     int num_skip = 0;
@@ -275,9 +275,9 @@ int rc_test_run(const char *filter_string)
     for (const rc_test **it = RC_TEST_BEGIN; it != RC_TEST_END; ++it) {
         const rc_test *t = *it;
         if (!t) continue;
-        rc_str group = rc_str_make(t->group_name);
+        rc_str group = rc_str_from_cstr(t->group_name);
         if (rc_str_starts_with(group, filter)) {
-            rc_str name = rc_str_make(t->test_name);
+            rc_str name = rc_str_from_cstr(t->test_name);
             int width = (int)(group.len + name.len);
             if (width > max_width) {
                 max_width = width;
@@ -291,10 +291,10 @@ int rc_test_run(const char *filter_string)
     for (const rc_test **it = RC_TEST_BEGIN; it != RC_TEST_END; ++it) {
         const rc_test *t = *it;
         if (!t) continue;
-        rc_str group = rc_str_make(t->group_name);
+        rc_str group = rc_str_from_cstr(t->group_name);
         if (!rc_str_starts_with(group, filter)) continue;
 
-        rc_str name = rc_str_make(t->test_name);
+        rc_str name = rc_str_from_cstr(t->test_name);
         int padding = max_width + 3 - (int)(group.len + name.len);
         if (padding < 0) {
             padding = 0;

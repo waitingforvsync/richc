@@ -90,7 +90,7 @@ Available now in core:
 - **Mutable string** (`richc/mstr.h`) - `rc_mstr`, an arena-backed growable
   string that shares its layout with `rc_str` (its current contents are always a
   valid `rc_str` view) and keeps a trailing null terminator. Append, append-char,
-  replace, reserve, and reset.
+  replace, reserve, reset, and deinit.
 - **View / span / array** (`richc/template/array.h`) - the template above. A
   read-only `rc_view`, a mutable `rc_span`, and a growable arena-backed
   `rc_array`, sharing an anonymous union so conversions between them are

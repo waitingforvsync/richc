@@ -6,8 +6,8 @@
  *
  * Two distinct states
  * -------------------
- *   Invalid : { NULL, 0 }   — "no string" / "not found" sentinel.
- *   Empty   : { ptr,  0 }   — valid but zero-length (ptr is non-NULL).
+ *   Invalid : { NULL, 0 }   - "no string" / "not found" sentinel.
+ *   Empty   : { ptr,  0 }   - valid but zero-length (ptr is non-NULL).
  *
  * Types
  * -----
@@ -16,12 +16,13 @@
  *
  * Construction
  * ------------
- *   RC_STR(literal)               compile-time view from a string literal;
- *                                 DO NOT pass a char * pointer (sizeof of a
- *                                 pointer gives the pointer width, not the
- *                                 string length).
- *   rc_str_make(const char *)     run-time view from a null-terminated string;
- *                                 returns invalid when s is NULL.
+ *   RC_STR(literal) - compile-time view from a string literal; DO NOT pass a
+ *       char * pointer (sizeof of a pointer gives the pointer width, not the
+ *       string length).
+ *   rc_str_make(data, len) - view over an explicit pointer and length (the data
+ *       need not be null-terminated).
+ *   rc_str_from_cstr(const char *) - run-time view from a null-terminated
+ *       string; returns invalid when s is NULL.
  *
  * Slicing (inline)
  * ----------------
@@ -45,7 +46,7 @@
  * rc_str_as_cstr
  * --------------
  * Fast path: if s.data is non-NULL and already followed by a '\0' byte,
- * s.data is returned directly — no copy.
+ * s.data is returned directly - no copy.
  * Slow path: otherwise up to buf_size-1 bytes are copied into buf and a
  * '\0' is appended.  Returns NULL when buf is NULL or buf_size is 0.
  */
@@ -83,9 +84,16 @@ typedef struct rc_str_pair {
  */
 #define RC_STR(s) ((rc_str) {(s), (uint32_t)(sizeof(s) - 1)})
 
+/* Build a view from an explicit pointer and length (the data need not be
+ * null-terminated). */
+static inline rc_str rc_str_make(const char *data, uint32_t len)
+{
+    return (rc_str) {data, len};
+}
+
 /* Build a view over a null-terminated C string.
  * Returns { NULL, 0 } when s is NULL. */
-rc_str rc_str_make(const char *s);
+rc_str rc_str_from_cstr(const char *s);
 
 /* ---- predicates (inline) ---- */
 
@@ -114,14 +122,14 @@ int  rc_str_compare_insensitive(rc_str a, rc_str b);
 static inline rc_str rc_str_left(rc_str s, uint32_t count)
 {
     if (count > s.len) count = s.len;
-    return (rc_str) {s.data, count};
+    return rc_str_make(s.data, count);
 }
 
 /* Last count characters.  Clamped to s.len when count > s.len. */
 static inline rc_str rc_str_right(rc_str s, uint32_t count)
 {
     if (count > s.len) count = s.len;
-    return (rc_str) {s.data + (s.len - count), count};
+    return rc_str_make(s.data + (s.len - count), count);
 }
 
 /* Substring of count characters starting at start.
@@ -130,14 +138,14 @@ static inline rc_str rc_str_substr(rc_str s, uint32_t start, uint32_t count)
 {
     if (start > s.len)          start = s.len;
     if (count > s.len - start)  count = s.len - start;
-    return (rc_str) {s.data + start, count};
+    return rc_str_make(s.data + start, count);
 }
 
 /* Suffix of s beginning at start.  Clamped when start > s.len. */
 static inline rc_str rc_str_skip(rc_str s, uint32_t start)
 {
     if (start > s.len) start = s.len;
-    return (rc_str) {s.data + start, s.len - start};
+    return rc_str_make(s.data + start, s.len - start);
 }
 
 /* ---- searching ---- */

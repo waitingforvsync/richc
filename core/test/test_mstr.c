@@ -74,7 +74,7 @@ RC_TEST_STEP(mstr, from_str, fix)
 RC_TEST_STEP(mstr, from_str_invalid, fix)
 {
     // The from_* constructors tolerate an invalid source and return invalid.
-    rc_mstr s = rc_mstr_from_str(rc_str_make(NULL), 4, &fix->a);
+    rc_mstr s = rc_mstr_from_str(rc_str_from_cstr(NULL), 4, &fix->a);
     RC_CHECK_FALSE(rc_mstr_is_valid(&s));
 }
 
@@ -228,4 +228,23 @@ RC_TEST_STEP(mstr, replace_empty_find, fix)
     rc_mstr s = rc_mstr_from_cstr("hello", 0, &fix->a);
     rc_mstr_replace(&s, RC_STR(""), RC_STR("Q"), &fix->a);    // empty find: no-op
     RC_CHECK(s.view, ==, RC_STR("hello"));
+}
+
+/* ---- teardown ---- */
+
+RC_TEST_STEP(mstr, deinit, fix)
+{
+    rc_mstr s = rc_mstr_from_cstr("hello world", 0, &fix->a);
+    rc_mstr_append(&s, RC_STR("!"), &fix->a);
+    RC_CHECK_TRUE(rc_mstr_is_valid(&s));
+
+    rc_mstr_deinit(&s, &fix->a);
+    RC_CHECK_FALSE(rc_mstr_is_valid(&s));
+    RC_CHECK(s.len, ==, 0u);
+    RC_CHECK(s.cap, ==, 0u);
+    RC_CHECK_TRUE(s.data == NULL);
+
+    // deinit of an already-invalid (zeroed) string is a safe no-op
+    rc_mstr_deinit(&s, &fix->a);
+    RC_CHECK_FALSE(rc_mstr_is_valid(&s));
 }

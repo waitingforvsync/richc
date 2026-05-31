@@ -7,7 +7,7 @@ RC_TEST(str, literal)
 {
     rc_str s = RC_STR("hello");
     RC_CHECK(s.len, ==, 5u);
-    RC_CHECK(s, ==, rc_str_make("hello"));
+    RC_CHECK(s, ==, rc_str_from_cstr("hello"));
 
     rc_str empty = RC_STR("");
     RC_CHECK(empty.len, ==, 0u);
@@ -16,14 +16,14 @@ RC_TEST(str, literal)
 
 RC_TEST(str, make)
 {
-    rc_str s = rc_str_make("hello");
+    rc_str s = rc_str_from_cstr("hello");
     RC_CHECK(s.len, ==, 5u);
     RC_CHECK(s, ==, RC_STR("hello"));
 }
 
 RC_TEST(str, make_null)
 {
-    rc_str s = rc_str_make(NULL);
+    rc_str s = rc_str_from_cstr(NULL);
     RC_CHECK_FALSE(rc_str_is_valid(s));
     RC_CHECK_TRUE(rc_str_is_empty(s));
     RC_CHECK(s.len, ==, 0u);
@@ -31,7 +31,7 @@ RC_TEST(str, make_null)
 
 RC_TEST(str, make_empty)
 {
-    rc_str s = rc_str_make("");
+    rc_str s = rc_str_from_cstr("");
     RC_CHECK_TRUE(rc_str_is_valid(s));
     RC_CHECK_TRUE(rc_str_is_empty(s));
 }
@@ -42,14 +42,14 @@ RC_TEST(str, is_valid)
 {
     RC_CHECK_TRUE(rc_str_is_valid(RC_STR("x")));
     RC_CHECK_TRUE(rc_str_is_valid(RC_STR("")));
-    RC_CHECK_FALSE(rc_str_is_valid(rc_str_make(NULL)));
+    RC_CHECK_FALSE(rc_str_is_valid(rc_str_from_cstr(NULL)));
 }
 
 RC_TEST(str, is_empty)
 {
     RC_CHECK_FALSE(rc_str_is_empty(RC_STR("x")));
     RC_CHECK_TRUE(rc_str_is_empty(RC_STR("")));
-    RC_CHECK_TRUE(rc_str_is_empty(rc_str_make(NULL)));
+    RC_CHECK_TRUE(rc_str_is_empty(rc_str_from_cstr(NULL)));
 }
 
 RC_TEST(str, is_equal)
@@ -241,7 +241,7 @@ RC_TEST(str, as_cstr_fast)
     char buf[16];
     const char *c = rc_str_as_cstr(s, buf, sizeof buf);
     RC_CHECK_TRUE(c == s.data);
-    RC_CHECK(rc_str_make(c), ==, RC_STR("hello"));
+    RC_CHECK(rc_str_from_cstr(c), ==, RC_STR("hello"));
 }
 
 RC_TEST(str, as_cstr_copy)
@@ -251,7 +251,7 @@ RC_TEST(str, as_cstr_copy)
     char buf[16];
     const char *c = rc_str_as_cstr(s, buf, sizeof buf);
     RC_CHECK_TRUE(c == buf);
-    RC_CHECK(rc_str_make(c), ==, RC_STR("hello"));
+    RC_CHECK(rc_str_from_cstr(c), ==, RC_STR("hello"));
 }
 
 RC_TEST(str, as_cstr_truncate)
@@ -260,7 +260,7 @@ RC_TEST(str, as_cstr_truncate)
     rc_str s = rc_str_left(RC_STR("hello world"), 5);
     char buf[3];
     const char *c = rc_str_as_cstr(s, buf, sizeof buf);
-    RC_CHECK(rc_str_make(c), ==, RC_STR("he"));
+    RC_CHECK(rc_str_from_cstr(c), ==, RC_STR("he"));
 }
 
 RC_TEST(str, as_cstr_null)

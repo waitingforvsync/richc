@@ -5,11 +5,11 @@
 
 #include "richc/macros.h"
 
-rc_str rc_str_make(const char *s)
+rc_str rc_str_from_cstr(const char *s)
 {
-    if (!s) return (rc_str) {NULL, 0};
+    if (!s) return rc_str_make(NULL, 0);
     size_t n = strlen(s);
-    return (rc_str) {s, n <= (size_t)UINT32_MAX ? (uint32_t)n : UINT32_MAX};
+    return rc_str_make(s, n <= (size_t)UINT32_MAX ? (uint32_t)n : UINT32_MAX);
 }
 
 bool rc_str_is_equal(rc_str a, rc_str b)

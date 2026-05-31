@@ -70,9 +70,9 @@ RC_TEST_STEP(file, binary_roundtrip, fix)
 
     rc_file_load_binary_result r = rc_file_load_binary(path, &fix->a);
     RC_CHECK_TRUE(r.error == RC_FILE_OK);
-    RC_CHECK(r.data.num, ==, 6u);
-    RC_CHECK(rc_view_bytes_get(r.data, 3), ==, (uint8_t)253);
-    RC_CHECK(rc_view_bytes_get(r.data, 5), ==, (uint8_t)255);
+    RC_CHECK(r.contents.num, ==, 6u);
+    RC_CHECK(rc_view_bytes_get(r.contents, 3), ==, (uint8_t)253);
+    RC_CHECK(rc_view_bytes_get(r.contents, 5), ==, (uint8_t)255);
 
     remove("/tmp/richc_file_test.bin");
 }
@@ -86,11 +86,11 @@ RC_TEST_STEP(file, binary_mut, fix)
 
     rc_file_load_binary_mut_result r = rc_file_load_binary_mut(path, 16, &fix->a);
     RC_CHECK_TRUE(r.error == RC_FILE_OK);
-    RC_CHECK(r.data.num, ==, 3u);
-    RC_CHECK(r.data.cap, ==, 16u);               // minimum_capacity honoured
-    rc_array_bytes_push(&r.data, 40, &fix->a);   // mutable
-    RC_CHECK(r.data.num, ==, 4u);
-    RC_CHECK(rc_array_bytes_get(&r.data, 3), ==, (uint8_t)40);
+    RC_CHECK(r.contents.num, ==, 3u);
+    RC_CHECK(r.contents.cap, ==, 16u);               // minimum_capacity honoured
+    rc_array_bytes_push(&r.contents, 40, &fix->a);   // mutable
+    RC_CHECK(r.contents.num, ==, 4u);
+    RC_CHECK(rc_array_bytes_get(&r.contents, 3), ==, (uint8_t)40);
 
     remove("/tmp/richc_file_test.bin");
 }
