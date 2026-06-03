@@ -15,6 +15,10 @@
 #include <stdint.h>
 #include <stdlib.h>   // abs, llabs
 
+#ifdef _MSC_VER
+#include <intrin.h>   // _BitScanReverse, _BitScanReverse64, _BitScanForward, _BitScanForward64
+#endif
+
 /* ---- bit reinterpretation ---- */
 
 // Reinterpret a float as its uint32_t bit pattern.
@@ -62,7 +66,9 @@ static inline uint32_t rc_clz_u32(uint32_t a)
 {
     if (a == 0) return 32;
 #ifdef _MSC_VER
-    return __lzcnt(a);
+    unsigned long index = 0;
+    _BitScanReverse(&index, a);   // a != 0 here, so index is always written
+    return 31u - index;
 #else
     return (uint32_t)__builtin_clz(a);
 #endif
@@ -72,7 +78,9 @@ static inline uint32_t rc_clz_u64(uint64_t a)
 {
     if (a == 0) return 64;
 #ifdef _MSC_VER
-    return (uint32_t)__lzcnt64(a);
+    unsigned long index = 0;
+    _BitScanReverse64(&index, a);   // a != 0 here, so index is always written
+    return 63u - index;
 #else
     return (uint32_t)__builtin_clzll(a);
 #endif
@@ -84,7 +92,9 @@ static inline uint32_t rc_ctz_u32(uint32_t a)
 {
     if (a == 0) return 32;
 #ifdef _MSC_VER
-    return _tzcnt_u32(a);
+    unsigned long index = 0;
+    _BitScanForward(&index, a);   // a != 0 here, so index is always written
+    return index;
 #else
     return (uint32_t)__builtin_ctz(a);
 #endif
@@ -94,7 +104,9 @@ static inline uint32_t rc_ctz_u64(uint64_t a)
 {
     if (a == 0) return 64;
 #ifdef _MSC_VER
-    return (uint32_t)_tzcnt_u64(a);
+    unsigned long index = 0;
+    _BitScanForward64(&index, a);   // a != 0 here, so index is always written
+    return index;
 #else
     return (uint32_t)__builtin_ctzll(a);
 #endif
