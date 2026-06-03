@@ -383,10 +383,12 @@ Every function reports `rc_file_error`: `RC_FILE_OK` (0) on success, otherwise
 typedef struct { uint32_t size; rc_file_error error; } rc_file_size_result;
 
 rc_file_size_result rc_file_size(rc_str filename);
+bool                rc_file_exists(rc_str filename);
 ```
 
-Measures the file in bytes without reading it; needs no arena.
-`RC_FILE_ERROR_TOO_LARGE` if the size does not fit in a `uint32_t`.
+`rc_file_size` measures the file in bytes without reading it; needs no arena.
+`RC_FILE_ERROR_TOO_LARGE` if the size does not fit in a `uint32_t`. `rc_file_exists`
+tests for presence only (no arena, no read access required).
 
 ### Loading
 

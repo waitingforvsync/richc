@@ -11,8 +11,10 @@
  *
  * Size
  * ----
- *   rc_file_size(filename) -> { uint32_t size; rc_file_error error; }
- * Measures the file without reading it; needs no arena.
+ *   rc_file_size(filename)   -> { uint32_t size; rc_file_error error; }
+ *   rc_file_exists(filename) -> bool
+ * Measure the file without reading it, or test for existence; neither needs an
+ * arena.  rc_file_exists reports presence only and does not require read access.
  *
  * Loading
  * -------
@@ -61,6 +63,7 @@ typedef struct rc_file_load_binary_result { rc_array_bytes contents; rc_file_err
 /* ---- functions ---- */
 
 rc_file_size_result rc_file_size(rc_str filename);
+bool                rc_file_exists(rc_str filename);
 
 rc_file_load_text_result   rc_file_load_text(rc_str filename, uint32_t minimum_capacity, rc_arena *arena);
 rc_file_load_binary_result rc_file_load_binary(rc_str filename, uint32_t minimum_capacity, rc_arena *arena);

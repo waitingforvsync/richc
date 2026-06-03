@@ -2,6 +2,11 @@
 
 #include <errno.h>
 #include <stdio.h>
+#ifdef _MSC_VER
+#include <io.h>        // _access
+#else
+#include <unistd.h>    // access
+#endif
 
 // Result of load_raw: a byte array that owns the loaded contents, plus an error.
 typedef struct {
@@ -98,6 +103,18 @@ rc_file_size_result rc_file_size(rc_str filename)
     rc_file_size_result result = file_measure(f);
     fclose(f);
     return result;
+}
+
+bool rc_file_exists(rc_str filename)
+{
+    char path[1024];
+    const char *p = rc_str_as_cstr(filename, path, sizeof path);
+    // Existence-only check: does not require read permission or open the file.
+#ifdef _MSC_VER
+    return _access(p, 0) == 0;
+#else
+    return access(p, F_OK) == 0;
+#endif
 }
 
 rc_file_error rc_file_delete(rc_str filename)

@@ -135,6 +135,18 @@ RC_TEST(file, size_not_found)
     RC_CHECK(r.size, ==, 0u);
 }
 
+RC_TEST(file, exists)
+{
+    rc_str path = RC_STR("/tmp/richc_file_exists.bin");
+    RC_CHECK_FALSE(rc_file_exists(path));            // not present yet
+
+    RC_CHECK_TRUE(rc_file_save_text(path, RC_STR("data")) == RC_FILE_OK);
+    RC_CHECK_TRUE(rc_file_exists(path));             // present after save
+
+    remove("/tmp/richc_file_exists.bin");
+    RC_CHECK_FALSE(rc_file_exists(path));            // gone again
+}
+
 RC_TEST(file, delete)
 {
     rc_str path = RC_STR("/tmp/richc_file_delete.bin");
@@ -142,7 +154,7 @@ RC_TEST(file, delete)
 
     // The file exists, so delete succeeds and the file is gone afterwards.
     RC_CHECK_TRUE(rc_file_delete(path) == RC_FILE_OK);
-    RC_CHECK_TRUE(rc_file_size(path).error == RC_FILE_ERROR_NOT_FOUND);
+    RC_CHECK_FALSE(rc_file_exists(path));
 }
 
 RC_TEST(file, delete_not_found)
