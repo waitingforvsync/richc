@@ -1,0 +1,3 @@
+# Test fixtures are byte-exact: never translate line endings on checkout, so the
+# bytes the file loader reads are identical on every platform.
+* -text
