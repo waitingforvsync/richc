@@ -19,8 +19,8 @@ static FILE *file_open(rc_str filename, const char *mode)
     return fopen(rc_str_as_cstr(filename, path, sizeof path), mode);
 }
 
-// Translate a failed fopen into the matching rc_file_error.
-static rc_file_error file_open_error(void)
+// Translate a failed file operation's errno into the matching rc_file_error.
+static rc_file_error file_error_from_errno(void)
 {
     return (errno == ENOENT) ? RC_FILE_ERROR_NOT_FOUND
          : (errno == EACCES) ? RC_FILE_ERROR_ACCESS_DENIED
@@ -54,7 +54,7 @@ static load_raw_result load_raw(rc_str filename, uint32_t minimum_capacity, rc_a
 
     FILE *f = file_open(filename, "rb");
     if (!f)
-        return (load_raw_result) {.error = file_open_error()};
+        return (load_raw_result) {.error = file_error_from_errno()};
 
     rc_file_size_result measured = file_measure(f);
     if (measured.error != RC_FILE_OK) {
@@ -93,11 +93,20 @@ rc_file_size_result rc_file_size(rc_str filename)
 {
     FILE *f = file_open(filename, "rb");
     if (!f)
-        return (rc_file_size_result) {.error = file_open_error()};
+        return (rc_file_size_result) {.error = file_error_from_errno()};
 
     rc_file_size_result result = file_measure(f);
     fclose(f);
     return result;
+}
+
+rc_file_error rc_file_delete(rc_str filename)
+{
+    char path[1024];
+    if (remove(rc_str_as_cstr(filename, path, sizeof path)) != 0)
+        return file_error_from_errno();
+
+    return RC_FILE_OK;
 }
 
 rc_file_load_text_result rc_file_load_text(rc_str filename, uint32_t minimum_capacity, rc_arena *arena)

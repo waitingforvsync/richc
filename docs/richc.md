@@ -420,6 +420,14 @@ rc_file_error rc_file_save_binary(rc_str filename, rc_view_bytes data);
 
 Both create or truncate the file.
 
+### Deleting
+
+```c
+rc_file_error rc_file_delete(rc_str filename);
+```
+
+Removes the file, returning `RC_FILE_ERROR_NOT_FOUND` when it does not exist.
+
 ---
 
 ## richc/hash.h - hashing

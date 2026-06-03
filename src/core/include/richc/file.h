@@ -30,6 +30,11 @@
  *   rc_file_save_text(filename, text)    writes an rc_str
  *   rc_file_save_binary(filename, data)  writes an rc_view_bytes
  * Both create or truncate the file.
+ *
+ * Deleting
+ * --------
+ *   rc_file_delete(filename)  removes the file
+ * Reports RC_FILE_ERROR_NOT_FOUND when the file does not exist.
  */
 
 #ifndef RC_FILE_H_
@@ -62,5 +67,7 @@ rc_file_load_binary_result rc_file_load_binary(rc_str filename, uint32_t minimum
 
 rc_file_error rc_file_save_text(rc_str filename, rc_str text);
 rc_file_error rc_file_save_binary(rc_str filename, rc_view_bytes data);
+
+rc_file_error rc_file_delete(rc_str filename);
 
 #endif /* RC_FILE_H_ */
