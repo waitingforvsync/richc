@@ -134,6 +134,13 @@ Available now in core:
   (binary) - mutable because loaded data is commonly modified after reading, while
   the arena owns the allocation - from which a read-only view is available via
   `.view`.
+- **Inflate / decompression** (`richc/zip/inflate.h`) - `rc_zip_inflate`
+  decompresses a raw DEFLATE stream (RFC 1951) and `rc_zip_inflate_zlib`
+  a zlib-wrapped one (RFC 1950: a 2-byte header and a trailing Adler-32, which it
+  verifies). Both decode into an arena-backed `rc_array_bytes` and return an
+  `rc_zip_inflate_result` carrying that data and an `rc_zip_error`; malformed
+  input yields an error rather than trapping. An optional `minimum_capacity`
+  pre-sizes the output when the decompressed size is known in advance.
 - **Scalar ops** (`richc/ops.h`) - bit reinterpretation, integer min/max/sign,
   GCD, count-leading-zeros, count-trailing-zeros, and overflow checks.
 - **Math** (`richc/math/`) - integer vectors `rc_vec2i` / `rc_vec3i` (arithmetic,

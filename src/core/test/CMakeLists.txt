@@ -35,6 +35,7 @@ add_executable(richc_core_test
     test_vec3f.c
     test_vec3i.c
     test_vec4f.c
+    test_zip_inflate.c
 )
 
 target_link_libraries(richc_core_test PRIVATE richc)

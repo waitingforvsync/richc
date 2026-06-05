@@ -12,6 +12,7 @@ add_library(richc STATIC
     src/mstr.c
     src/str.c
     src/test.c
+    src/zip/inflate.c
     include/richc/arena.h
     include/richc/bitset.h
     include/richc/bytes.h
@@ -47,6 +48,7 @@ add_library(richc STATIC
     include/richc/template/algorithm/sort.h
     include/richc/template/algorithm/upper_bound.h
     include/richc/test.h
+    include/richc/zip/inflate.h
 )
 
 target_include_directories(richc PUBLIC include)

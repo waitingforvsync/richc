@@ -444,6 +444,48 @@ Removes the file, returning `RC_FILE_ERROR_NOT_FOUND` when it does not exist.
 
 ---
 
+## richc/zip/inflate.h - DEFLATE decompression (inflate)
+
+Decompresses a DEFLATE stream into a growable byte array. Only the
+decompression direction is provided; there is no compressor. Two entry points
+share one result and error type:
+
+```c
+typedef enum {
+    RC_ZIP_OK = 0,
+    RC_ZIP_ERROR_BAD_DATA,     // malformed DEFLATE: bad block type, Huffman code, NLEN, or symbol
+    RC_ZIP_ERROR_TRUNCATED,    // input ended mid-stream
+    RC_ZIP_ERROR_BAD_HEADER,   // zlib: invalid CMF/FLG, or an unsupported preset dictionary
+    RC_ZIP_ERROR_CHECKSUM      // zlib: the trailing Adler-32 did not match the output
+} rc_zip_error;
+
+typedef struct { rc_array_bytes data; rc_zip_error error; } rc_zip_inflate_result;
+
+rc_zip_inflate_result rc_zip_inflate(rc_view_bytes compressed, uint32_t minimum_capacity, rc_arena *arena);
+rc_zip_inflate_result rc_zip_inflate_zlib(rc_view_bytes compressed, uint32_t minimum_capacity, rc_arena *arena);
+```
+
+`rc_zip_inflate` decodes a raw DEFLATE stream (RFC 1951). `rc_zip_inflate_zlib`
+decodes a zlib-wrapped stream (RFC 1950): it validates the 2-byte header, rejects
+an unsupported preset dictionary, decodes the DEFLATE body, then verifies the
+output against the trailing big-endian Adler-32. Both forms accept stored, fixed,
+and dynamic Huffman blocks.
+
+The output is decoded into an arena-backed `rc_array_bytes`, which the supplied
+`arena` owns (the caller scopes its lifetime by arena, as with the file loaders).
+On success `error` is `RC_ZIP_OK` and `data` holds the decompressed bytes (take
+`data.view` for read-only access); on any error `data` is the empty (invalid)
+state and `error` is set. Compressed input is treated as untrusted - malformed
+data returns an error rather than asserting.
+
+`minimum_capacity` is a floor on the output array's capacity. Neither DEFLATE nor
+the zlib wrapper records the decompressed size, so in general it is not known
+ahead of time and the array grows geometrically; a caller that does know it (a
+PNG decoder knows it exactly: `height * (1 + width * bytes_per_pixel)`) passes it
+to decode without reallocation. Pass `0` when it is unknown.
+
+---
+
 ## richc/hash.h - hashing
 
 `uint32_t` hash functions for richc types, suitable as the hash expression for
