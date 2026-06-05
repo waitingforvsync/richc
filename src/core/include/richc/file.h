@@ -20,8 +20,11 @@
  * -------
  *   rc_file_load_text   -> rc_mstr
  *   rc_file_load_binary -> rc_array_bytes
- * A load returns an owning, growable result, so the caller can grow it or
- * rc_*_deinit it; for read-only access take the view from the result
+ * A load returns a mutable, growable result.  The mutable form is chosen because
+ * loaded data is commonly modified after reading (parsed in place, appended to,
+ * rewritten), not because the result must own its memory: the supplied arena
+ * owns the allocation, and the caller scopes its lifetime by arena rather than
+ * rc_*_deinit-ing it.  For read-only access take the view from the result
  * (result.text.view / result.contents.view).  minimum_capacity sets a floor on
  * the result's capacity, letting it grow a little before reallocating.  Text
  * loads keep a trailing '\0' (the rc_mstr invariant), so rc_str_as_cstr on

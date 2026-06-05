@@ -8,7 +8,8 @@
 #include <unistd.h>    // access
 #endif
 
-// Result of load_raw: a byte array that owns the loaded contents, plus an error.
+// Result of load_raw: a mutable byte array holding the loaded contents (the arena
+// owns the allocation), plus an error.
 typedef struct {
     rc_array_bytes contents;
     rc_file_error  error;

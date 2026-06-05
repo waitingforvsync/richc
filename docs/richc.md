@@ -363,9 +363,14 @@ rc_mstr rc_array_bytes_to_mstr(rc_array_bytes *bytes, rc_arena *a);
 - `rc_array_bytes_to_mstr` *moves* a byte buffer into an `rc_mstr`: it appends a
   `'\0'` terminator (growing by one byte only if the buffer was exactly full),
   reinterprets the preceding bytes as the string, and resets `*bytes` to the empty
-  `{ 0 }`. The returned `rc_mstr` is the buffer's sole owner (`len` excludes the
-  terminator, `cap` is the array's real capacity), so there is never a second
-  handle to the same allocation.
+  `{ 0 }` (`len` excludes the terminator, `cap` is the array's real capacity). The
+  reset is what makes this a move rather than a cast, and the reason is ownership
+  - but ownership of *mutation*, not of the underlying memory (the arena owns
+  that and never needs freeing here). Two mutable containers must not both refer
+  to one buffer: either could grow or rewrite it independently, corrupting the
+  other. So the source `rc_array_bytes` is cleared, leaving the returned
+  `rc_mstr` as the single writer. The read-only `as_str` casts above have no such
+  hazard and leave their source usable.
 
 ---
 
@@ -392,9 +397,16 @@ tests for presence only (no arena, no read access required).
 
 ### Loading
 
-A load returns an owning, growable result - an `rc_mstr` for text, an
-`rc_array_bytes` for binary - so the caller can grow it, `rc_*_deinit` it, or take
-a read-only view from it (`result.text.view` / `result.contents.view`).
+A load returns a mutable, growable result - an `rc_mstr` for text, an
+`rc_array_bytes` for binary. The mutable form is chosen not because the result
+must *own* its memory (it does not - the supplied `arena` owns the allocation,
+and the caller scopes its lifetime by arena rather than freeing it
+individually), but because loaded data is the kind of thing a caller commonly
+wants to *modify* after reading: parse it in place, append to it, or rewrite it.
+Returning the growable container keeps those options open. A caller that only
+reads simply takes a read-only view (`result.text.view` /
+`result.contents.view`).
+
 `minimum_capacity` is a byte-capacity floor on the result (`result_cap >=
 minimum_capacity`), interpreted the same way as `rc_mstr_make` / `rc_array_*`: the
 buffer is `max(size + 1, minimum_capacity)` bytes - the content plus one spare

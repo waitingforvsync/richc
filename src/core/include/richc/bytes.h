@@ -30,14 +30,16 @@ static inline rc_str rc_span_bytes_as_str(rc_span_bytes bytes)
 
 // Move a byte buffer into an rc_mstr: append a '\0' terminator (growing by one
 // byte only if the buffer was exactly full), reinterpret the preceding bytes as a
-// mutable string, and reset *bytes to the empty { 0 }.  The returned rc_mstr is the
-// buffer's sole owner (its len excludes the terminator, cap is the array's real
-// capacity), so there is never a second handle managing the same allocation.
+// mutable string, and reset *bytes to the empty { 0 } (its len excludes the
+// terminator, cap is the array's real capacity).  Clearing the source is what
+// makes this a move: the arena still owns the memory, but two mutable containers
+// must not both refer to one buffer (either could grow or rewrite it and corrupt
+// the other), so the source is cleared to leave the rc_mstr as the single writer.
 static inline rc_mstr rc_array_bytes_to_mstr(rc_array_bytes *bytes, rc_arena *arena)
 {
     rc_array_bytes_push(bytes, 0, arena);
     rc_mstr s = {.data = (char *)bytes->data, .len = bytes->num - 1, .cap = bytes->cap};
-    *bytes = (rc_array_bytes) {0};   // ownership moves to the mstr
+    *bytes = (rc_array_bytes) {0};   // sole mutable handle is now the mstr
     return s;
 }
 
