@@ -2,6 +2,7 @@
 
 add_executable(richc_app_test
     main.c
+    test_image.c
 )
 
 target_link_libraries(richc_app_test PRIVATE richc_app)
