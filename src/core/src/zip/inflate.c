@@ -22,6 +22,7 @@
 #define RC_ZIP_MAX_LCODES  286   // maximum literal/length codes
 #define RC_ZIP_MAX_DCODES  30    // maximum distance codes
 #define RC_ZIP_FIX_LCODES  288   // fixed literal/length codes (incl. two unused)
+#define RC_ZIP_CLCODES     19    // code-length codes (the HCLEN alphabet, symbols 0..18)
 
 /* ---- bit reader ---- */
 
@@ -76,14 +77,15 @@ typedef enum huffman_status {
     HUFFMAN_OVERSUBSCRIBED   // the code lengths demand more than the code space
 } huffman_status;
 
-// Build a canonical Huffman table from the per-symbol code lengths.
-static huffman_status huffman_construct(huffman *h, const uint8_t *lengths, uint32_t n)
+// Build a canonical Huffman table from the per-symbol code lengths (one entry
+// per symbol; lengths.num is the symbol count).
+static huffman_status huffman_construct(huffman *h, rc_span_bytes lengths)
 {
     for (uint32_t len = 0; len < RC_ZIP_MAX_BITS; len++) {
         h->counts[len] = 0;
     }
-    for (uint32_t sym = 0; sym < n; sym++) {
-        h->counts[lengths[sym]]++;
+    for (uint32_t sym = 0; sym < lengths.num; sym++) {
+        h->counts[rc_span_bytes_get(lengths, sym)]++;
     }
 
     // Kraft inequality: each extra bit doubles the codes available at a length;
@@ -105,9 +107,10 @@ static huffman_status huffman_construct(huffman *h, const uint8_t *lengths, uint
     for (uint32_t len = 2; len < RC_ZIP_MAX_BITS; len++) {
         offsets[len] = offsets[len - 1] + h->counts[len - 1];
     }
-    for (uint32_t sym = 0; sym < n; sym++) {
-        if (lengths[sym] != 0) {
-            h->symbols[offsets[lengths[sym]]++] = (uint16_t)sym;
+    for (uint32_t sym = 0; sym < lengths.num; sym++) {
+        uint8_t length = rc_span_bytes_get(lengths, sym);
+        if (length != 0) {
+            h->symbols[offsets[length]++] = (uint16_t)sym;
         }
     }
     return available == 0 ? HUFFMAN_COMPLETE : HUFFMAN_INCOMPLETE;
@@ -259,10 +262,11 @@ static void inflate_build_fixed(huffman *lencode, huffman *distcode)
     for (; i < 256; i++) lengths[i] = 9;
     for (; i < 280; i++) lengths[i] = 7;
     for (; i < 288; i++) lengths[i] = 8;
-    huffman_construct(lencode, lengths, RC_ZIP_FIX_LCODES);
+    rc_span_bytes span = RC_SPAN(lengths);
+    huffman_construct(lencode, span);
 
     for (i = 0; i < RC_ZIP_MAX_DCODES; i++) lengths[i] = 5;
-    huffman_construct(distcode, lengths, RC_ZIP_MAX_DCODES);
+    huffman_construct(distcode, rc_span_bytes_get_head(span, RC_ZIP_MAX_DCODES));
 }
 
 // The number of times a code-length repeat symbol repeats a value: 16 repeats
@@ -285,27 +289,31 @@ static uint32_t repeat_count(bitstream *s, uint32_t sym)
 static rc_zip_error inflate_build_dynamic(bitstream *s, huffman *lencode, huffman *distcode)
 {
     // The code-length code lengths are themselves sent in this permuted order.
-    static const uint8_t order[19] = {
+    static const uint8_t order[RC_ZIP_CLCODES] = {
         16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15
     };
 
     uint32_t nlen  = get_bits(s, 5) + 257;   // 257..286 literal/length codes
     uint32_t ndist = get_bits(s, 5) + 1;     // 1..30 distance codes
     uint32_t ncode = get_bits(s, 4) + 4;     // 4..19 code-length codes
+    if (s->overrun) {
+        return RC_ZIP_ERROR_TRUNCATED;       // header ran past the end of the input
+    }
     if (nlen > RC_ZIP_MAX_LCODES || ndist > RC_ZIP_MAX_DCODES) {
         return RC_ZIP_ERROR_BAD_DATA;
     }
 
     // Read the code-length code lengths and build their (complete) Huffman table.
     uint8_t lengths[RC_ZIP_MAX_LCODES + RC_ZIP_MAX_DCODES];
+    rc_span_bytes span = RC_SPAN(lengths);
     for (uint32_t i = 0; i < ncode; i++) {
         lengths[order[i]] = (uint8_t)get_bits(s, 3);
     }
-    for (uint32_t i = ncode; i < 19; i++) {
+    for (uint32_t i = ncode; i < RC_ZIP_CLCODES; i++) {
         lengths[order[i]] = 0;
     }
     huffman clcode;
-    if (huffman_construct(&clcode, lengths, 19) != HUFFMAN_COMPLETE) {
+    if (huffman_construct(&clcode, rc_span_bytes_get_head(span, RC_ZIP_CLCODES)) != HUFFMAN_COMPLETE) {
         return RC_ZIP_ERROR_BAD_DATA;        // the code-length code must be complete
     }
 
@@ -343,11 +351,12 @@ static rc_zip_error inflate_build_dynamic(bitstream *s, huffman *lencode, huffma
         return RC_ZIP_ERROR_BAD_DATA;           // block has no end-of-block code
     }
 
-    // Build the literal/length and distance tables; each must be usable.
-    if (!huffman_usable(huffman_construct(lencode, lengths, nlen), lencode, nlen)) {
+    // Build the literal/length and distance tables; each must be usable.  The
+    // distance code lengths follow the nlen literal/length ones in the buffer.
+    if (!huffman_usable(huffman_construct(lencode, rc_span_bytes_get_head(span, nlen)), lencode, nlen)) {
         return RC_ZIP_ERROR_BAD_DATA;
     }
-    if (!huffman_usable(huffman_construct(distcode, lengths + nlen, ndist), distcode, ndist)) {
+    if (!huffman_usable(huffman_construct(distcode, rc_span_bytes_get_subspan(span, nlen, nlen + ndist)), distcode, ndist)) {
         return RC_ZIP_ERROR_BAD_DATA;
     }
     return RC_ZIP_OK;
