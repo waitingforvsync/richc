@@ -14,11 +14,37 @@ add_library(richc STATIC
     src/test.c
     src/zip/inflate.c
     include/richc/arena.h
+    include/richc/array/f32.h
+    include/richc/array/f64.h
+    include/richc/array/i16.h
+    include/richc/array/i32.h
+    include/richc/array/i64.h
+    include/richc/array/i8.h
+    include/richc/array/mstr.h
+    include/richc/array/str.h
+    include/richc/array/u16.h
+    include/richc/array/u32.h
+    include/richc/array/u64.h
+    include/richc/array/u8.h
     include/richc/bitset.h
     include/richc/bytes.h
     include/richc/file.h
     include/richc/hash.h
     include/richc/macros.h
+    include/richc/math/array/box2f.h
+    include/richc/math/array/box2i.h
+    include/richc/math/array/mat22f.h
+    include/richc/math/array/mat23f.h
+    include/richc/math/array/mat33f.h
+    include/richc/math/array/mat34f.h
+    include/richc/math/array/mat44f.h
+    include/richc/math/array/quatf.h
+    include/richc/math/array/rational.h
+    include/richc/math/array/vec2f.h
+    include/richc/math/array/vec2i.h
+    include/richc/math/array/vec3f.h
+    include/richc/math/array/vec3i.h
+    include/richc/math/array/vec4f.h
     include/richc/math/box2f.h
     include/richc/math/box2i.h
     include/richc/math/mat22f.h

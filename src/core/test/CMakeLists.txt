@@ -4,6 +4,7 @@ add_executable(richc_core_test
     main.c
     test_arena.c
     test_array.c
+    test_arrays.c
     test_bitset.c
     test_bitset_foreach.c
     test_box2f.c
