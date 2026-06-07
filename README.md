@@ -186,7 +186,8 @@ private):
   multiple IDAT chunks. A pixel-format hint widens the result toward a target
   format without ever narrowing it (pass `RC_PIXEL_FORMAT_NONE` to keep the PNG's
   natural format). 16-bit channels and Adam7 interlacing are reported as
-  unsupported.
+  unsupported. `rc_image_load_png` is a convenience that reads a file and decodes
+  it in one call.
 
 ## Documentation
 

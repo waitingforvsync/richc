@@ -1946,8 +1946,12 @@ holds the transient buffers and is released on return.
 
 - Returns `rc_image_png_result { rc_image image; rc_image_png_error error; }`; on
   error the image is the invalid (all-zero) state.
+- `rc_image_load_png(filename, hint, arena, scratch)` is a convenience that reads
+  the file into `scratch` and decodes it, so only the image survives in `arena`;
+  it returns `RC_IMAGE_PNG_ERROR_IO` if the file cannot be read.
 - `rc_image_png_error`: `RC_IMAGE_PNG_OK`, `RC_IMAGE_PNG_ERROR_NOT_PNG`,
-  `_ERROR_TRUNCATED`, `_ERROR_BAD_HEADER`, `_ERROR_UNSUPPORTED`, `_ERROR_BAD_DATA`.
+  `_ERROR_TRUNCATED`, `_ERROR_BAD_HEADER`, `_ERROR_UNSUPPORTED`, `_ERROR_BAD_DATA`,
+  `_ERROR_IO`.
 - `pixel_format_hint` widens but never narrows: the result format is the wider
   (by bytes per pixel) of the PNG's natural richc format and the hint. Pass
   `RC_PIXEL_FORMAT_NONE` to keep the natural format (R8 for grayscale, RGB8 for

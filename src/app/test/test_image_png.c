@@ -174,6 +174,25 @@ RC_TEST_STEP(image_png, filtered_all_filter_types, fix)
     }
 }
 
+RC_TEST_STEP(image_png, load_png_file, fix)
+{
+    // the file convenience decodes the same as feeding the bytes in directly
+    rc_image_png_result r = rc_image_load_png(RC_STR("data/png/rgb8.png"),
+                                              RC_PIXEL_FORMAT_NONE, &fix->a, fix->scratch);
+    RC_CHECK_TRUE(r.error == RC_IMAGE_PNG_OK);
+    RC_CHECK(r.image.format, ==, RC_PIXEL_FORMAT_RGB8);
+    RC_CHECK(r.image.size.x, ==, 2);
+    RC_CHECK(r.image.size.y, ==, 2);
+    RC_CHECK(rc_image_get_pixel(r.image, 0, 0), ==, (10u | (20u << 8) | (30u << 16) | 0xFF000000u));
+}
+
+RC_TEST_STEP(image_png, load_png_missing_file, fix)
+{
+    rc_image_png_result r = rc_image_load_png(RC_STR("data/png/does_not_exist.png"),
+                                              RC_PIXEL_FORMAT_NONE, &fix->a, fix->scratch);
+    RC_CHECK_TRUE(r.error == RC_IMAGE_PNG_ERROR_IO);
+}
+
 RC_TEST_STEP(image_png, error_not_png, fix)
 {
     uint8_t junk[8] = {0, 1, 2, 3, 4, 5, 6, 7};

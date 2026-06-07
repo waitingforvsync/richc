@@ -1,6 +1,7 @@
 #include "richc/image/image_png.h"
 
 #include "richc/array/u32.h"
+#include "richc/file.h"
 #include "richc/zip/inflate.h"
 
 // PNG chunk type codes, read as big-endian uint32 of the four type bytes.
@@ -438,4 +439,16 @@ rc_image_png_result rc_image_from_png(rc_view_bytes png, rc_pixel_format pixel_f
         return png_fail(fill_err);
 
     return (rc_image_png_result) {.image = img};
+}
+
+rc_image_png_result rc_image_load_png(rc_str filename, rc_pixel_format pixel_format_hint,
+                                      rc_arena *arena, rc_arena scratch)
+{
+    // Read the file into scratch (advancing the local copy), then decode; the
+    // by-value scratch snapshot passed on sits after the file bytes, so they stay
+    // valid for the decode and only the image survives in arena.
+    rc_file_load_binary_result file = rc_file_load_binary(filename, 0, &scratch);
+    if (file.error != RC_FILE_OK)
+        return png_fail(RC_IMAGE_PNG_ERROR_IO);
+    return rc_image_from_png(file.contents.view, pixel_format_hint, arena, scratch);
 }
