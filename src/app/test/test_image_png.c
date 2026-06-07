@@ -174,6 +174,17 @@ RC_TEST_STEP(image_png, filtered_all_filter_types, fix)
     }
 }
 
+RC_TEST_STEP(image_png, decode_failure_frees_arena, fix)
+{
+    // a palette index past the palette fails in the fill stage, after the image
+    // buffer was allocated; the decoder must rewind that allocation on failure.
+    rc_view_bytes png = load(&fix->a, RC_STR("data/png/pal_bad_index.png"));
+    uint32_t before = fix->a.top;
+    rc_image_png_result r = rc_image_from_png(png, RC_PIXEL_FORMAT_NONE, &fix->a, fix->scratch);
+    RC_CHECK_TRUE(r.error == RC_IMAGE_PNG_ERROR_BAD_DATA);
+    RC_CHECK(fix->a.top, ==, before);   // image buffer reclaimed - no leak
+}
+
 RC_TEST_STEP(image_png, load_png_file, fix)
 {
     // the file convenience decodes the same as feeding the bytes in directly

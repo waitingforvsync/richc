@@ -118,6 +118,11 @@ def main():
     write_png("pal4.png", 2, 2, 4, 3,
               scanlines([[0x01], [0x23]]), plte=plte)
 
+    # malformed: 2x1 palette whose second pixel indexes past the 1-entry palette
+    # (structurally valid + decompresses, but the fill stage rejects index 1)
+    write_png("pal_bad_index.png", 2, 1, 8, 3,
+              scanlines([[0, 1]]), plte=bytes([255, 0, 0]))
+
     # filtered RGB 4x5: one filter type per row, pixels from the shared formula.
     width, height, bpp = 4, 5, 3
     prev = None

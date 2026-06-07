@@ -284,6 +284,11 @@ static rc_pixel_format png_natural_format(uint32_t color_type, bool have_trns)
 rc_image_png_result rc_image_from_png(rc_view_bytes png, rc_pixel_format pixel_format_hint,
                                       rc_arena *arena, rc_arena scratch)
 {
+    // scratch must be a different arena from the output: a by-value copy shares
+    // its source's base, so equal bases mean the same arena was passed for both,
+    // and the scratch buffers would alias the decoded image.
+    RC_ASSERT(arena && arena->base != scratch.base);
+
     static const uint8_t signature[8] = {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
     if (png.num < 8)
         return png_fail(RC_IMAGE_PNG_ERROR_NOT_PNG);
@@ -431,12 +436,18 @@ rc_image_png_result rc_image_from_png(rc_view_bytes png, rc_pixel_format pixel_f
     rc_pixel_format out = (pixel_format_hint > natural) ? pixel_format_hint : natural;
 
     // ---- build the image (arena-owned) and fill it ----
+    // The image buffer is the only output-arena allocation; mark the bump pointer
+    // first so that if the fill fails (e.g. a bad palette index) we rewind it and
+    // a failed decode leaves no leaked arena space.
+    uint32_t arena_mark = arena->top;
     rc_image img = rc_image_make(rc_vec2i_make((int32_t)width, (int32_t)height), out, arena);
     rc_image_png_error fill_err = png_fill_image(img, inflated.data.view, 1u + (uint32_t)width_bytes,
                                                  width, height, color_type, bit_depth,
                                                  palette.view);
-    if (fill_err != RC_IMAGE_PNG_OK)
+    if (fill_err != RC_IMAGE_PNG_OK) {
+        rc_arena_free_to(arena, arena_mark);
         return png_fail(fill_err);
+    }
 
     return (rc_image_png_result) {.image = img};
 }
