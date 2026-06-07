@@ -140,6 +140,13 @@ Math:
 - [richc/math/solve.h - polynomial root solvers](#richcmathsolveh---polynomial-root-solvers)
 - [richc/math/rational.h - rational arithmetic](#richcmathrationalh---rational-arithmetic)
 
+App layer (the `richc_app` library, built on core):
+
+- [richc/app/app.h - window and event loop](#richcappapph---window-and-event-loop)
+- [richc/app/keys.h - scancodes, mouse buttons, modifiers](#richcappkeysh---scancodes-mouse-buttons-modifiers)
+- [richc/image/image.h - CPU image](#richcimageimageh---cpu-image)
+- [richc/image/image_png.h - PNG decoder](#richcimageimage_pngh---png-decoder)
+
 ---
 
 ## richc/arena.h - arena allocator
@@ -538,6 +545,7 @@ Small general-purpose preprocessor helpers used across the library.
 #define RC_INDEX_NONE     // sentinel "not found" / "invalid" index (== UINT32_MAX)
 #define RC_ASSERT(cond)   // debug-only assertion; breaks into the debugger on failure
 #define RC_PANIC(cond)    // always-active assertion; traps on failure
+#define RC_UNREACHABLE()  // provably-dead path; traps in debug, optimiser hint in release
 ```
 
 - `RC_CONCAT(a, b)` expands its arguments and then token-pastes them, so
@@ -552,6 +560,12 @@ Small general-purpose preprocessor helpers used across the library.
   it can sit on the left of a comma operator.
 - `RC_PANIC(cond)` checks `cond` in all builds and traps (terminates) on
   failure. Use it for unrecoverable invariants such as out-of-memory.
+- `RC_UNREACHABLE()` marks a path that cannot be reached given preconditions
+  already enforced - typically the `default` of a switch over a validated closed
+  set. In debug builds it traps if reached; in all builds it emits the compiler's
+  unreachable hint (`__builtin_unreachable()` / MSVC `__assume(0)`), so the
+  compiler treats the enclosing switch as exhaustive and needs no dummy
+  return/value on the dead path.
 
 ---
 
@@ -1528,10 +1542,16 @@ corners are internal members (trailing underscore); read them via the accessors.
   on each side; asserts no `int32_t` overflow).
 - Accessors: `rc_box2i_min(a)` and `rc_box2i_max(a)` -> `rc_vec2i` (the corners),
   `rc_box2i_size(a)` -> `rc_vec2i` (the extent `max - min`).
-- Queries: `rc_box2i_contains(a, b)` -> `bool`, `rc_box2i_intersects(a, b)` ->
+- Queries: `rc_box2i_is_empty(a)` -> `bool` (zero or negative extent on either
+  axis), `rc_box2i_contains(a, b)` -> `bool`, `rc_box2i_intersects(a, b)` ->
   `bool` (touching edges do not count), `rc_box2i_contains_point(a, p)` -> `bool`.
 - Combination: `rc_box2i_union(a, b)` (smallest box containing both),
-  `rc_box2i_expand(a, p)` (smallest box containing `a` and the point `p`).
+  `rc_box2i_intersection(a, b)` (largest box contained in both; an empty box with
+  `min == max` when they do not overlap, so the invariant holds - test it with
+  `rc_box2i_is_empty`), `rc_box2i_expand(a, p)` (smallest box containing `a` and
+  the point `p`).
+- Transformation: `rc_box2i_translate(a, delta)` (both corners shifted by `delta`).
+- Equality: `rc_box2i_is_equal(a, b)` -> `bool` (exact corner-wise equality).
 
 ---
 
@@ -1550,10 +1570,17 @@ them via the accessors.
   on each side).
 - Accessors: `rc_box2f_min(a)` and `rc_box2f_max(a)` -> `rc_vec2f` (the corners),
   `rc_box2f_size(a)` -> `rc_vec2f` (the extent `max - min`).
-- Queries: `rc_box2f_contains(a, b)` -> `bool`, `rc_box2f_intersects(a, b)` ->
+- Queries: `rc_box2f_is_empty(a)` -> `bool` (zero or negative extent on either
+  axis), `rc_box2f_contains(a, b)` -> `bool`, `rc_box2f_intersects(a, b)` ->
   `bool` (touching edges do not count), `rc_box2f_contains_point(a, p)` -> `bool`.
 - Combination: `rc_box2f_union(a, b)` (smallest box containing both),
-  `rc_box2f_expand(a, p)` (smallest box containing `a` and the point `p`).
+  `rc_box2f_intersection(a, b)` (largest box contained in both; empty when they
+  do not overlap - test with `rc_box2f_is_empty`), `rc_box2f_expand(a, p)`
+  (smallest box containing `a` and the point `p`).
+- Transformation: `rc_box2f_translate(a, delta)` (both corners shifted by `delta`).
+- Equality: `rc_box2f_is_equal(a, b)` -> `bool` (exact), and
+  `rc_box2f_is_nearly_equal(a, b, tolerance)` -> `bool` (both corners within
+  `tolerance`).
 
 ---
 
@@ -1829,3 +1856,106 @@ Operations assert their inputs are valid and their results fit in `int64_t`; GCD
 pre-reduction keeps the products' and sums' intermediates as small as possible,
 but a genuine overflow is reported via `RC_ASSERT` rather than wrapping. The
 library uses `int64_t` throughout and does not fall back to a wider type.
+
+---
+
+## richc/app/app.h - window and event loop
+
+The headers below belong to the **app layer** - link the `richc_app` target
+(which pulls in core, GLFW, and glad). `rc_app` is a single-window application
+with an OpenGL context, driven by a global event loop, so its functions take no
+handle. GLFW and glad are private to the backend and never appear in the API.
+
+- `rc_app_desc` configures the window: `title` (`rc_str`), `size` (`rc_vec2i`),
+  `resizable`, the graphics hints `srgb` / `depth_bits` (0 = none) /
+  `msaa_samples` (0 or 1 = none), and a `callbacks` block.
+- `rc_app_callbacks` holds optional function pointers (leave any NULL to ignore
+  that event) plus a `ctx` forwarded as the first argument of every callback:
+  keyboard (`on_key_down` / `on_key_up` with an `rc_scancode` and `rc_mod`,
+  `on_key_char` for Unicode text codepoints), mouse (`on_mouse_down` / `_up` /
+  `_enter` / `_leave` / `_move` / `_wheel`), window state (`on_resize`,
+  `on_focus_gained` / `_lost`, `on_minimize` / `_maximize`), and the frame
+  callbacks `on_update(ctx, dt)` and `on_render(ctx)`.
+- Lifecycle: `rc_app_init(const rc_app_desc *)`, `rc_app_destroy()`,
+  `rc_app_poll()` (pump OS events), `rc_app_is_running()` -> `bool`,
+  `rc_app_size()` -> `rc_vec2i` (framebuffer pixels), `rc_app_time()` -> `double`
+  (seconds since init, for animation timers).
+- Frames: drive the loop with `rc_app_request_update()` (invokes `on_update` with
+  the elapsed `dt`) and `rc_app_request_render()` (sets the viewport to the full
+  framebuffer, invokes `on_render`, then swaps buffers) rather than calling the
+  callbacks directly - the backend also fires `on_render` from the OS
+  window-refresh, so rendering stays live during a modal resize. Use
+  `rc_app_swap_buffers()` to swap directly when driving rendering elsewhere (e.g.
+  a render thread).
+
+---
+
+## richc/app/keys.h - scancodes, mouse buttons, modifiers
+
+- `rc_mod` - modifier bit flags, OR-combined: `RC_MOD_SHIFT`, `RC_MOD_CTRL`,
+  `RC_MOD_ALT`, `RC_MOD_SUPER`, `RC_MOD_CAPS`, `RC_MOD_NUMLOCK`.
+- `rc_mouse_button` - `RC_MOUSE_BUTTON_LEFT` (0), `_RIGHT` (1), `_MIDDLE` (2).
+- `rc_scancode` - physical key positions (layout-independent), including the
+  printable keys (`RC_SCANCODE_A` .. `RC_SCANCODE_Z`, the digits,
+  `RC_SCANCODE_SPACE`, punctuation), the navigation and function keys
+  (`RC_SCANCODE_ESCAPE`, `_ENTER`, arrows, `_F1` .. `_F12`), the keypad
+  (`RC_SCANCODE_KP_0` ..), the modifier keys (`RC_SCANCODE_LEFT_SHIFT` ..), and
+  `RC_SCANCODE_UNKNOWN` (-1). Values match GLFW key constants. Use the scancode
+  for physical controls; use the `on_key_char` codepoint for text entry.
+
+---
+
+## richc/image/image.h - CPU image
+
+`rc_image { rc_span_bytes data; rc_vec2i size; uint32_t stride; rc_pixel_format format; }`
+- a non-owning window over arena-backed pixel bytes. The origin is the top-left
+  corner; pixels run left-to-right within a row and rows run top-to-bottom,
+  `stride` bytes apart (`stride >= size.x * bytes_per_pixel`). The arena owns the
+  bytes; the image just describes their layout.
+
+- `rc_pixel_format` - `RC_PIXEL_FORMAT_NONE` (0, unset), `_R8` (1), `_RGB8` (3),
+  `_RGBA8` (4); the enum value is the bytes-per-pixel count.
+  `rc_pixel_format_bytes_per_pixel(fmt)` returns it.
+- Packed colour: pixels are read and written as a `uint32_t` with R in bits 0-7,
+  G in 8-15, B in 16-23, A in 24-31. Reading widens narrower formats (R8 ->
+  opaque grayscale, RGB8 -> alpha 255); writing keeps only the channels the
+  format stores.
+- Construction: `rc_image_make(size, format, arena)` (cleared to zero),
+  `rc_image_make_filled(size, format, fill, arena)` (every pixel set to the packed
+  colour `fill`), `rc_image_make_subimage(img, region)` (a borrowed view of a
+  `rc_box2i` region clamped to bounds, sharing the parent's stride; an empty
+  region yields a zero-size image whose data pointer still points into the parent).
+- Operations: `rc_image_blit(dst, dst_pos, src)` -> `bool` copies `src` into `dst`
+  at `dst_pos`, clipping to `dst`'s bounds and widening to `dst`'s format; returns
+  false if `src`'s format is wider than `dst`'s (no narrowing), and a fully
+  clipped blit is a no-op that returns true.
+- Per pixel: `rc_image_get_pixel(img, x, y)` -> packed `uint32_t` and
+  `rc_image_set_pixel(img, x, y, color)` dispatch on the image's format; the
+  `_r8` / `_rgb8` / `_rgba8` variants assume that format (asserted) and skip the
+  dispatch for hot loops.
+
+---
+
+## richc/image/image_png.h - PNG decoder
+
+`rc_image_from_png(rc_view_bytes png_data, rc_pixel_format pixel_format_hint, rc_arena *arena, rc_arena scratch)`
+decodes an in-memory PNG into an `rc_image`, decompressing the zlib-wrapped IDAT
+stream with core's `rc_zip_inflate_zlib`. The pixels are allocated from `arena`;
+`scratch` (passed by value, and necessarily a *different* arena from `arena`)
+holds the transient buffers and is released on return.
+
+- Returns `rc_image_png_result { rc_image image; rc_image_png_error error; }`; on
+  error the image is the invalid (all-zero) state.
+- `rc_image_png_error`: `RC_IMAGE_PNG_OK`, `RC_IMAGE_PNG_ERROR_NOT_PNG`,
+  `_ERROR_TRUNCATED`, `_ERROR_BAD_HEADER`, `_ERROR_UNSUPPORTED`, `_ERROR_BAD_DATA`.
+- `pixel_format_hint` widens but never narrows: the result format is the wider
+  (by bytes per pixel) of the PNG's natural richc format and the hint. Pass
+  `RC_PIXEL_FORMAT_NONE` to keep the natural format (R8 for grayscale, RGB8 for
+  truecolour, RGBA8 for the alpha variants, and RGB8 / RGBA8 for palette without
+  / with a tRNS chunk).
+- Supported: colour types grayscale, truecolour, palette, grayscale+alpha, and
+  truecolour+alpha at 8 bits per channel, plus 1/2/4-bit grayscale and palette
+  indices; all five scanline filters; multiple IDAT chunks; palette transparency.
+- Not supported: 16-bit channels and Adam7 interlace (both report
+  `_ERROR_UNSUPPORTED`). Chunk CRC-32s are not validated - the IDAT Adler-32 that
+  inflate checks already covers the pixel data.

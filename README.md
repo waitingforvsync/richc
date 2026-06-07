@@ -10,10 +10,9 @@ The library is organised in two layers within this one repository:
 - **core** - generic data structures, algorithms, math types, string handling,
   file I/O, and a built-in unit-test framework. Pure C, no external
   dependencies.
-- **app** - windowed application scaffolding, input handling, an OpenGL 3.3
-  graphics abstraction, and image/font loading. Built on top of core; uses
-  GLFW, glad, and miniz as private implementation details that never appear in
-  the public API.
+- **app** - windowing, input handling, and CPU-side image loading, built on top
+  of core. Uses GLFW and glad as private implementation details that never appear
+  in the public API.
 
 ## Building
 
@@ -50,6 +49,9 @@ If you build with CMake, link the target directly:
 add_subdirectory(richc)
 target_link_libraries(your_app PRIVATE richc)
 ```
+
+To use the app layer, add `src/app/include` to your include path and link the
+`richc_app` target instead; it pulls in core, GLFW, and glad for you.
 
 ## Template headers
 
@@ -157,15 +159,34 @@ Available now in core:
   (`RC_TEST`, `RC_TEST_STEP`, group fixtures, and `RC_CHECK` with type-aware
   comparison) used by the core test suite and available for your own tests.
 - **Macros and assertions** (`richc/macros.h`) - `RC_ASSERT` (debug-only, traps
-  on failure) and `RC_PANIC` (always active), plus `RC_CONCAT`, `RC_STRINGIFY`,
+  on failure), `RC_PANIC` (always active), and `RC_UNREACHABLE` (provably-dead
+  paths: debug trap, release optimiser hint), plus `RC_CONCAT`, `RC_STRINGIFY`,
   and the `RC_INDEX_NONE` sentinel.
-- **Hashing** (`richc/hash.h`) - `uint32_t` hashers for integers, floats,
-  pointers, byte sequences, strings, and the vector types, plus
-  `rc_hash_combine`.
-- **Unit-test framework** (`richc/test.h`) - tests that register themselves
-  automatically via linker sections, typed `RC_CHECK` assertions, group
-  fixtures, and a filtering test runner. Part of the core library; it costs
-  nothing in builds that do not reference it.
+
+Available now in app (the `richc_app` library, built on core; GLFW and glad are
+private):
+
+- **Windowing and input** (`richc/app/app.h`, `richc/app/keys.h`) - `rc_app`
+  opens a window with an OpenGL context and drives the main loop: `rc_app_init`,
+  `rc_app_poll`, `rc_app_is_running`, update/render frame callbacks, `rc_app_size`,
+  `rc_app_time`, and buffer swap. Scancodes, modifier flags, and mouse buttons
+  live in `keys.h`.
+- **CPU image** (`richc/image/image.h`) - `rc_image`, a non-owning window over
+  arena-backed pixel bytes with a top-left origin and an `R8` / `RGB8` / `RGBA8`
+  format. Create it cleared (`rc_image_make`) or filled (`rc_image_make_filled`),
+  take a borrowed sub-image of a region (`rc_image_make_subimage`), and `blit`
+  one image into another with automatic format widening. Pixels are read and
+  written as a packed `uint32_t` colour (`get_pixel` / `set_pixel`, with per-format
+  fast variants).
+- **PNG decoding** (`richc/image/image_png.h`) - `rc_image_from_png` decodes an
+  in-memory PNG into an `rc_image` using core's inflate, returning an
+  `rc_image_png_result` (image plus an `rc_image_png_error`). It handles
+  grayscale, truecolour, palette, and the alpha variants at 8 bits per channel,
+  plus 1/2/4-bit grayscale and palette indices; all scanline filters; and
+  multiple IDAT chunks. A pixel-format hint widens the result toward a target
+  format without ever narrowing it (pass `RC_PIXEL_FORMAT_NONE` to keep the PNG's
+  natural format). 16-bit channels and Adam7 interlacing are reported as
+  unsupported.
 
 ## Documentation
 
