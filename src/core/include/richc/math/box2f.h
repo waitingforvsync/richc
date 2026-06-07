@@ -31,6 +31,7 @@
  *
  * Queries
  * -------
+ *   rc_box2f_is_empty(a)          - true if a encloses no area (zero/neg extent)
  *   rc_box2f_contains(a, b)       - true if a fully contains b
  *   rc_box2f_intersects(a, b)     - true if the two boxes overlap (touching edges do NOT count)
  *   rc_box2f_contains_point(a, p) - true if point p is inside a (min inclusive, max exclusive)
@@ -38,7 +39,17 @@
  * Combination
  * -----------
  *   rc_box2f_union(a, b)          - smallest box containing both a and b
+ *   rc_box2f_intersection(a, b)   - largest box contained in both (empty if disjoint)
  *   rc_box2f_expand(a, p)         - smallest box containing a and point p
+ *
+ * Transformation
+ * --------------
+ *   rc_box2f_translate(a, delta)  - shift both corners by delta
+ *
+ * Equality
+ * --------
+ *   rc_box2f_is_equal(a, b)              - exact corner-wise equality
+ *   rc_box2f_is_nearly_equal(a, b, tol)  - both corners within tol
  */
 
 #ifndef RC_MATH_BOX2F_H_
@@ -103,6 +114,12 @@ static inline rc_vec2f rc_box2f_size(rc_box2f a)
 
 /* ---- queries ---- */
 
+/* True if the box encloses no area: zero or negative extent on either axis. */
+static inline bool rc_box2f_is_empty(rc_box2f a)
+{
+    return a.min_.x >= a.max_.x || a.min_.y >= a.max_.y;
+}
+
 /*
  * True if a fully contains b: a.min <= b.min and a.max >= b.max on both axes.
  * Comparing the half-open bounds directly is correct - if both boxes use the
@@ -144,6 +161,21 @@ static inline rc_box2f rc_box2f_union(rc_box2f a, rc_box2f b)
     };
 }
 
+/*
+ * Largest box contained in both a and b.  When they do not overlap the result is
+ * an empty box (min == max on the disjoint axis), so the min <= max invariant
+ * holds even for disjoint inputs - test the result with rc_box2f_is_empty.
+ */
+static inline rc_box2f rc_box2f_intersection(rc_box2f a, rc_box2f b)
+{
+    rc_vec2f lo = rc_vec2f_component_max(a.min_, b.min_);
+    rc_vec2f hi = rc_vec2f_component_min(a.max_, b.max_);
+    return (rc_box2f) {
+        .min_ = lo,
+        .max_ = rc_vec2f_component_max(lo, hi)   // clamp so max >= min when disjoint
+    };
+}
+
 /* Smallest box that contains a and the additional point p. */
 static inline rc_box2f rc_box2f_expand(rc_box2f a, rc_vec2f p)
 {
@@ -151,6 +183,32 @@ static inline rc_box2f rc_box2f_expand(rc_box2f a, rc_vec2f p)
         .min_ = rc_vec2f_component_min(a.min_, p),
         .max_ = rc_vec2f_component_max(a.max_, p)
     };
+}
+
+/* ---- transformation ---- */
+
+/* Shift the whole box by delta (both corners move together). */
+static inline rc_box2f rc_box2f_translate(rc_box2f a, rc_vec2f delta)
+{
+    return (rc_box2f) {
+        .min_ = rc_vec2f_add(a.min_, delta),
+        .max_ = rc_vec2f_add(a.max_, delta)
+    };
+}
+
+/* ---- equality ---- */
+
+/* Exact equality (no tolerance) - identical corners. */
+static inline bool rc_box2f_is_equal(rc_box2f a, rc_box2f b)
+{
+    return rc_vec2f_is_equal(a.min_, b.min_) && rc_vec2f_is_equal(a.max_, b.max_);
+}
+
+/* True if both corners are within tolerance (per rc_vec2f_is_nearly_equal). */
+static inline bool rc_box2f_is_nearly_equal(rc_box2f a, rc_box2f b, float tolerance)
+{
+    return rc_vec2f_is_nearly_equal(a.min_, b.min_, tolerance)
+        && rc_vec2f_is_nearly_equal(a.max_, b.max_, tolerance);
 }
 
 #endif /* RC_MATH_BOX2F_H_ */

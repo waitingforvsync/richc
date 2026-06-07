@@ -32,6 +32,7 @@
  *
  * Queries
  * -------
+ *   rc_box2i_is_empty(a)          - true if a encloses no cells (zero/neg extent)
  *   rc_box2i_contains(a, b)       - true if a fully contains b
  *   rc_box2i_intersects(a, b)     - true if the two boxes overlap (touching edges do NOT count)
  *   rc_box2i_contains_point(a, p) - true if point p is inside a (min inclusive, max exclusive)
@@ -39,7 +40,16 @@
  * Combination
  * -----------
  *   rc_box2i_union(a, b)          - smallest box containing both a and b
+ *   rc_box2i_intersection(a, b)   - largest box contained in both (empty if disjoint)
  *   rc_box2i_expand(a, p)         - smallest box containing a and point p
+ *
+ * Transformation
+ * --------------
+ *   rc_box2i_translate(a, delta)  - shift both corners by delta
+ *
+ * Equality
+ * --------
+ *   rc_box2i_is_equal(a, b)       - exact corner-wise equality
  */
 
 #ifndef RC_MATH_BOX2I_H_
@@ -110,6 +120,12 @@ static inline rc_vec2i rc_box2i_size(rc_box2i a)
 
 /* ---- queries ---- */
 
+/* True if the box encloses no cells: zero or negative extent on either axis. */
+static inline bool rc_box2i_is_empty(rc_box2i a)
+{
+    return a.min_.x >= a.max_.x || a.min_.y >= a.max_.y;
+}
+
 /*
  * True if a fully contains b: a.min <= b.min and a.max >= b.max on both axes.
  * Comparing the half-open bounds directly is correct - if both boxes use the
@@ -151,6 +167,21 @@ static inline rc_box2i rc_box2i_union(rc_box2i a, rc_box2i b)
     };
 }
 
+/*
+ * Largest box contained in both a and b.  When they do not overlap the result is
+ * an empty box (min == max on the disjoint axis), so the min <= max invariant
+ * holds even for disjoint inputs - test the result with rc_box2i_is_empty.
+ */
+static inline rc_box2i rc_box2i_intersection(rc_box2i a, rc_box2i b)
+{
+    rc_vec2i lo = rc_vec2i_component_max(a.min_, b.min_);
+    rc_vec2i hi = rc_vec2i_component_min(a.max_, b.max_);
+    return (rc_box2i) {
+        .min_ = lo,
+        .max_ = rc_vec2i_component_max(lo, hi)   // clamp so max >= min when disjoint
+    };
+}
+
 /* Smallest box that contains a and the additional point p. */
 static inline rc_box2i rc_box2i_expand(rc_box2i a, rc_vec2i p)
 {
@@ -158,6 +189,25 @@ static inline rc_box2i rc_box2i_expand(rc_box2i a, rc_vec2i p)
         .min_ = rc_vec2i_component_min(a.min_, p),
         .max_ = rc_vec2i_component_max(a.max_, p)
     };
+}
+
+/* ---- transformation ---- */
+
+/* Shift the whole box by delta (both corners move together). */
+static inline rc_box2i rc_box2i_translate(rc_box2i a, rc_vec2i delta)
+{
+    return (rc_box2i) {
+        .min_ = rc_vec2i_add(a.min_, delta),
+        .max_ = rc_vec2i_add(a.max_, delta)
+    };
+}
+
+/* ---- equality ---- */
+
+/* True if a and b have identical corners. */
+static inline bool rc_box2i_is_equal(rc_box2i a, rc_box2i b)
+{
+    return rc_vec2i_is_equal(a.min_, b.min_) && rc_vec2i_is_equal(a.max_, b.max_);
 }
 
 #endif /* RC_MATH_BOX2I_H_ */
