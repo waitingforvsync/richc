@@ -16,9 +16,11 @@ add_subdirectory(extern/glad)
 add_library(richc_app STATIC
     src/app/app_glfw.c
     src/image/image.c
+    src/image/image_png.c
     include/richc/app/app.h
     include/richc/app/keys.h
     include/richc/image/image.h
+    include/richc/image/image_png.h
 )
 
 target_include_directories(richc_app PUBLIC include)
