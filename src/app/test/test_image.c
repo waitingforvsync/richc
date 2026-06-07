@@ -153,13 +153,15 @@ RC_TEST_STEP(image, subimage_clamped, fix)
 RC_TEST_STEP(image, subimage_empty, fix)
 {
     rc_image img = rc_image_make(rc_vec2i_make(4, 4), RC_PIXEL_FORMAT_RGBA8, &fix->a);
-    // fully out of bounds -> invalid image
+    // fully out of bounds -> empty image, but with a valid (parent-based) pointer
     rc_image sub = rc_image_make_subimage(img, rc_box2i_make_pos_size(rc_vec2i_make(10, 10),
                                                                       rc_vec2i_make(2, 2)));
     RC_CHECK(sub.size.x, ==, 0);
     RC_CHECK(sub.size.y, ==, 0);
     RC_CHECK(sub.data.num, ==, 0u);
-    RC_CHECK_FALSE(rc_span_bytes_is_valid(sub.data));
+    RC_CHECK_TRUE(rc_span_bytes_is_valid(sub.data));
+    RC_CHECK_TRUE(rc_span_bytes_is_empty(sub.data));
+    RC_CHECK_TRUE(sub.data.data == img.data.data);
 }
 
 RC_TEST_STEP(image, blit_same_format, fix)

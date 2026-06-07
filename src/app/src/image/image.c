@@ -35,7 +35,9 @@ static void image_fill_r8(rc_image img, uint32_t fill)
 
 static void image_fill_rgb8(rc_image img, uint32_t fill)
 {
-    uint8_t r = (uint8_t)fill, g = (uint8_t)(fill >> 8), b = (uint8_t)(fill >> 16);
+    uint8_t r = (uint8_t)fill;
+    uint8_t g = (uint8_t)(fill >> 8);
+    uint8_t b = (uint8_t)(fill >> 16);
     for (uint32_t off = 0; off < img.data.num; off += 3u) {
         rc_span_bytes_set(img.data, off,     r);
         rc_span_bytes_set(img.data, off + 1, g);
@@ -45,8 +47,10 @@ static void image_fill_rgb8(rc_image img, uint32_t fill)
 
 static void image_fill_rgba8(rc_image img, uint32_t fill)
 {
-    uint8_t r = (uint8_t)fill,         g = (uint8_t)(fill >> 8);
-    uint8_t b = (uint8_t)(fill >> 16), a = (uint8_t)(fill >> 24);
+    uint8_t r = (uint8_t)fill;
+    uint8_t g = (uint8_t)(fill >> 8);
+    uint8_t b = (uint8_t)(fill >> 16);
+    uint8_t a = (uint8_t)(fill >> 24);
     for (uint32_t off = 0; off < img.data.num; off += 4u) {
         rc_span_bytes_set(img.data, off,     r);
         rc_span_bytes_set(img.data, off + 1, g);
@@ -70,27 +74,27 @@ rc_image rc_image_make_filled(rc_vec2i size, rc_pixel_format format, uint32_t fi
 
 rc_image rc_image_make_subimage(rc_image img, rc_box2i region)
 {
-    // Clamp the requested region to the image's bounds.
-    rc_vec2i lo = rc_box2i_min(region);
-    rc_vec2i hi = rc_box2i_max(region);
-    int32_t  x0 = lo.x < 0          ? 0          : lo.x;
-    int32_t  y0 = lo.y < 0          ? 0          : lo.y;
-    int32_t  x1 = hi.x > img.size.x ? img.size.x : hi.x;
-    int32_t  y1 = hi.y > img.size.y ? img.size.y : hi.y;
+    // Clip the requested region to the image's bounds.
+    rc_box2i clipped = rc_box2i_intersection(
+        region,
+        rc_box2i_make_pos_size(rc_vec2i_make_zero(), img.size));
 
-    if (x0 >= x1 || y0 >= y1) {
-        // Empty region: an invalid image that still carries the parent's layout.
+    if (rc_box2i_is_empty(clipped)) {
+        // Empty region: a zero-size image that still carries the parent's layout.
+        // The data span points at the parent's base (valid, but empty) rather
+        // than NULL, so callers can rely on a usable pointer.
         return (rc_image) {
-            .data   = rc_span_bytes_make(NULL, 0),
-            .size   = rc_vec2i_make(0, 0),
+            .data   = rc_span_bytes_make(img.data.data, 0),
+            .size   = rc_vec2i_make_zero(),
             .stride = img.stride,
             .format = img.format
         };
     }
 
     uint32_t bpp     = rc_pixel_format_bytes_per_pixel(img.format);
-    rc_vec2i subsize = rc_vec2i_make(x1 - x0, y1 - y0);
-    uint32_t offset  = (uint32_t)y0 * img.stride + (uint32_t)x0 * bpp;
+    rc_vec2i origin  = rc_box2i_min(clipped);
+    rc_vec2i subsize = rc_box2i_size(clipped);
+    uint32_t offset  = (uint32_t)origin.y * img.stride + (uint32_t)origin.x * bpp;
     // The borrowed span shares the parent's stride, so it spans every row of the
     // region: all but the last full row, plus the last row's pixels.
     uint32_t num     = (uint32_t)(subsize.y - 1) * img.stride + (uint32_t)subsize.x * bpp;
@@ -120,7 +124,7 @@ static image_blit_clip image_blit_clip_compute(rc_image dst, rc_vec2i dst_pos, r
 {
     rc_box2i overlap = rc_box2i_intersection(
         rc_box2i_make_pos_size(dst_pos, src.size),
-        rc_box2i_make_pos_size(rc_vec2i_make(0, 0), dst.size));
+        rc_box2i_make_pos_size(rc_vec2i_make_zero(), dst.size));
     rc_vec2i lo = rc_box2i_min(overlap);
 
     return (image_blit_clip) {

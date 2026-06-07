@@ -34,7 +34,8 @@
  *       pixel to the packed colour `fill`.
  *   rc_image_make_subimage(img, region)           - a borrowed view of a
  *       rectangular region of img (clamped to bounds; shares img's stride).  An
- *       empty region yields an invalid image (data = {NULL, 0}).
+ *       empty region yields a zero-size image whose data span still points at
+ *       img's base (valid pointer, num 0).
  *
  * Operations
  * ----------
