@@ -139,9 +139,9 @@ rc_rect_pack_result rc_rect_pack_add(rc_rect_pack *p, rc_vec2i size, rc_arena *a
     };
 }
 
-rc_array_vec2i rc_rect_pack_all(rc_vec2i container, int32_t spacing,
-                                rc_view_vec2i sizes,
-                                rc_arena *arena, rc_arena scratch)
+rc_span_vec2i rc_rect_pack_all(rc_vec2i container, int32_t spacing,
+                               rc_view_vec2i sizes,
+                               rc_arena *arena, rc_arena scratch)
 {
     // A by-value scratch shares its source's base; equal bases mean the same
     // arena was passed for output and scratch, which would alias the free list
@@ -149,7 +149,7 @@ rc_array_vec2i rc_rect_pack_all(rc_vec2i container, int32_t spacing,
     RC_ASSERT(arena->base != scratch.base);
 
     if (sizes.num == 0)
-        return (rc_array_vec2i) {0};
+        return (rc_span_vec2i) {0};
 
     // Order indices by decreasing max-side.  Sized once and never grown again,
     // so the packer's free list (created after it) stays the latest scratch
@@ -172,10 +172,10 @@ rc_array_vec2i rc_rect_pack_all(rc_vec2i container, int32_t spacing,
         rc_rect_pack_result r = rc_rect_pack_add(&p, rc_view_vec2i_get(sizes, idx), &scratch);
         if (!r.placed) {
             rc_array_vec2i_deinit(&positions, arena);
-            return (rc_array_vec2i) {0};
+            return (rc_span_vec2i) {0};
         }
         rc_array_vec2i_set(&positions, idx, r.pos);
     }
 
-    return positions;
+    return positions.span;
 }

@@ -58,9 +58,9 @@ RC_TEST(rect_pack, all_empty)
     rc_arena a = rc_arena_make_default();
     rc_arena scratch = rc_arena_make_default();
 
-    rc_array_vec2i r = rc_rect_pack_all(rc_vec2i_make(64, 64), 0,
+    rc_span_vec2i r = rc_rect_pack_all(rc_vec2i_make(64, 64), 0,
                                         (rc_view_vec2i) {0}, &a, scratch);
-    RC_CHECK_FALSE(rc_array_vec2i_is_valid(&r));
+    RC_CHECK_FALSE(rc_span_vec2i_is_valid(r));
     RC_CHECK(r.num, ==, 0u);
 
     rc_arena_deinit(&a);
@@ -71,10 +71,10 @@ RC_TEST_STEP(rect_pack, all_single, fix)
 {
     rc_vec2i sizes[] = {rc_vec2i_make(10, 20)};
     rc_view_vec2i sv = RC_VIEW(sizes);
-    rc_array_vec2i r = rc_rect_pack_all(rc_vec2i_make(64, 64), 0, sv, &fix->a, fix->scratch);
+    rc_span_vec2i r = rc_rect_pack_all(rc_vec2i_make(64, 64), 0, sv, &fix->a, fix->scratch);
     RC_CHECK(r.num, ==, 1u);
     // first placement goes to the container origin
-    rc_vec2i p0 = rc_array_vec2i_get(&r, 0);
+    rc_vec2i p0 = rc_span_vec2i_get(r, 0);
     RC_CHECK(p0.x, ==, 0);
     RC_CHECK(p0.y, ==, 0);
 }
@@ -88,9 +88,9 @@ RC_TEST_STEP(rect_pack, all_exact_tiling, fix)
     };
     rc_view_vec2i sv = RC_VIEW(sizes);
     rc_vec2i container = rc_vec2i_make(64, 64);
-    rc_array_vec2i r = rc_rect_pack_all(container, 0, sv, &fix->a, fix->scratch);
+    rc_span_vec2i r = rc_rect_pack_all(container, 0, sv, &fix->a, fix->scratch);
     RC_CHECK(r.num, ==, 4u);
-    check_valid_packing(sv, r.span, container, 0);
+    check_valid_packing(sv, r, container, 0);
 }
 
 RC_TEST_STEP(rect_pack, all_overflow_too_big, fix)
@@ -98,8 +98,8 @@ RC_TEST_STEP(rect_pack, all_overflow_too_big, fix)
     // a single rectangle larger than the container fails the whole pack
     rc_vec2i sizes[] = {rc_vec2i_make(100, 10)};
     rc_view_vec2i sv = RC_VIEW(sizes);
-    rc_array_vec2i r = rc_rect_pack_all(rc_vec2i_make(64, 64), 0, sv, &fix->a, fix->scratch);
-    RC_CHECK_FALSE(rc_array_vec2i_is_valid(&r));
+    rc_span_vec2i r = rc_rect_pack_all(rc_vec2i_make(64, 64), 0, sv, &fix->a, fix->scratch);
+    RC_CHECK_FALSE(rc_span_vec2i_is_valid(r));
     RC_CHECK(r.num, ==, 0u);
 }
 
@@ -111,8 +111,8 @@ RC_TEST_STEP(rect_pack, all_overflow_too_many, fix)
         rc_vec2i_make(32, 32), rc_vec2i_make(32, 32)
     };
     rc_view_vec2i sv = RC_VIEW(sizes);
-    rc_array_vec2i r = rc_rect_pack_all(rc_vec2i_make(64, 64), 0, sv, &fix->a, fix->scratch);
-    RC_CHECK_FALSE(rc_array_vec2i_is_valid(&r));
+    rc_span_vec2i r = rc_rect_pack_all(rc_vec2i_make(64, 64), 0, sv, &fix->a, fix->scratch);
+    RC_CHECK_FALSE(rc_span_vec2i_is_valid(r));
     RC_CHECK(r.num, ==, 0u);
 }
 
@@ -123,8 +123,8 @@ RC_TEST_STEP(rect_pack, all_failure_leaves_arena_clean, fix)
     uint32_t before = fix->a.top;
     rc_vec2i big[] = {rc_vec2i_make(100, 100)};
     rc_view_vec2i sv = RC_VIEW(big);
-    rc_array_vec2i r = rc_rect_pack_all(rc_vec2i_make(64, 64), 0, sv, &fix->a, fix->scratch);
-    RC_CHECK_FALSE(rc_array_vec2i_is_valid(&r));
+    rc_span_vec2i r = rc_rect_pack_all(rc_vec2i_make(64, 64), 0, sv, &fix->a, fix->scratch);
+    RC_CHECK_FALSE(rc_span_vec2i_is_valid(r));
     RC_CHECK(fix->a.top, ==, before);
 }
 
@@ -141,9 +141,9 @@ RC_TEST_STEP(rect_pack, all_indexed_by_original_order, fix)
     };
     rc_view_vec2i sv = RC_VIEW(sizes);
     rc_vec2i container = rc_vec2i_make(64, 64);
-    rc_array_vec2i r = rc_rect_pack_all(container, 1, sv, &fix->a, fix->scratch);
+    rc_span_vec2i r = rc_rect_pack_all(container, 1, sv, &fix->a, fix->scratch);
     RC_CHECK(r.num, ==, 3u);
-    check_valid_packing(sv, r.span, container, 1);
+    check_valid_packing(sv, r, container, 1);
 }
 
 RC_TEST_STEP(rect_pack, all_many_no_overlap, fix)
@@ -156,9 +156,9 @@ RC_TEST_STEP(rect_pack, all_many_no_overlap, fix)
     };
     rc_view_vec2i sv = RC_VIEW(sizes);
     rc_vec2i container = rc_vec2i_make(128, 128);
-    rc_array_vec2i r = rc_rect_pack_all(container, 2, sv, &fix->a, fix->scratch);
+    rc_span_vec2i r = rc_rect_pack_all(container, 2, sv, &fix->a, fix->scratch);
     RC_CHECK(r.num, ==, 8u);
-    check_valid_packing(sv, r.span, container, 2);
+    check_valid_packing(sv, r, container, 2);
 }
 
 /* ---- rc_rect_pack_make / _add: incremental ---- */

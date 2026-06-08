@@ -74,14 +74,14 @@ rc_rect_pack_result rc_rect_pack_add(rc_rect_pack *p, rc_vec2i size, rc_arena *a
 
 /*
  * From-scratch pack of a whole batch.  Sorts the sizes by decreasing max(side)
- * for a denser result, then places them all.  Returns an array of positions
+ * for a denser result, then places them all.  Returns a span of positions
  * indexed by sizes (positions.num == sizes.num), allocated from arena.  Returns
- * the invalid {0} array if the whole set does not fit, or if sizes is empty;
+ * the invalid {0} span if the whole set does not fit, or if sizes is empty;
  * arena is left untouched in that case.  scratch (by value, discarded) holds the
  * free list and the sort permutation, and must be a different arena from arena.
  */
-rc_array_vec2i rc_rect_pack_all(rc_vec2i container, int32_t spacing,
-                                rc_view_vec2i sizes,
-                                rc_arena *arena, rc_arena scratch);
+rc_span_vec2i rc_rect_pack_all(rc_vec2i container, int32_t spacing,
+                               rc_view_vec2i sizes,
+                               rc_arena *arena, rc_arena scratch);
 
 #endif /* RC_RECT_PACK_H_ */
