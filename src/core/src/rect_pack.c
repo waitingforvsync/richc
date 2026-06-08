@@ -16,16 +16,16 @@
 
 /* ---- batch ordering: sort indices by decreasing max(width, height) ---- */
 
-static inline int32_t max_side_(rc_vec2i s)
+static inline int32_t max_side(rc_vec2i s)
 {
     return s.x > s.y ? s.x : s.y;
 }
 
 #define RC_SORT_TYPE            uint32_t
 #define RC_SORT_SPAN            rc_span_u32
-#define RC_SORT_NAME            rc_sort_by_max_side_
+#define RC_SORT_NAME            rc_sort_by_max_side
 #define RC_SORT_CTX             rc_view_vec2i
-#define RC_SORT_CMP(ctx, a, b)  (max_side_(rc_view_vec2i_get(*ctx, a)) > max_side_(rc_view_vec2i_get(*ctx, b)))
+#define RC_SORT_CMP(ctx, a, b)  (max_side(rc_view_vec2i_get(*ctx, a)) > max_side(rc_view_vec2i_get(*ctx, b)))
 #include "richc/template/algorithm/sort.h"
 
 /* ---- free-rect splitting ---- */
@@ -35,7 +35,7 @@ static inline int32_t max_side_(rc_vec2i s)
  * one into up to four axis-aligned strips around the inflated region, and append
  * any strip not already contained within an existing free rect.
  */
-static void split_free_rects_(rc_array_box2i *free, rc_box2i placed,
+static void split_free_rects(rc_array_box2i *free, rc_box2i placed,
                               int32_t spacing, rc_arena *arena)
 {
     rc_box2i infl = rc_box2i_make_with_margin(rc_box2i_min(placed), rc_box2i_max(placed), spacing);
@@ -112,11 +112,9 @@ rc_rect_pack_result rc_rect_pack_add(rc_rect_pack *p, rc_vec2i size, rc_arena *a
 
     int32_t  best_score = INT32_MAX;
     uint32_t best_idx   = RC_INDEX_NONE;
-    rc_box2i best_place = {0};
 
     for (uint32_t j = 0; j < p->free.num; j++) {
-        rc_box2i fr = rc_array_box2i_get(&p->free, j);
-        rc_vec2i fs = rc_box2i_size(fr);
+        rc_vec2i fs = rc_box2i_size(rc_array_box2i_get(&p->free, j));
         if (size.x <= fs.x && size.y <= fs.y) {
             int32_t lx    = fs.x - size.x;
             int32_t ly    = fs.y - size.y;
@@ -124,7 +122,6 @@ rc_rect_pack_result rc_rect_pack_add(rc_rect_pack *p, rc_vec2i size, rc_arena *a
             if (score < best_score) {
                 best_score = score;
                 best_idx   = j;
-                best_place = rc_box2i_make_pos_size(rc_box2i_min(fr), size);
             }
         }
     }
@@ -132,10 +129,12 @@ rc_rect_pack_result rc_rect_pack_add(rc_rect_pack *p, rc_vec2i size, rc_arena *a
     if (best_idx == RC_INDEX_NONE)
         return (rc_rect_pack_result) {.placed = false};
 
-    split_free_rects_(&p->free, best_place, p->spacing, arena);
+    // The placement sits at the chosen free rect's top-left corner.
+    rc_vec2i pos = rc_box2i_min(rc_array_box2i_get(&p->free, best_idx));
+    split_free_rects(&p->free, rc_box2i_make_pos_size(pos, size), p->spacing, arena);
 
     return (rc_rect_pack_result) {
-        .pos    = rc_box2i_min(best_place),
+        .pos    = pos,
         .placed = true
     };
 }
@@ -159,13 +158,12 @@ rc_array_vec2i rc_rect_pack_all(rc_vec2i container, int32_t spacing,
     rc_array_u32_resize(&order, sizes.num, &scratch);
     for (uint32_t i = 0; i < sizes.num; i++)
         rc_array_u32_set(&order, i, i);
-    rc_sort_by_max_side_(order.span, &sizes);
+    rc_sort_by_max_side(order.span, &sizes);
 
     rc_rect_pack p = rc_rect_pack_make(container, spacing, &scratch);
 
-    // Result lives in arena and is the only arena allocation here, so a failure
-    // can rewind the bump pointer and leave arena untouched.
-    uint32_t mark = arena->top;
+    // Result is the only arena allocation here, so on failure deinit reclaims it
+    // (it is the latest allocation) and leaves arena untouched.
     rc_array_vec2i positions = rc_array_vec2i_make(sizes.num, arena);
     rc_array_vec2i_resize(&positions, sizes.num, arena);
 
@@ -173,7 +171,7 @@ rc_array_vec2i rc_rect_pack_all(rc_vec2i container, int32_t spacing,
         uint32_t idx = rc_array_u32_get(&order, i);
         rc_rect_pack_result r = rc_rect_pack_add(&p, rc_view_vec2i_get(sizes, idx), &scratch);
         if (!r.placed) {
-            rc_arena_free_to(arena, mark);
+            rc_array_vec2i_deinit(&positions, arena);
             return (rc_array_vec2i) {0};
         }
         rc_array_vec2i_set(&positions, idx, r.pos);
