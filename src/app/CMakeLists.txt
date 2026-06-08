@@ -19,6 +19,7 @@ add_library(richc_app STATIC
     src/image/image_png.c
     include/richc/app/app.h
     include/richc/app/keys.h
+    include/richc/image/array/image.h
     include/richc/image/image.h
     include/richc/image/image_png.h
 )

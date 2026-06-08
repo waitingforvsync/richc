@@ -27,6 +27,7 @@ add_executable(richc_core_test
     test_pool_foreach.c
     test_quatf.c
     test_rational.c
+    test_rect_pack.c
     test_solve.c
     test_sort.c
     test_str.c
