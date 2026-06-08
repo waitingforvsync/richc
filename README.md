@@ -155,6 +155,12 @@ Available now in core:
   matrix conversion both ways), exact rationals `rc_rational` (canonical form,
   overflow-checked arithmetic, overflow-safe comparison), plus analytic
   quadratic and cubic root solvers.
+- **Rectangle packing** (`richc/rect_pack.h`) - `rc_rect_pack`, a Maximal
+  Rectangles / Best Short Side Fit packer over plain sizes and positions, with no
+  image dependency. Pack a whole batch at once with `rc_rect_pack_all` (sorted for
+  density, returning positions allocated from the arena), or build a packing up
+  incrementally with `rc_rect_pack_make` / `rc_rect_pack_add` so earlier
+  placements stay put. Maintains a spacing gap and captures no arena.
 - **Unit-test framework** (`richc/test.h`) - a small assertion-based test runner
   (`RC_TEST`, `RC_TEST_STEP`, group fixtures, and `RC_CHECK` with type-aware
   comparison) used by the core test suite and available for your own tests.
@@ -188,11 +194,24 @@ private):
   natural format). 16-bit channels and Adam7 interlacing are reported as
   unsupported. `rc_image_load_png` is a convenience that reads a file and decodes
   it in one call.
+- **Image atlas** (`richc/image/image_pack.h`) - `rc_image_pack` packs a set of
+  images into one atlas image (for upload as a single texture) via the rectangle
+  packer, taking the widest input format and widening sources in. It returns the
+  atlas and each image's position; pass a zero size to have it choose and grow the
+  atlas size automatically.
+- **Incremental image atlas** (`richc/image/image_atlas.h`) - `rc_image_atlas`
+  adds images to an atlas one at a time, over a session, with earlier placements
+  staying put (e.g. font glyphs). `rc_image_atlas_make` then `rc_image_atlas_add`,
+  using one arena and no scratch since the atlas pixels are fixed and only the
+  packer's free list grows.
 
 ## Documentation
 
-See [docs/richc.md](docs/richc.md) for detailed reference documentation of every
-public type, macro, and function, organised by header.
+Detailed reference documentation of every public type, macro, and function lives
+in [docs/](docs/), organised by header and split into
+[overview.md](docs/overview.md) (philosophy and conventions),
+[core.md](docs/core.md) (the core layer), and [app.md](docs/app.md) (the app
+layer).
 
 ## License
 
