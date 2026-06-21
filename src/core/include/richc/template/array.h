@@ -10,12 +10,36 @@
  * ----------------------------------------
  *   RC_ARRAY_TYPE   element type (required)
  *   RC_ARRAY_NAME   name suffix (optional; default: RC_ARRAY_TYPE)
+ *   RC_ARRAY_DECLARE_ONLY  emit only the view/span/array typedefs, not the
+ *                          functions (optional)
+ *   RC_ARRAY_IMPL_ONLY     emit only the functions, assuming the typedefs were
+ *                          already produced by a prior declare-only pass (optional)
  *
  * The generated types are always named rc_array_<suffix>, rc_span_<suffix>, and
  * rc_view_<suffix>.  RC_ARRAY_NAME supplies <suffix>; when it is omitted the
  * element type's own spelling is used (so it must be a single identifier, e.g.
- * int or uint8_t - give an explicit RC_ARRAY_NAME for multi-token types).  Both
- * control macros are undefined again by this header.
+ * int or uint8_t - give an explicit RC_ARRAY_NAME for multi-token types).  All
+ * four control macros are undefined again by this header.
+ *
+ * Recursive element types
+ * -----------------------
+ * A type that contains a view of itself (e.g. struct value with an
+ * rc_view_value member) cannot be instantiated in one pass: the typedefs need
+ * the element only forward-declared, but the by-value functions need it
+ * complete.  Split the instantiation across the element definition, selecting
+ * each pass explicitly (a per-suffix include guard cannot help here - #ifndef
+ * does not expand its argument):
+ *
+ *   typedef struct value value;
+ *   #define RC_ARRAY_TYPE value
+ *   #define RC_ARRAY_NAME  value
+ *   #define RC_ARRAY_DECLARE_ONLY
+ *   #include "richc/template/array.h"   // rc_view_value etc. now exist
+ *   struct value { ...; rc_view_value list; ... };
+ *   #define RC_ARRAY_TYPE value
+ *   #define RC_ARRAY_NAME  value
+ *   #define RC_ARRAY_IMPL_ONLY
+ *   #include "richc/template/array.h"   // functions, value now complete
  *
  * Generated types
  * ---------------
@@ -143,7 +167,9 @@
 #define RC_SPAN_   RC_CONCAT(rc_span_, RC_ARRAY_NAME)
 #define RC_VIEW_   RC_CONCAT(rc_view_, RC_ARRAY_NAME)
 
-/* ---- generated function names ---- */
+/* ---- generated function names (skipped in declare-only mode) ---- */
+
+#ifndef RC_ARRAY_DECLARE_ONLY
 
 #define RC_ARRAY_MAKE_          RC_CONCAT(RC_ARRAY_, _make)
 #define RC_ARRAY_MAKE_COPY_     RC_CONCAT(RC_ARRAY_, _make_copy)
@@ -193,7 +219,11 @@
 #define RC_VIEW_AT_             RC_CONCAT(RC_VIEW_, _at)
 #define RC_VIEW_LAST_AT_        RC_CONCAT(RC_VIEW_, _last_at)
 
-/* ---- generated structs ---- */
+#endif /* RC_ARRAY_DECLARE_ONLY */
+
+/* ---- generated structs (skipped in impl-only mode) ---- */
+
+#ifndef RC_ARRAY_IMPL_ONLY
 
 // View: read-only slice and base type of the family.
 typedef struct RC_VIEW_ {
@@ -221,7 +251,11 @@ typedef struct RC_ARRAY_ {
     uint32_t cap;
 } RC_ARRAY_;
 
-/* ---- generated predicates ---- */
+#endif /* RC_ARRAY_IMPL_ONLY */
+
+/* ---- generated predicates (functions skipped in declare-only mode) ---- */
+
+#ifndef RC_ARRAY_DECLARE_ONLY
 
 // True when the array owns a buffer (data is non-NULL).
 static inline bool RC_ARRAY_IS_VALID_(const RC_ARRAY_ *array)
@@ -726,9 +760,14 @@ static inline const RC_ARRAY_TYPE *RC_VIEW_LAST_AT_(RC_VIEW_ view)
 #undef RC_VIEW_AT_
 #undef RC_VIEW_LAST_AT_
 
+#endif /* RC_ARRAY_DECLARE_ONLY */
+
 #undef RC_ARRAY_
 #undef RC_SPAN_
 #undef RC_VIEW_
 
 #undef RC_ARRAY_NAME
 #undef RC_ARRAY_TYPE
+
+#undef RC_ARRAY_DECLARE_ONLY
+#undef RC_ARRAY_IMPL_ONLY
