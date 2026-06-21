@@ -95,4 +95,6 @@ target_link_libraries(richc PRIVATE m)
 
 # ---- core test executable ----
 
-add_subdirectory(test)
+if(NOT RICHC_CORE_ONLY)
+    add_subdirectory(test)
+endif()

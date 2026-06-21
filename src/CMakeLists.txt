@@ -1,4 +1,7 @@
 # ---- richc source tree ----
 
 add_subdirectory(core)
-add_subdirectory(app)
+
+if(NOT RICHC_CORE_ONLY)
+    add_subdirectory(app)
+endif()
