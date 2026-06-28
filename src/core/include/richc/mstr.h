@@ -46,6 +46,8 @@
  *   rc_mstr_reserve     - ensure the buffer is at least capacity bytes (exact).
  *   rc_mstr_append      - append an rc_str, growing geometrically as needed.
  *   rc_mstr_append_char - append a single character, growing as needed.
+ *   rc_mstr_append_<T>  - append the decimal/text form of a number; the i64/u64/f64
+ *                         variants do the work and the narrower ones widen into them.
  *   rc_mstr_replace     - replace all non-overlapping occurrences of find with
  *                         replacement, rewriting in place.
  * append / append_char / reserve accept an invalid (zero-initialised) rc_mstr and
@@ -105,6 +107,12 @@ void rc_mstr_reset(rc_mstr *s);
 void rc_mstr_reserve(rc_mstr *s, uint32_t capacity, rc_arena *arena);
 void rc_mstr_append(rc_mstr *s, rc_str str, rc_arena *arena);
 void rc_mstr_append_char(rc_mstr *s, char c, rc_arena *arena);
+void rc_mstr_append_i64(rc_mstr *s, int64_t value, rc_arena *arena);
+void rc_mstr_append_u64(rc_mstr *s, uint64_t value, rc_arena *arena);
+void rc_mstr_append_i32(rc_mstr *s, int32_t value, rc_arena *arena);
+void rc_mstr_append_u32(rc_mstr *s, uint32_t value, rc_arena *arena);
+void rc_mstr_append_f64(rc_mstr *s, double value, rc_arena *arena);
+void rc_mstr_append_f32(rc_mstr *s, float value, rc_arena *arena);
 void rc_mstr_replace(rc_mstr *s, rc_str find, rc_str replacement, rc_arena *arena);
 
 /* ---- teardown ---- */

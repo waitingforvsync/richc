@@ -244,6 +244,53 @@ RC_TEST_STEP(mstr, replace_empty_find, fix)
     RC_CHECK(s.view, ==, RC_STR("hello"));
 }
 
+/* ---- number appends ---- */
+
+RC_TEST_STEP(mstr, append_u64, fix)
+{
+    rc_mstr s = {0};
+    rc_mstr_append_u64(&s, 0, &fix->a);
+    rc_mstr_append_char(&s, ' ', &fix->a);
+    rc_mstr_append_u64(&s, UINT64_MAX, &fix->a);
+    RC_CHECK(s.view, ==, RC_STR("0 18446744073709551615"));
+}
+
+RC_TEST_STEP(mstr, append_i64, fix)
+{
+    rc_mstr s = {0};
+    rc_mstr_append_i64(&s, 0, &fix->a);
+    rc_mstr_append_i64(&s, -7, &fix->a);
+    RC_CHECK(s.view, ==, RC_STR("0-7"));
+
+    rc_mstr t = {0};
+    rc_mstr_append_i64(&t, INT64_MAX, &fix->a);
+    RC_CHECK(t.view, ==, RC_STR("9223372036854775807"));
+
+    // INT64_MIN is the trap case: negating it directly would overflow, so the
+    // magnitude is taken in unsigned.
+    rc_mstr u = {0};
+    rc_mstr_append_i64(&u, INT64_MIN, &fix->a);
+    RC_CHECK(u.view, ==, RC_STR("-9223372036854775808"));
+}
+
+RC_TEST_STEP(mstr, append_narrow_widths, fix)
+{
+    rc_mstr s = {0};
+    rc_mstr_append_i32(&s, INT32_MIN, &fix->a);
+    rc_mstr_append_char(&s, ' ', &fix->a);
+    rc_mstr_append_u32(&s, UINT32_MAX, &fix->a);
+    RC_CHECK(s.view, ==, RC_STR("-2147483648 4294967295"));
+}
+
+RC_TEST_STEP(mstr, append_floats, fix)
+{
+    rc_mstr s = {0};
+    rc_mstr_append_f64(&s, 3.5, &fix->a);
+    rc_mstr_append_char(&s, ' ', &fix->a);
+    rc_mstr_append_f32(&s, 0.5f, &fix->a);   // exact in binary, so %g is tidy
+    RC_CHECK(s.view, ==, RC_STR("3.5 0.5"));
+}
+
 /* ---- teardown ---- */
 
 RC_TEST_STEP(mstr, deinit, fix)

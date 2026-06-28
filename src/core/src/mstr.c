@@ -1,5 +1,6 @@
 #include "richc/mstr.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include "richc/arena.h"
@@ -95,6 +96,51 @@ void rc_mstr_append_char(rc_mstr *s, char c, rc_arena *arena)
     s->data[s->len] = c;
     s->len++;
     s->data[s->len] = '\0';
+}
+
+void rc_mstr_append_u64(rc_mstr *s, uint64_t value, rc_arena *arena)
+{
+    // Decimal text built back to front, no printf in sight.
+    char     buf[20];   // 2^64 - 1 is twenty digits, the widest we can be asked for
+    uint32_t i = sizeof buf;
+    do {
+        buf[--i] = (char)('0' + (value % 10));
+        value /= 10;
+    } while (value != 0);
+    rc_mstr_append(s, rc_str_make(buf + i, sizeof buf - i), arena);
+}
+
+void rc_mstr_append_i64(rc_mstr *s, int64_t value, rc_arena *arena)
+{
+    if (value < 0) {
+        rc_mstr_append_char(s, '-', arena);
+    }
+    // Take the magnitude in unsigned so INT64_MIN does not overflow its own negation.
+    rc_mstr_append_u64(s, (value < 0) ? (uint64_t)0 - (uint64_t)value : (uint64_t)value, arena);
+}
+
+void rc_mstr_append_u32(rc_mstr *s, uint32_t value, rc_arena *arena)
+{
+    rc_mstr_append_u64(s, value, arena);   // widening is lossless
+}
+
+void rc_mstr_append_i32(rc_mstr *s, int32_t value, rc_arena *arena)
+{
+    rc_mstr_append_i64(s, value, arena);
+}
+
+void rc_mstr_append_f64(rc_mstr *s, double value, rc_arena *arena)
+{
+    // Interim: a fixed, compile-time-checked snprintf until richc grows real number formatting.
+    char buf[32];
+    int  n = snprintf(buf, sizeof buf, "%g", value);
+    RC_ASSERT(n >= 0 && (uint32_t)n < sizeof buf);
+    rc_mstr_append(s, rc_str_make(buf, (uint32_t)n), arena);
+}
+
+void rc_mstr_append_f32(rc_mstr *s, float value, rc_arena *arena)
+{
+    rc_mstr_append_f64(s, value, arena);
 }
 
 void rc_mstr_replace(rc_mstr *s, rc_str find, rc_str replacement, rc_arena *arena)
