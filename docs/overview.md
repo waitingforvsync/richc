@@ -115,6 +115,7 @@ Headers:
 - [richc/macros.h - preprocessor utilities and assertions](core.md#richcmacrosh---preprocessor-utilities-and-assertions)
 - [richc/mstr.h - mutable string](core.md#richcmstrh---mutable-string)
 - [richc/ops.h - scalar bit and math operations](core.md#richcopsh---scalar-bit-and-math-operations)
+- [richc/random.h - pseudo-random generator](core.md#richcrandomh---pseudo-random-generator)
 - [richc/rect_pack.h - rectangle packing](core.md#richcrect_packh---rectangle-packing)
 - [richc/str.h - string view](core.md#richcstrh---string-view)
 - [richc/test.h - unit-test framework](core.md#richctesth---unit-test-framework)
@@ -128,6 +129,7 @@ Container templates:
 Algorithm templates:
 
 - [richc/template/algorithm/bitset_foreach.h - iterate set bits](core.md#richctemplatealgorithmbitset_foreachh---iterate-set-bits)
+- [richc/template/algorithm/hash_trie_foreach.h - iterate every trie entry](core.md#richctemplatealgorithmhash_trie_foreachh---iterate-every-entry)
 - [richc/template/algorithm/lower_bound.h - binary search](core.md#richctemplatealgorithmlower_boundh---binary-search)
 - [richc/template/algorithm/max_element.h - index of the maximum](core.md#richctemplatealgorithmmax_elementh---index-of-the-maximum)
 - [richc/template/algorithm/min_element.h - index of the minimum](core.md#richctemplatealgorithmmin_elementh---index-of-the-minimum)

@@ -188,6 +188,8 @@ static inline uint64_t rc_trie_ror64_(uint64_t h)
 #define RC_TRIE_VALUE_GET_    RC_CONCAT(RC_TRIE_NAME, _value_get)
 #define RC_TRIE_VALUE_SET_    RC_CONCAT(RC_TRIE_NAME, _value_set)
 #define RC_TRIE_VALUE_AT_     RC_CONCAT(RC_TRIE_NAME, _value_at)
+#define RC_TRIE_KEY_GET_      RC_CONCAT(RC_TRIE_NAME, _key_get)
+#define RC_TRIE_KEY_AT_       RC_CONCAT(RC_TRIE_NAME, _key_at)
 #define RC_TRIE_ADD_          RC_CONCAT(RC_TRIE_NAME, _add)
 #define RC_TRIE_DELETE_       RC_CONCAT(RC_TRIE_NAME, _delete)
 
@@ -307,6 +309,28 @@ static inline uint32_t RC_TRIE_PROBE_(RC_TRIE_NAME *t, RC_TRIE_KEY_TYPE key)
 static inline bool RC_TRIE_CONTAINS_(RC_TRIE_NAME *t, RC_TRIE_KEY_TYPE key)
 {
     return RC_TRIE_PROBE_(t, key) != RC_INDEX_NONE;
+}
+
+/* ---- key access by node index (set and map tries) ---- */
+
+/*
+ * The key at a node index (block * 16 + slot), as returned by find or handed to a
+ * foreach callback.  key_at returns a pointer (usual pool-pointer rule: valid until
+ * a relocating grow); key_get returns it by value.  Both assert the index refers to
+ * an occupied node.  A key is immutable once placed, so there is no key_set.
+ */
+static inline RC_TRIE_KEY_TYPE *RC_TRIE_KEY_AT_(RC_TRIE_NAME *t, uint32_t index)
+{
+    RC_ASSERT(index != RC_INDEX_NONE);
+    RC_TRIE_NODE_ *node = &RC_TRIE_POOL_AT_(t->pool, index / 16)->node[index % 16];
+    RC_ASSERT(node->child_index != 0);   // the index must refer to an occupied node
+    return &node->key;
+}
+
+/* The key at a node index, by value. */
+static inline RC_TRIE_KEY_TYPE RC_TRIE_KEY_GET_(RC_TRIE_NAME *t, uint32_t index)
+{
+    return *RC_TRIE_KEY_AT_(t, index);
 }
 
 #ifdef RC_TRIE_VALUE_TYPE
@@ -530,6 +554,8 @@ static inline bool RC_TRIE_DELETE_(RC_TRIE_NAME *t, RC_TRIE_KEY_TYPE key)
 #undef RC_TRIE_VALUE_GET_
 #undef RC_TRIE_VALUE_SET_
 #undef RC_TRIE_VALUE_AT_
+#undef RC_TRIE_KEY_GET_
+#undef RC_TRIE_KEY_AT_
 #undef RC_TRIE_ADD_
 #undef RC_TRIE_DELETE_
 

@@ -87,6 +87,25 @@ RC_TEST_STEP(hash_trie, value_access, fix)
     RC_CHECK(*rc_trie_test_find_ptr(&t, 0x15), ==, 150);
 }
 
+RC_TEST_STEP(hash_trie, key_access, fix)
+{
+    rc_trie_test_pool pool = rc_trie_test_pool_make(0, &fix->a);
+    rc_trie_test t = rc_trie_test_make(&pool, &fix->a);
+    rc_trie_test_add(&t, 10, 100, &fix->a);
+    rc_trie_test_add(&t, 0x15, 150, &fix->a);   // collides at level 0, forcing a child block
+
+    // read the key back from a node index, by value and by pointer
+    uint32_t i = rc_trie_test_find(&t, 10);
+    RC_CHECK(i, !=, RC_INDEX_NONE);
+    RC_CHECK(rc_trie_test_key_get(&t, i), ==, (uint64_t)10);
+    RC_CHECK(*rc_trie_test_key_at(&t, i), ==, (uint64_t)10);
+
+    // a key that lives one level down (in the child block) reads back the same way
+    uint32_t j = rc_trie_test_find(&t, 0x15);
+    RC_CHECK(j, !=, RC_INDEX_NONE);
+    RC_CHECK(rc_trie_test_key_get(&t, j), ==, (uint64_t)0x15);
+}
+
 RC_TEST_STEP(hash_trie, contains, fix)
 {
     // contains works on a map trie too (no value needed)

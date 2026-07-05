@@ -1009,6 +1009,10 @@ int             *rc_trie_u64_find_ptr(rc_trie_u64 *t, uint64_t key);            
 int              rc_trie_u64_value_get(rc_trie_u64 *t, uint32_t index);
 void             rc_trie_u64_value_set(rc_trie_u64 *t, uint32_t index, int value);
 int             *rc_trie_u64_value_at(rc_trie_u64 *t, uint32_t index);
+
+// key read-back by node index (both set and map):
+uint64_t         rc_trie_u64_key_get(rc_trie_u64 *t, uint32_t index);
+uint64_t        *rc_trie_u64_key_at(rc_trie_u64 *t, uint32_t index);
 ```
 
 - `contains` reports membership and works for both set and map tries.
@@ -1023,6 +1027,14 @@ int             *rc_trie_u64_value_at(rc_trie_u64 *t, uint32_t index);
   access, but the pointer follows the usual pool rule (survives in-place growth,
   invalidated by a relocating grow), whereas the index from `find` is always
   growth-stable.
+- `key_get` / `key_at` read the KEY at a node index (by value / by pointer),
+  available for both set and map tries. A node index comes from `find` (map) or is
+  handed to a [`hash_trie_foreach`](#richctemplatealgorithmhash_trie_foreachh---iterate-every-entry)
+  callback. A key is immutable once placed, so there is no `key_set`.
+- The trie has no built-in iteration; the
+  [`hash_trie_foreach`](#richctemplatealgorithmhash_trie_foreachh---iterate-every-entry)
+  algorithm template visits every entry (walking from the root, since one pool can
+  back many tries and a flat pool scan cannot tell them apart).
 - Keys with identical hashes are handled correctly, forming an O(n)-deep chain
   (operations stay correct, access degrades to O(n) for n identical hashes).
 - A zero-initialised pool is a valid empty pool; `pool_deinit` frees the backing
@@ -1136,6 +1148,64 @@ pointer as the callback's first argument and as a function parameter:
 The generated signature is `void NAME(const rc_bitset *bs)` without a context, or
 `void NAME(const rc_bitset *bs, CTX *ctx)` with one. Iteration is read-only and
 allocates nothing.
+
+---
+
+## richc/template/algorithm/hash_trie_foreach.h - iterate every entry
+
+A preprocessor template (like `pool_foreach.h`) that generates a function to visit
+every live entry of an `rc_trie`. The trie has no built-in iteration; this template
+bridges that by walking from the root over the 16-node blocks and invoking a
+caller-supplied macro with the trie and each entry's node index. It walks from the
+root (rather than scanning the backing pool) because one pool can back many tries,
+so a flat pool scan could not tell one trie's entries from another's. Include it
+again (after redefining the control macros) to generate another iterator.
+
+### Instantiation
+
+```c
+#define RC_TRIE_KEY_TYPE   uint64_t
+#define RC_TRIE_VALUE_TYPE int
+#define RC_TRIE_HASH(k)    (k)
+#include "richc/template/hash_trie.h"       // rc_trie_uint64_t + key_get / value_get
+
+typedef struct { int total; } sum_ctx;
+static void add_val(sum_ctx *c, rc_trie_uint64_t *t, uint32_t i)
+{ c->total += rc_trie_uint64_t_value_get(t, i); }
+
+#define RC_TRIE_FOREACH_TYPE          uint64_t
+#define RC_TRIE_FOREACH_CTX           sum_ctx
+#define RC_TRIE_FOREACH_FUNC(c, t, i) add_val(c, t, i)
+#include "richc/template/algorithm/hash_trie_foreach.h"
+// void rc_trie_foreach_uint64_t(rc_trie_uint64_t *t, sum_ctx *ctx);
+```
+
+| Control macro | Required | Default | Meaning |
+|---------------|----------|---------|---------|
+| `RC_TRIE_FOREACH_TYPE` | yes | - | trie suffix; drives the defaults |
+| `RC_TRIE_FOREACH_FUNC` | yes | - | per-entry callback (see below) |
+| `RC_TRIE_FOREACH_CTX`  | no  | none | context type threaded to the callback |
+| `RC_TRIE_FOREACH_TRIE` | no  | `rc_trie_<TYPE>` | trie type name (override for a custom `RC_TRIE_NAME`) |
+| `RC_TRIE_FOREACH_NAME` | no  | `rc_trie_foreach_<TYPE>` | generated function name |
+
+All macros defined before inclusion are undefined again by the header.
+
+### Callback and context
+
+Without a context the callback is `RC_TRIE_FOREACH_FUNC(trie, index)`, where `trie`
+is the `TRIE *` and `index` is the live entry's node index - the callback reaches
+the key and value through the trie's `key_get` / `value_get` (the index-over-pointer
+convention). Defining `RC_TRIE_FOREACH_CTX` adds a context pointer as the callback's
+first argument and as a function parameter:
+
+```c
+#define RC_TRIE_FOREACH_FUNC(ctx, trie, index)  ...   // ctx is RC_TRIE_FOREACH_CTX *
+```
+
+The generated signature is `void NAME(TRIE *t)` without a context, or
+`void NAME(TRIE *t, CTX *ctx)` with one. Entries are visited in an unspecified order
+(a trie is unordered). Iteration allocates nothing (no scratch arena, unlike
+`pool_foreach`); do not add or delete keys during iteration.
 
 ---
 
@@ -1712,6 +1782,26 @@ Operations assert their inputs are valid and their results fit in `int64_t`; GCD
 pre-reduction keeps the products' and sums' intermediates as small as possible,
 but a genuine overflow is reported via `RC_ASSERT` rather than wrapping. The
 library uses `int64_t` throughout and does not fall back to a wider type.
+
+---
+
+## richc/random.h - pseudo-random generator
+
+A tiny, fast pseudo-random generator (splitmix32): one word of state, an add and
+two multiply-mixes per draw. Good statistical quality and - unlike xorshift - no
+bad seeds (any seed, including 0, is fine). Deterministic: the same seed always
+replays the same stream. Not for cryptography.
+
+```c
+rc_random                                    // { uint32_t state; }
+
+rc_random  rc_random_make(uint32_t seed);      // a generator seeded to `seed`
+uint32_t rc_random_next(rc_random *p);         // the next 32-bit draw, advancing the state
+```
+
+- To bound a draw to `[0, n)`, take `rc_random_next(&p) % n` (a modulo bias is
+  negligible for the small `n` typical of games and tools).
+- To reseed an existing generator, assign a fresh one: `p = rc_random_make(seed)`.
 
 ---
 

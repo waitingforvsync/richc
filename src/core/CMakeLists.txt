@@ -10,6 +10,7 @@ add_library(richc STATIC
     src/math/rational.c
     src/math/solve.c
     src/mstr.c
+    src/random.c
     src/rect_pack.c
     src/str.c
     src/test.c
@@ -63,6 +64,7 @@ add_library(richc STATIC
     include/richc/math/vec4f.h
     include/richc/mstr.h
     include/richc/ops.h
+    include/richc/random.h
     include/richc/rect_pack.h
     include/richc/str.h
     include/richc/template/array.h
