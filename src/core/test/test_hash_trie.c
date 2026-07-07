@@ -37,109 +37,142 @@ RC_TEST_GROUP_DEINIT(hash_trie, fix)
 RC_TEST_STEP(hash_trie, empty, fix)
 {
     rc_trie_test_pool pool = rc_trie_test_pool_make(0, &fix->a);
-    rc_trie_test t = rc_trie_test_make(&pool, &fix->a);
-    RC_CHECK(rc_trie_test_find(&t, 123), ==, RC_INDEX_NONE);
-    RC_CHECK_FALSE(rc_trie_test_delete(&t, 123));
+    rc_trie_test t = {0};
+    RC_CHECK(rc_trie_test_find(t, &pool, 123), ==, RC_INDEX_NONE);
+    RC_CHECK_FALSE(rc_trie_test_delete(t, &pool, 123));
+}
+
+RC_TEST_STEP(hash_trie, zero_init_is_empty, fix)
+{
+    // A zero-initialised trie is a valid empty trie - no make() - just as { 0 } is a
+    // valid empty pool.  Reads report "absent"; the first add lazily makes the root.
+    rc_trie_test_pool pool = {0};
+    rc_trie_test t = {0};
+    RC_CHECK(rc_trie_test_find(t, &pool, 42), ==, RC_INDEX_NONE);
+    RC_CHECK_FALSE(rc_trie_test_contains(t, &pool, 42));
+    RC_CHECK_FALSE(rc_trie_test_delete(t, &pool, 42));
+
+    RC_CHECK_TRUE(rc_trie_test_add(&t, &pool, 42, 420, &fix->a));   // lazily allocates the root
+    RC_CHECK(*rc_trie_test_find_ptr(t, &pool, 42), ==, 420);
+}
+
+RC_TEST_STEP(hash_trie, copy_by_value, fix)
+{
+    // A trie is a plain value - it stores no pointer into the pool (the pool is passed
+    // to every op) - so copying the handle, or moving a whole struct that holds it, is
+    // safe.  A copy sees the same backing (same root).
+    rc_trie_test_pool pool = {0};
+    rc_trie_test t = {0};
+    rc_trie_test_add(&t, &pool, 1, 11, &fix->a);
+    rc_trie_test_add(&t, &pool, 2, 22, &fix->a);
+
+    rc_trie_test copy = t;   // copy the handle by value
+    RC_CHECK(*rc_trie_test_find_ptr(copy, &pool, 1), ==, 11);
+    RC_CHECK(*rc_trie_test_find_ptr(copy, &pool, 2), ==, 22);
+
+    // an add through the original is visible through the copy (shared root/backing)
+    rc_trie_test_add(&t, &pool, 3, 33, &fix->a);
+    RC_CHECK(*rc_trie_test_find_ptr(copy, &pool, 3), ==, 33);
 }
 
 RC_TEST_STEP(hash_trie, add_find, fix)
 {
     rc_trie_test_pool pool = rc_trie_test_pool_make(0, &fix->a);
-    rc_trie_test t = rc_trie_test_make(&pool, &fix->a);
+    rc_trie_test t = {0};
 
-    RC_CHECK_TRUE(rc_trie_test_add(&t, 10, 100, &fix->a));    // new key
-    RC_CHECK_TRUE(rc_trie_test_add(&t, 20, 200, &fix->a));
+    RC_CHECK_TRUE(rc_trie_test_add(&t, &pool, 10, 100, &fix->a));    // new key
+    RC_CHECK_TRUE(rc_trie_test_add(&t, &pool, 20, 200, &fix->a));
 
     // find returns a node index; read the value through it
-    uint32_t i = rc_trie_test_find(&t, 10);
+    uint32_t i = rc_trie_test_find(t, &pool, 10);
     RC_CHECK(i, !=, RC_INDEX_NONE);
-    RC_CHECK(rc_trie_test_value_get(&t, i), ==, 100);
+    RC_CHECK(rc_trie_test_value_get(&pool, i), ==, 100);
     // find_ptr returns the value pointer directly
-    RC_CHECK(*rc_trie_test_find_ptr(&t, 20), ==, 200);
+    RC_CHECK(*rc_trie_test_find_ptr(t, &pool, 20), ==, 200);
 
     // re-adding an existing key updates it and returns false
-    RC_CHECK_FALSE(rc_trie_test_add(&t, 10, 999, &fix->a));
-    RC_CHECK(rc_trie_test_value_get(&t, rc_trie_test_find(&t, 10)), ==, 999);
+    RC_CHECK_FALSE(rc_trie_test_add(&t, &pool, 10, 999, &fix->a));
+    RC_CHECK(rc_trie_test_value_get(&pool, rc_trie_test_find(t, &pool, 10)), ==, 999);
 
-    RC_CHECK(rc_trie_test_find(&t, 30), ==, RC_INDEX_NONE);
+    RC_CHECK(rc_trie_test_find(t, &pool, 30), ==, RC_INDEX_NONE);
 }
 
 RC_TEST_STEP(hash_trie, value_access, fix)
 {
     rc_trie_test_pool pool = rc_trie_test_pool_make(0, &fix->a);
-    rc_trie_test t = rc_trie_test_make(&pool, &fix->a);
-    rc_trie_test_add(&t, 5, 50, &fix->a);
+    rc_trie_test t = {0};
+    rc_trie_test_add(&t, &pool, 5, 50, &fix->a);
 
-    uint32_t i = rc_trie_test_find(&t, 5);
+    uint32_t i = rc_trie_test_find(t, &pool, 5);
     RC_CHECK(i, !=, RC_INDEX_NONE);
-    RC_CHECK(rc_trie_test_value_get(&t, i), ==, 50);
+    RC_CHECK(rc_trie_test_value_get(&pool, i), ==, 50);
 
     // value_set / value_at mutate the stored value in place
-    rc_trie_test_value_set(&t, i, 51);
-    RC_CHECK(rc_trie_test_value_get(&t, i), ==, 51);
-    *rc_trie_test_value_at(&t, i) = 52;
-    RC_CHECK(*rc_trie_test_find_ptr(&t, 5), ==, 52);
+    rc_trie_test_value_set(&pool, i, 51);
+    RC_CHECK(rc_trie_test_value_get(&pool, i), ==, 51);
+    *rc_trie_test_value_at(&pool, i) = 52;
+    RC_CHECK(*rc_trie_test_find_ptr(t, &pool, 5), ==, 52);
 
     // adding a colliding key forces a child-block allocation (pool growth); the
     // node index from before stays valid (it is logical, not a pointer)
-    rc_trie_test_add(&t, 0x15, 150, &fix->a);
-    RC_CHECK(rc_trie_test_value_get(&t, i), ==, 52);
-    RC_CHECK(*rc_trie_test_find_ptr(&t, 0x15), ==, 150);
+    rc_trie_test_add(&t, &pool, 0x15, 150, &fix->a);
+    RC_CHECK(rc_trie_test_value_get(&pool, i), ==, 52);
+    RC_CHECK(*rc_trie_test_find_ptr(t, &pool, 0x15), ==, 150);
 }
 
 RC_TEST_STEP(hash_trie, key_access, fix)
 {
     rc_trie_test_pool pool = rc_trie_test_pool_make(0, &fix->a);
-    rc_trie_test t = rc_trie_test_make(&pool, &fix->a);
-    rc_trie_test_add(&t, 10, 100, &fix->a);
-    rc_trie_test_add(&t, 0x15, 150, &fix->a);   // collides at level 0, forcing a child block
+    rc_trie_test t = {0};
+    rc_trie_test_add(&t, &pool, 10, 100, &fix->a);
+    rc_trie_test_add(&t, &pool, 0x15, 150, &fix->a);   // collides at level 0, forcing a child block
 
     // read the key back from a node index, by value and by pointer
-    uint32_t i = rc_trie_test_find(&t, 10);
+    uint32_t i = rc_trie_test_find(t, &pool, 10);
     RC_CHECK(i, !=, RC_INDEX_NONE);
-    RC_CHECK(rc_trie_test_key_get(&t, i), ==, (uint64_t)10);
-    RC_CHECK(*rc_trie_test_key_at(&t, i), ==, (uint64_t)10);
+    RC_CHECK(rc_trie_test_key_get(&pool, i), ==, (uint64_t)10);
+    RC_CHECK(*rc_trie_test_key_at(&pool, i), ==, (uint64_t)10);
 
     // a key that lives one level down (in the child block) reads back the same way
-    uint32_t j = rc_trie_test_find(&t, 0x15);
+    uint32_t j = rc_trie_test_find(t, &pool, 0x15);
     RC_CHECK(j, !=, RC_INDEX_NONE);
-    RC_CHECK(rc_trie_test_key_get(&t, j), ==, (uint64_t)0x15);
+    RC_CHECK(rc_trie_test_key_get(&pool, j), ==, (uint64_t)0x15);
 }
 
 RC_TEST_STEP(hash_trie, contains, fix)
 {
     // contains works on a map trie too (no value needed)
     rc_trie_test_pool pool = rc_trie_test_pool_make(0, &fix->a);
-    rc_trie_test t = rc_trie_test_make(&pool, &fix->a);
-    rc_trie_test_add(&t, 10, 100, &fix->a);
-    RC_CHECK_TRUE(rc_trie_test_contains(&t, 10));
-    RC_CHECK_FALSE(rc_trie_test_contains(&t, 20));
-    rc_trie_test_delete(&t, 10);
-    RC_CHECK_FALSE(rc_trie_test_contains(&t, 10));
+    rc_trie_test t = {0};
+    rc_trie_test_add(&t, &pool, 10, 100, &fix->a);
+    RC_CHECK_TRUE(rc_trie_test_contains(t, &pool, 10));
+    RC_CHECK_FALSE(rc_trie_test_contains(t, &pool, 20));
+    rc_trie_test_delete(t, &pool, 10);
+    RC_CHECK_FALSE(rc_trie_test_contains(t, &pool, 10));
 }
 
 RC_TEST_STEP(hash_trie, set, fix)
 {
     // a set trie: add takes no value; only contains/delete read membership
     rc_trie_set_pool pool = rc_trie_set_pool_make(0, &fix->a);
-    rc_trie_set s = rc_trie_set_make(&pool, &fix->a);
+    rc_trie_set s = {0};
 
-    RC_CHECK_FALSE(rc_trie_set_contains(&s, 0x10));
-    RC_CHECK_TRUE(rc_trie_set_add(&s, 0x10, &fix->a));     // new
-    RC_CHECK_TRUE(rc_trie_set_add(&s, 0x20, &fix->a));
-    RC_CHECK_TRUE(rc_trie_set_add(&s, 0x30, &fix->a));     // collide and chain
-    RC_CHECK_FALSE(rc_trie_set_add(&s, 0x10, &fix->a));    // already present
+    RC_CHECK_FALSE(rc_trie_set_contains(s, &pool, 0x10));
+    RC_CHECK_TRUE(rc_trie_set_add(&s, &pool, 0x10, &fix->a));     // new
+    RC_CHECK_TRUE(rc_trie_set_add(&s, &pool, 0x20, &fix->a));
+    RC_CHECK_TRUE(rc_trie_set_add(&s, &pool, 0x30, &fix->a));     // collide and chain
+    RC_CHECK_FALSE(rc_trie_set_add(&s, &pool, 0x10, &fix->a));    // already present
 
-    RC_CHECK_TRUE(rc_trie_set_contains(&s, 0x10));
-    RC_CHECK_TRUE(rc_trie_set_contains(&s, 0x20));
-    RC_CHECK_TRUE(rc_trie_set_contains(&s, 0x30));
-    RC_CHECK_FALSE(rc_trie_set_contains(&s, 0x40));
+    RC_CHECK_TRUE(rc_trie_set_contains(s, &pool, 0x10));
+    RC_CHECK_TRUE(rc_trie_set_contains(s, &pool, 0x20));
+    RC_CHECK_TRUE(rc_trie_set_contains(s, &pool, 0x30));
+    RC_CHECK_FALSE(rc_trie_set_contains(s, &pool, 0x40));
 
-    RC_CHECK_TRUE(rc_trie_set_delete(&s, 0x20));
-    RC_CHECK_FALSE(rc_trie_set_contains(&s, 0x20));
-    RC_CHECK_TRUE(rc_trie_set_contains(&s, 0x10));         // siblings intact
-    RC_CHECK_TRUE(rc_trie_set_contains(&s, 0x30));
-    RC_CHECK_FALSE(rc_trie_set_delete(&s, 0x20));          // already gone
+    RC_CHECK_TRUE(rc_trie_set_delete(s, &pool, 0x20));
+    RC_CHECK_FALSE(rc_trie_set_contains(s, &pool, 0x20));
+    RC_CHECK_TRUE(rc_trie_set_contains(s, &pool, 0x10));          // siblings intact
+    RC_CHECK_TRUE(rc_trie_set_contains(s, &pool, 0x30));
+    RC_CHECK_FALSE(rc_trie_set_delete(s, &pool, 0x20));           // already gone
 }
 
 RC_TEST_STEP(hash_trie, collisions, fix)
@@ -147,26 +180,26 @@ RC_TEST_STEP(hash_trie, collisions, fix)
     // 0x10, 0x20, 0x30 share the low nibble (collide at level 0) and diverge at
     // level 1, exercising the child-block descent
     rc_trie_test_pool pool = rc_trie_test_pool_make(0, &fix->a);
-    rc_trie_test t = rc_trie_test_make(&pool, &fix->a);
-    rc_trie_test_add(&t, 0x10, 1, &fix->a);
-    rc_trie_test_add(&t, 0x20, 2, &fix->a);
-    rc_trie_test_add(&t, 0x30, 3, &fix->a);
-    RC_CHECK(*rc_trie_test_find_ptr(&t, 0x10), ==, 1);
-    RC_CHECK(*rc_trie_test_find_ptr(&t, 0x20), ==, 2);
-    RC_CHECK(*rc_trie_test_find_ptr(&t, 0x30), ==, 3);
+    rc_trie_test t = {0};
+    rc_trie_test_add(&t, &pool, 0x10, 1, &fix->a);
+    rc_trie_test_add(&t, &pool, 0x20, 2, &fix->a);
+    rc_trie_test_add(&t, &pool, 0x30, 3, &fix->a);
+    RC_CHECK(*rc_trie_test_find_ptr(t, &pool, 0x10), ==, 1);
+    RC_CHECK(*rc_trie_test_find_ptr(t, &pool, 0x20), ==, 2);
+    RC_CHECK(*rc_trie_test_find_ptr(t, &pool, 0x30), ==, 3);
 }
 
 RC_TEST_STEP(hash_trie, delete_leaf, fix)
 {
     rc_trie_test_pool pool = rc_trie_test_pool_make(0, &fix->a);
-    rc_trie_test t = rc_trie_test_make(&pool, &fix->a);
-    rc_trie_test_add(&t, 10, 100, &fix->a);
-    rc_trie_test_add(&t, 20, 200, &fix->a);
+    rc_trie_test t = {0};
+    rc_trie_test_add(&t, &pool, 10, 100, &fix->a);
+    rc_trie_test_add(&t, &pool, 20, 200, &fix->a);
 
-    RC_CHECK_TRUE(rc_trie_test_delete(&t, 10));
-    RC_CHECK(rc_trie_test_find(&t, 10), ==, RC_INDEX_NONE);
-    RC_CHECK(*rc_trie_test_find_ptr(&t, 20), ==, 200);    // sibling intact
-    RC_CHECK_FALSE(rc_trie_test_delete(&t, 10));          // already gone
+    RC_CHECK_TRUE(rc_trie_test_delete(t, &pool, 10));
+    RC_CHECK(rc_trie_test_find(t, &pool, 10), ==, RC_INDEX_NONE);
+    RC_CHECK(*rc_trie_test_find_ptr(t, &pool, 20), ==, 200);    // sibling intact
+    RC_CHECK_FALSE(rc_trie_test_delete(t, &pool, 10));          // already gone
 }
 
 RC_TEST_STEP(hash_trie, delete_interior, fix)
@@ -174,15 +207,15 @@ RC_TEST_STEP(hash_trie, delete_interior, fix)
     // 0x10 owns the level-0 slot and has 0x20/0x30 as children; deleting it
     // forces a bubble-up of a child into the vacated interior node
     rc_trie_test_pool pool = rc_trie_test_pool_make(0, &fix->a);
-    rc_trie_test t = rc_trie_test_make(&pool, &fix->a);
-    rc_trie_test_add(&t, 0x10, 1, &fix->a);
-    rc_trie_test_add(&t, 0x20, 2, &fix->a);
-    rc_trie_test_add(&t, 0x30, 3, &fix->a);
+    rc_trie_test t = {0};
+    rc_trie_test_add(&t, &pool, 0x10, 1, &fix->a);
+    rc_trie_test_add(&t, &pool, 0x20, 2, &fix->a);
+    rc_trie_test_add(&t, &pool, 0x30, 3, &fix->a);
 
-    RC_CHECK_TRUE(rc_trie_test_delete(&t, 0x10));
-    RC_CHECK(rc_trie_test_find(&t, 0x10), ==, RC_INDEX_NONE);
-    RC_CHECK(*rc_trie_test_find_ptr(&t, 0x20), ==, 2);
-    RC_CHECK(*rc_trie_test_find_ptr(&t, 0x30), ==, 3);
+    RC_CHECK_TRUE(rc_trie_test_delete(t, &pool, 0x10));
+    RC_CHECK(rc_trie_test_find(t, &pool, 0x10), ==, RC_INDEX_NONE);
+    RC_CHECK(*rc_trie_test_find_ptr(t, &pool, 0x20), ==, 2);
+    RC_CHECK(*rc_trie_test_find_ptr(t, &pool, 0x30), ==, 3);
 }
 
 RC_TEST_STEP(hash_trie, delete_all, fix)
@@ -190,17 +223,17 @@ RC_TEST_STEP(hash_trie, delete_all, fix)
     // deleting both keys empties the child block; the parent link is cleared and
     // re-adding still works
     rc_trie_test_pool pool = rc_trie_test_pool_make(0, &fix->a);
-    rc_trie_test t = rc_trie_test_make(&pool, &fix->a);
-    rc_trie_test_add(&t, 0x10, 1, &fix->a);
-    rc_trie_test_add(&t, 0x20, 2, &fix->a);
+    rc_trie_test t = {0};
+    rc_trie_test_add(&t, &pool, 0x10, 1, &fix->a);
+    rc_trie_test_add(&t, &pool, 0x20, 2, &fix->a);
 
-    RC_CHECK_TRUE(rc_trie_test_delete(&t, 0x20));
-    RC_CHECK_TRUE(rc_trie_test_delete(&t, 0x10));
-    RC_CHECK(rc_trie_test_find(&t, 0x10), ==, RC_INDEX_NONE);
-    RC_CHECK(rc_trie_test_find(&t, 0x20), ==, RC_INDEX_NONE);
+    RC_CHECK_TRUE(rc_trie_test_delete(t, &pool, 0x20));
+    RC_CHECK_TRUE(rc_trie_test_delete(t, &pool, 0x10));
+    RC_CHECK(rc_trie_test_find(t, &pool, 0x10), ==, RC_INDEX_NONE);
+    RC_CHECK(rc_trie_test_find(t, &pool, 0x20), ==, RC_INDEX_NONE);
 
-    RC_CHECK_TRUE(rc_trie_test_add(&t, 0x10, 5, &fix->a));
-    RC_CHECK(*rc_trie_test_find_ptr(&t, 0x10), ==, 5);
+    RC_CHECK_TRUE(rc_trie_test_add(&t, &pool, 0x10, 5, &fix->a));
+    RC_CHECK(*rc_trie_test_find_ptr(t, &pool, 0x10), ==, 5);
 }
 
 RC_TEST_STEP(hash_trie, many, fix)
@@ -208,22 +241,22 @@ RC_TEST_STEP(hash_trie, many, fix)
     // 200 keys force several block allocations (and pool reallocation); every
     // key must survive the moves
     rc_trie_test_pool pool = rc_trie_test_pool_make(0, &fix->a);
-    rc_trie_test t = rc_trie_test_make(&pool, &fix->a);
+    rc_trie_test t = {0};
 
     for (uint64_t k = 1; k <= 200; k++) {
-        RC_CHECK_TRUE(rc_trie_test_add(&t, k, (int)(k * 2), &fix->a));
+        RC_CHECK_TRUE(rc_trie_test_add(&t, &pool, k, (int)(k * 2), &fix->a));
     }
     for (uint64_t k = 1; k <= 200; k++) {
-        int *v = rc_trie_test_find_ptr(&t, k);
+        int *v = rc_trie_test_find_ptr(t, &pool, k);
         RC_CHECK_TRUE(v != NULL);
         RC_CHECK(*v, ==, (int)(k * 2));
     }
     // delete the even keys; odd keys remain
     for (uint64_t k = 2; k <= 200; k += 2) {
-        RC_CHECK_TRUE(rc_trie_test_delete(&t, k));
+        RC_CHECK_TRUE(rc_trie_test_delete(t, &pool, k));
     }
     for (uint64_t k = 1; k <= 200; k++) {
-        int *v = rc_trie_test_find_ptr(&t, k);
+        int *v = rc_trie_test_find_ptr(t, &pool, k);
         if (k % 2 == 0) {
             RC_CHECK_TRUE(v == NULL);
         }
@@ -238,36 +271,36 @@ RC_TEST_STEP(hash_trie, shared_pool, fix)
 {
     // two tries on one pool stay independent
     rc_trie_test_pool pool = rc_trie_test_pool_make(0, &fix->a);
-    rc_trie_test a = rc_trie_test_make(&pool, &fix->a);
-    rc_trie_test b = rc_trie_test_make(&pool, &fix->a);
+    rc_trie_test a = {0};
+    rc_trie_test b = {0};
 
-    rc_trie_test_add(&a, 42, 1, &fix->a);
-    rc_trie_test_add(&b, 42, 2, &fix->a);
-    RC_CHECK(*rc_trie_test_find_ptr(&a, 42), ==, 1);
-    RC_CHECK(*rc_trie_test_find_ptr(&b, 42), ==, 2);
+    rc_trie_test_add(&a, &pool, 42, 1, &fix->a);
+    rc_trie_test_add(&b, &pool, 42, 2, &fix->a);
+    RC_CHECK(*rc_trie_test_find_ptr(a, &pool, 42), ==, 1);
+    RC_CHECK(*rc_trie_test_find_ptr(b, &pool, 42), ==, 2);
 
-    rc_trie_test_add(&a, 99, 9, &fix->a);
-    RC_CHECK(rc_trie_test_find(&b, 99), ==, RC_INDEX_NONE);   // b unaffected
+    rc_trie_test_add(&a, &pool, 99, 9, &fix->a);
+    RC_CHECK(rc_trie_test_find(b, &pool, 99), ==, RC_INDEX_NONE);   // b unaffected
 }
 
 RC_TEST_STEP(hash_trie, deep_chain, fix)
 {
     // every key hashes to 0, forming a single deep chain
     rc_trie_collide_pool pool = rc_trie_collide_pool_make(0, &fix->a);
-    rc_trie_collide t = rc_trie_collide_make(&pool, &fix->a);
+    rc_trie_collide t = {0};
 
     for (uint64_t k = 1; k <= 20; k++) {
-        RC_CHECK_TRUE(rc_trie_collide_add(&t, k, (int)k, &fix->a));
+        RC_CHECK_TRUE(rc_trie_collide_add(&t, &pool, k, (int)k, &fix->a));
     }
     for (uint64_t k = 1; k <= 20; k++) {
-        RC_CHECK(*rc_trie_collide_find_ptr(&t, k), ==, (int)k);
+        RC_CHECK(*rc_trie_collide_find_ptr(t, &pool, k), ==, (int)k);
     }
     // delete from the middle of the chain; the rest survive
-    RC_CHECK_TRUE(rc_trie_collide_delete(&t, 10));
-    RC_CHECK(rc_trie_collide_find(&t, 10), ==, RC_INDEX_NONE);
+    RC_CHECK_TRUE(rc_trie_collide_delete(t, &pool, 10));
+    RC_CHECK(rc_trie_collide_find(t, &pool, 10), ==, RC_INDEX_NONE);
     for (uint64_t k = 1; k <= 20; k++) {
         if (k != 10) {
-            RC_CHECK(rc_trie_collide_find(&t, k), !=, RC_INDEX_NONE);
+            RC_CHECK(rc_trie_collide_find(t, &pool, k), !=, RC_INDEX_NONE);
         }
     }
 }
@@ -279,9 +312,9 @@ RC_TEST_STEP(hash_trie, pool_lifecycle, fix)
     rc_trie_test_pool_reserve(&pool, 32, &fix->a);
     RC_CHECK_TRUE(pool.items.cap >= 32u);
 
-    rc_trie_test t = rc_trie_test_make(&pool, &fix->a);
-    rc_trie_test_add(&t, 7, 70, &fix->a);
-    RC_CHECK(*rc_trie_test_find_ptr(&t, 7), ==, 70);
+    rc_trie_test t = {0};
+    rc_trie_test_add(&t, &pool, 7, 70, &fix->a);
+    RC_CHECK(*rc_trie_test_find_ptr(t, &pool, 7), ==, 70);
 
     rc_trie_test_pool_deinit(&pool, &fix->a);
     RC_CHECK(pool.items.num, ==, 0u);
@@ -296,22 +329,22 @@ RC_TEST_STEP(hash_trie, reclaim, fix)
     // adding then deleting them all should recycle the blocks rather than leak,
     // so the block count stays bounded across repeated churn.
     rc_trie_collide_pool pool = rc_trie_collide_pool_make(0, &fix->a);
-    rc_trie_collide t = rc_trie_collide_make(&pool, &fix->a);
+    rc_trie_collide t = {0};
 
     for (uint64_t k = 1; k <= 30; k++) {
-        rc_trie_collide_add(&t, k, (int)k, &fix->a);
+        rc_trie_collide_add(&t, &pool, k, (int)k, &fix->a);
     }
     uint32_t after_first = pool.items.num;   // blocks for one full chain
 
     for (int cycle = 0; cycle < 5; cycle++) {
         for (uint64_t k = 1; k <= 30; k++) {
-            RC_CHECK_TRUE(rc_trie_collide_delete(&t, k));
+            RC_CHECK_TRUE(rc_trie_collide_delete(t, &pool, k));
         }
         for (uint64_t k = 1; k <= 30; k++) {
-            RC_CHECK_TRUE(rc_trie_collide_add(&t, k, (int)k, &fix->a));
+            RC_CHECK_TRUE(rc_trie_collide_add(&t, &pool, k, (int)k, &fix->a));
         }
         // recycled, not leaked: the block count never exceeds the first chain's
         RC_CHECK_TRUE(pool.items.num <= after_first);
-        RC_CHECK(*rc_trie_collide_find_ptr(&t, 15), ==, 15);
+        RC_CHECK(*rc_trie_collide_find_ptr(t, &pool, 15), ==, 15);
     }
 }

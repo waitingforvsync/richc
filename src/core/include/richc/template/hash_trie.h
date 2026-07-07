@@ -6,13 +6,20 @@
  * arena-backed pool that is just an rc_array of blocks (the array template does
  * the growth and zero-fill).  One pool can back many tries.
  *
+ * A trie is a value, not a handle: it is nothing but a root block index, so it is
+ * trivially copyable and a zero-initialised trie ({ 0 }) is a valid empty trie -
+ * no make() call, matching the pool it sits on.  The pool is NOT stored in the
+ * trie; it is passed to every operation (like the pool's own accessors), so a
+ * struct that owns tries + a shared pool can be copied or returned by value freely.
+ *
  * Structure
  * ---------
  *   Node  - one slot in a block: { key, val, child_index }
  *   Block - 16 nodes (RC_TRIE_NAME_nodes); addressed by block index
  *   Pool  - free-list pool of blocks (RC_TRIE_NAME_pool, an rc_pool); shared
  *           across tries; a block emptied by delete is recycled
- *   Trie  - { pool pointer, root block index } (RC_TRIE_NAME)
+ *   Trie  - { root } where root is the root block index + 1 (0 == empty, no root
+ *           block yet); RC_TRIE_NAME
  *
  * Node encoding
  * -------------
@@ -23,9 +30,11 @@
  *   child_index == UINT32_MAX        - occupied, no children (leaf)
  *   child_index in 1..UINT32_MAX-1   - occupied, children at that block index
  *
- * Block 0 is reserved as the empty-slot sentinel: it is the root block, stored
- * only in RC_TRIE_NAME.root, never as a child_index.  This works because make()
- * allocates block 0 before any add() runs, so every child block has index >= 1.
+ * The trie's `root` field uses the same off-by-one the pool free-list does: it
+ * stores the root block index + 1, so 0 is free to mean "no root block".  The
+ * very first block a pool ever hands out is index 0, always claimed by some trie's
+ * root (add allocates the root before any child block), so a child link is never
+ * index 0 - which keeps child_index == 0 unambiguously "empty".
  *
  * Hash descent
  * ------------
@@ -48,13 +57,15 @@
  * fills the vacancy by copying up the first occupied node from the child block
  * and then deleting that recursively.  If a child block becomes entirely empty
  * its link is cleared (child_index set to UINT32_MAX, making the parent a leaf
- * again) and the empty block is freed back to the pool for reuse.
+ * again) and the empty block is freed back to the pool for reuse.  The root block
+ * is never freed, so once set `root` stays put.
  *
  * Lifecycle
  * ---------
- * Make a pool, then make one or more tries on it.  A zero-initialised trie is
- * not valid; always use make().  find(), add(), and delete() assert t->pool is
- * not NULL.
+ * Zero-initialise a trie ({ 0 }) and use it - no make() needed.  add() lazily
+ * allocates the root block on the first insert.  find(), contains() and delete()
+ * on an empty trie (root == 0) report "not present" without touching the pool.
+ * Free the backing with pool_deinit.
  *
  * Define before including:
  *   RC_TRIE_KEY_TYPE     key type (required)
@@ -75,23 +86,31 @@
  *   RC_TRIE_NAME_node  { RC_TRIE_KEY_TYPE key; [RC_TRIE_VALUE_TYPE val;] uint32_t child_index; }
  *                      (val present only in a map)
  *   RC_TRIE_NAME_pool  rc_pool of 16-node blocks; shared by tries
- *   RC_TRIE_NAME       { RC_TRIE_NAME_pool *pool; uint32_t root; }
+ *   RC_TRIE_NAME       { uint32_t root; }   ({ 0 } is a valid empty trie)
  *
  * Generated functions (all static inline)
  * ----------------------------------------
+ * The pool is passed to every operation; the trie is passed BY VALUE (it is a
+ * plain value), except add() which takes it by pointer because it may lazily set
+ * the root on the first insert.  The index accessors take only the pool, since a
+ * node index is pool-global, not tied to one trie.  Read-only operations take a
+ * CONST pool (contains / find / key_get / value_get and the by-value getters); only
+ * the mutators and the pointer accessors (which hand out writable access) take a
+ * mutable pool.
  *   RC_TRIE_NAME_pool    NAME_pool_make(uint32_t min_blocks, rc_arena *arena)
  *   void                 NAME_pool_reserve(NAME_pool *pool, uint32_t min_blocks, rc_arena *arena)
  *   void                 NAME_pool_deinit(NAME_pool *pool, rc_arena *arena)
- *   RC_TRIE_NAME         NAME_make(NAME_pool *pool, rc_arena *arena)
- *   bool                 NAME_contains(NAME *t, RC_TRIE_KEY_TYPE key)
- *   bool                 NAME_add(NAME *t, RC_TRIE_KEY_TYPE key, [RC_TRIE_VALUE_TYPE val,] rc_arena *arena)
- *   bool                 NAME_delete(NAME *t, RC_TRIE_KEY_TYPE key)
+ *   bool                 NAME_contains(NAME t, const NAME_pool *pool, RC_TRIE_KEY_TYPE key)
+ *   bool                 NAME_add(NAME *t, NAME_pool *pool, RC_TRIE_KEY_TYPE key, [RC_TRIE_VALUE_TYPE val,] rc_arena *arena)
+ *   bool                 NAME_delete(NAME t, NAME_pool *pool, RC_TRIE_KEY_TYPE key)
+ *   RC_TRIE_KEY_TYPE     NAME_key_get(const NAME_pool *pool, uint32_t index)
+ *   const RC_TRIE_KEY_TYPE *NAME_key_at(const NAME_pool *pool, uint32_t index)
  *   -- map only (RC_TRIE_VALUE_TYPE defined) --
- *   uint32_t             NAME_find(NAME *t, RC_TRIE_KEY_TYPE key)
- *   RC_TRIE_VALUE_TYPE  *NAME_find_ptr(NAME *t, RC_TRIE_KEY_TYPE key)
- *   RC_TRIE_VALUE_TYPE   NAME_value_get(NAME *t, uint32_t index)
- *   void                 NAME_value_set(NAME *t, uint32_t index, RC_TRIE_VALUE_TYPE value)
- *   RC_TRIE_VALUE_TYPE  *NAME_value_at(NAME *t, uint32_t index)
+ *   uint32_t             NAME_find(NAME t, const NAME_pool *pool, RC_TRIE_KEY_TYPE key)
+ *   RC_TRIE_VALUE_TYPE  *NAME_find_ptr(NAME t, NAME_pool *pool, RC_TRIE_KEY_TYPE key)
+ *   RC_TRIE_VALUE_TYPE   NAME_value_get(const NAME_pool *pool, uint32_t index)
+ *   void                 NAME_value_set(NAME_pool *pool, uint32_t index, RC_TRIE_VALUE_TYPE value)
+ *   RC_TRIE_VALUE_TYPE  *NAME_value_at(NAME_pool *pool, uint32_t index)
  *
  * contains() reports whether a key is present (both set and map tries).  add()
  * returns true if the key was new, false if it was already present (a map then
@@ -112,16 +131,16 @@
  *
  *   rc_arena arena = rc_arena_make_default();
  *
- *   // one pool can back many independent tries
+ *   // one pool can back many independent tries; a trie is just { 0 }
  *   rc_trie_u64_pool pool = rc_trie_u64_pool_make(0, &arena);
- *   rc_trie_u64 a = rc_trie_u64_make(&pool, &arena);
- *   rc_trie_u64 b = rc_trie_u64_make(&pool, &arena);
+ *   rc_trie_u64 a = { 0 };
+ *   rc_trie_u64 b = { 0 };
  *
- *   rc_trie_u64_add(&a, 0xDEADBEEF, 42, &arena);     // true (new)
- *   uint32_t i = rc_trie_u64_find(&a, 0xDEADBEEF);   // i != RC_INDEX_NONE
- *   int v = rc_trie_u64_value_get(&a, i);            // 42
- *   int *p = rc_trie_u64_find_ptr(&a, 0xDEADBEEF);   // direct pointer (or NULL)
- *   rc_trie_u64_find(&b, 0xDEADBEEF);                // RC_INDEX_NONE: b is independent
+ *   rc_trie_u64_add(&a, &pool, 0xDEADBEEF, 42, &arena);   // true (new)
+ *   uint32_t i = rc_trie_u64_find(a, &pool, 0xDEADBEEF);  // i != RC_INDEX_NONE
+ *   int v = rc_trie_u64_value_get(&pool, i);              // 42
+ *   int *p = rc_trie_u64_find_ptr(a, &pool, 0xDEADBEEF);  // direct pointer (or NULL)
+ *   rc_trie_u64_find(b, &pool, 0xDEADBEEF);               // RC_INDEX_NONE: b is independent
  *
  *   rc_trie_u64_pool_deinit(&pool, &arena);
  */
@@ -168,9 +187,10 @@ static inline uint64_t rc_trie_ror64_(uint64_t h)
 
 /* ---- internal pool-call macros ---- */
 
-#define RC_TRIE_POOL_ALLOC_ RC_CONCAT(RC_TRIE_POOL_, _alloc)
-#define RC_TRIE_POOL_FREE_  RC_CONCAT(RC_TRIE_POOL_, _free)
-#define RC_TRIE_POOL_AT_    RC_CONCAT(RC_TRIE_POOL_, _at)
+#define RC_TRIE_POOL_ALLOC_    RC_CONCAT(RC_TRIE_POOL_, _alloc)
+#define RC_TRIE_POOL_FREE_     RC_CONCAT(RC_TRIE_POOL_, _free)
+#define RC_TRIE_POOL_AT_       RC_CONCAT(RC_TRIE_POOL_, _at)
+#define RC_TRIE_POOL_AT_CONST_ RC_CONCAT(RC_TRIE_POOL_, _at_const)
 
 /* ---- internal function-name macros ---- */
 
@@ -181,7 +201,6 @@ static inline uint64_t rc_trie_ror64_(uint64_t h)
 
 /* ---- public function-name macros ---- */
 
-#define RC_TRIE_MAKE_         RC_CONCAT(RC_TRIE_NAME, _make)
 #define RC_TRIE_CONTAINS_     RC_CONCAT(RC_TRIE_NAME, _contains)
 #define RC_TRIE_FIND_         RC_CONCAT(RC_TRIE_NAME, _find)
 #define RC_TRIE_FIND_PTR_     RC_CONCAT(RC_TRIE_NAME, _find_ptr)
@@ -222,12 +241,14 @@ typedef struct RC_TRIE_NODES_ {
 #include "richc/template/pool.h"
 
 /*
- * Trie: a 16-way hash trie backed by a node pool.  root is the block index of
- * the root block; always valid after make().  Do NOT zero-initialise.
+ * Trie: a 16-way hash trie backed by a node pool.  It is nothing but a root block
+ * index, stored + 1 so that 0 means "no root block yet".  A zero-initialised trie
+ * ({ 0 }) is a valid empty trie, so no make() is needed; add() allocates the root
+ * on the first insert.  The pool is passed to every operation, never stored here,
+ * so the trie is a position-independent value.
  */
 typedef struct RC_TRIE_NAME {
-    RC_TRIE_POOL_ *pool;
-    uint32_t       root;
+    uint32_t root;
 } RC_TRIE_NAME;
 
 /*
@@ -263,40 +284,30 @@ static inline bool RC_TRIE_BLOCK_EMPTY_(RC_TRIE_NODES_ *block)
     return true;
 }
 
-/* ---- trie make ---- */
-
-/* Make a trie backed by pool, allocating its own root block.  pool/arena != NULL. */
-static inline RC_TRIE_NAME RC_TRIE_MAKE_(RC_TRIE_POOL_ *pool, rc_arena *arena)
-{
-    RC_ASSERT(pool != NULL);
-    RC_ASSERT(arena != NULL);
-    return (RC_TRIE_NAME) {
-        .pool = pool,
-        .root = RC_TRIE_ALLOC_BLOCK_(pool, arena)
-    };
-}
-
 /* ---- probe / contains ---- */
 
 /*
  * Internal: the node index of key (block * 16 + slot), or RC_INDEX_NONE if
- * absent.  The index packs the block index and the 4-bit slot; a valid pool never
- * holds anywhere near 2^28 blocks, so it fits a uint32_t.  The index is stable
- * across pool growth (unlike a raw pointer) but only valid until the next
- * add/delete that restructures the trie.
+ * absent (including an empty trie, root == 0).  The index packs the block index
+ * and the 4-bit slot; a valid pool never holds anywhere near 2^28 blocks, so it
+ * fits a uint32_t.  The index is stable across pool growth (unlike a raw pointer)
+ * but only valid until the next add/delete that restructures the trie.
  */
-static inline uint32_t RC_TRIE_PROBE_(RC_TRIE_NAME *t, RC_TRIE_KEY_TYPE key)
+static inline uint32_t RC_TRIE_PROBE_(RC_TRIE_NAME t, const RC_TRIE_POOL_ *pool, RC_TRIE_KEY_TYPE key)
 {
-    RC_ASSERT(t->pool != NULL);
+    RC_ASSERT(pool != NULL);
+    if (t.root == 0) {
+        return RC_INDEX_NONE;   // empty trie: no root block
+    }
 
     uint64_t h         = (uint64_t)RC_TRIE_HASH(key);
-    uint32_t block_idx = t->root;
+    uint32_t block_idx = t.root - 1;
 
     for (;;) {
         uint32_t slot = (uint32_t)(h & 0xF);
         h = rc_trie_ror64_(h);
 
-        RC_TRIE_NODE_ *node = &RC_TRIE_POOL_AT_(t->pool, block_idx)->node[slot];
+        const RC_TRIE_NODE_ *node = &RC_TRIE_POOL_AT_CONST_(pool, block_idx)->node[slot];
 
         if (node->child_index == 0)          return RC_INDEX_NONE;   // empty slot
         if (RC_TRIE_EQUAL(node->key, key))   return block_idx * 16 + slot;
@@ -305,32 +316,34 @@ static inline uint32_t RC_TRIE_PROBE_(RC_TRIE_NAME *t, RC_TRIE_KEY_TYPE key)
     }
 }
 
-/* True if key is present.  Available for both set and map tries.  t->pool != NULL. */
-static inline bool RC_TRIE_CONTAINS_(RC_TRIE_NAME *t, RC_TRIE_KEY_TYPE key)
+/* True if key is present.  Available for both set and map tries. */
+static inline bool RC_TRIE_CONTAINS_(RC_TRIE_NAME t, const RC_TRIE_POOL_ *pool, RC_TRIE_KEY_TYPE key)
 {
-    return RC_TRIE_PROBE_(t, key) != RC_INDEX_NONE;
+    return RC_TRIE_PROBE_(t, pool, key) != RC_INDEX_NONE;
 }
 
 /* ---- key access by node index (set and map tries) ---- */
 
 /*
  * The key at a node index (block * 16 + slot), as returned by find or handed to a
- * foreach callback.  key_at returns a pointer (usual pool-pointer rule: valid until
- * a relocating grow); key_get returns it by value.  Both assert the index refers to
- * an occupied node.  A key is immutable once placed, so there is no key_set.
+ * foreach callback.  A node index is pool-global, so these take only the pool, not
+ * the trie.  A key is immutable once placed (there is no key_set), so BOTH forms are
+ * read-only: they take a const pool, and key_at returns a const pointer (usual
+ * pool-pointer rule: valid until a relocating grow), key_get returns it by value.
+ * Both assert the index refers to an occupied node.
  */
-static inline RC_TRIE_KEY_TYPE *RC_TRIE_KEY_AT_(RC_TRIE_NAME *t, uint32_t index)
+static inline const RC_TRIE_KEY_TYPE *RC_TRIE_KEY_AT_(const RC_TRIE_POOL_ *pool, uint32_t index)
 {
     RC_ASSERT(index != RC_INDEX_NONE);
-    RC_TRIE_NODE_ *node = &RC_TRIE_POOL_AT_(t->pool, index / 16)->node[index % 16];
+    const RC_TRIE_NODE_ *node = &RC_TRIE_POOL_AT_CONST_(pool, index / 16)->node[index % 16];
     RC_ASSERT(node->child_index != 0);   // the index must refer to an occupied node
     return &node->key;
 }
 
 /* The key at a node index, by value. */
-static inline RC_TRIE_KEY_TYPE RC_TRIE_KEY_GET_(RC_TRIE_NAME *t, uint32_t index)
+static inline RC_TRIE_KEY_TYPE RC_TRIE_KEY_GET_(const RC_TRIE_POOL_ *pool, uint32_t index)
 {
-    return *RC_TRIE_KEY_AT_(t, index);
+    return *RC_TRIE_KEY_AT_(pool, index);
 }
 
 #ifdef RC_TRIE_VALUE_TYPE
@@ -341,37 +354,41 @@ static inline RC_TRIE_KEY_TYPE RC_TRIE_KEY_GET_(RC_TRIE_NAME *t, uint32_t index)
  * find returns a node index (block * 16 + slot) - stable across pool growth, so
  * prefer it for holding a result.  value_at returns a pointer to its value, which
  * follows the usual pool rule (survives in-place growth, invalidated by a
- * relocating grow); it asserts the index refers to an occupied node.
+ * relocating grow); it asserts the index refers to an occupied node.  A node index
+ * is pool-global, so these take only the pool, not the trie.
  */
-static inline RC_TRIE_VALUE_TYPE *RC_TRIE_VALUE_AT_(RC_TRIE_NAME *t, uint32_t index)
+static inline RC_TRIE_VALUE_TYPE *RC_TRIE_VALUE_AT_(RC_TRIE_POOL_ *pool, uint32_t index)
 {
     RC_ASSERT(index != RC_INDEX_NONE);
-    RC_TRIE_NODE_ *node = &RC_TRIE_POOL_AT_(t->pool, index / 16)->node[index % 16];
+    RC_TRIE_NODE_ *node = &RC_TRIE_POOL_AT_(pool, index / 16)->node[index % 16];
     RC_ASSERT(node->child_index != 0);   // the index must refer to an occupied node
     return &node->val;
 }
 
-/* The value at a node index, by value. */
-static inline RC_TRIE_VALUE_TYPE RC_TRIE_VALUE_GET_(RC_TRIE_NAME *t, uint32_t index)
+/* The value at a node index, by value.  Read-only, so it takes a const pool. */
+static inline RC_TRIE_VALUE_TYPE RC_TRIE_VALUE_GET_(const RC_TRIE_POOL_ *pool, uint32_t index)
 {
-    return *RC_TRIE_VALUE_AT_(t, index);
+    RC_ASSERT(index != RC_INDEX_NONE);
+    const RC_TRIE_NODE_ *node = &RC_TRIE_POOL_AT_CONST_(pool, index / 16)->node[index % 16];
+    RC_ASSERT(node->child_index != 0);   // the index must refer to an occupied node
+    return node->val;
 }
 
 /* Store a value at a node index. */
-static inline void RC_TRIE_VALUE_SET_(RC_TRIE_NAME *t, uint32_t index, RC_TRIE_VALUE_TYPE value)
+static inline void RC_TRIE_VALUE_SET_(RC_TRIE_POOL_ *pool, uint32_t index, RC_TRIE_VALUE_TYPE value)
 {
-    *RC_TRIE_VALUE_AT_(t, index) = value;
+    *RC_TRIE_VALUE_AT_(pool, index) = value;
 }
 
 /* ---- find (map tries) ---- */
 
 /*
  * Node index of key (block * 16 + slot), or RC_INDEX_NONE if absent.  Pair it
- * with value_get / value_set / value_at.  t->pool != NULL.
+ * with value_get / value_set / value_at.
  */
-static inline uint32_t RC_TRIE_FIND_(RC_TRIE_NAME *t, RC_TRIE_KEY_TYPE key)
+static inline uint32_t RC_TRIE_FIND_(RC_TRIE_NAME t, const RC_TRIE_POOL_ *pool, RC_TRIE_KEY_TYPE key)
 {
-    return RC_TRIE_PROBE_(t, key);
+    return RC_TRIE_PROBE_(t, pool, key);
 }
 
 /*
@@ -380,10 +397,10 @@ static inline uint32_t RC_TRIE_FIND_(RC_TRIE_NAME *t, RC_TRIE_KEY_TYPE key)
  * growth, invalidated by a relocating grow), whereas the index from find is
  * always growth-stable - prefer find + value_* to hold a result across growth.
  */
-static inline RC_TRIE_VALUE_TYPE *RC_TRIE_FIND_PTR_(RC_TRIE_NAME *t, RC_TRIE_KEY_TYPE key)
+static inline RC_TRIE_VALUE_TYPE *RC_TRIE_FIND_PTR_(RC_TRIE_NAME t, RC_TRIE_POOL_ *pool, RC_TRIE_KEY_TYPE key)
 {
-    uint32_t index = RC_TRIE_FIND_(t, key);
-    return index == RC_INDEX_NONE ? NULL : RC_TRIE_VALUE_AT_(t, index);
+    uint32_t index = RC_TRIE_FIND_(t, pool, key);
+    return index == RC_INDEX_NONE ? NULL : RC_TRIE_VALUE_AT_(pool, index);
 }
 
 #endif /* RC_TRIE_VALUE_TYPE */
@@ -393,30 +410,37 @@ static inline RC_TRIE_VALUE_TYPE *RC_TRIE_FIND_PTR_(RC_TRIE_NAME *t, RC_TRIE_KEY
 /*
  * Insert (map: insert or update).  Returns true if the key was new, false if it
  * was already present (a map then replaces its value).  In set tries there is no
- * val parameter.  t->pool and arena must not be NULL.
+ * val parameter.  pool and arena must not be NULL.
  *
- * When a slot is already owned by a different key, that key stays and the new
- * key descends into children; a child block is allocated on demand.  Because
- * the alloc may reallocate the backing, the child link is written through a
- * freshly re-derived slot, never through the cached node pointer.
+ * add is the one operation that takes the trie by pointer: on the first insert
+ * into an empty trie (root == 0) it lazily allocates the root block and writes the
+ * root back.  When a slot is already owned by a different key, that key stays and
+ * the new key descends into children; a child block is allocated on demand.
+ * Because an alloc may reallocate the backing, links are written through freshly
+ * re-derived slots, never through a cached node pointer.
  */
-static inline bool RC_TRIE_ADD_(RC_TRIE_NAME *t, RC_TRIE_KEY_TYPE key,
+static inline bool RC_TRIE_ADD_(RC_TRIE_NAME *t, RC_TRIE_POOL_ *pool, RC_TRIE_KEY_TYPE key,
 #ifdef RC_TRIE_VALUE_TYPE
                                 RC_TRIE_VALUE_TYPE val,
 #endif
                                 rc_arena *arena)
 {
-    RC_ASSERT(t->pool != NULL);
+    RC_ASSERT(t != NULL);
+    RC_ASSERT(pool != NULL);
     RC_ASSERT(arena != NULL);
 
+    if (t->root == 0) {
+        t->root = RC_TRIE_ALLOC_BLOCK_(pool, arena) + 1;   // lazily create the root block
+    }
+
     uint64_t h         = (uint64_t)RC_TRIE_HASH(key);
-    uint32_t block_idx = t->root;
+    uint32_t block_idx = t->root - 1;
 
     for (;;) {
         uint32_t slot = (uint32_t)(h & 0xF);
         h = rc_trie_ror64_(h);
 
-        RC_TRIE_NODE_ *node = &RC_TRIE_POOL_AT_(t->pool, block_idx)->node[slot];
+        RC_TRIE_NODE_ *node = &RC_TRIE_POOL_AT_(pool, block_idx)->node[slot];
 
         if (node->child_index == 0) {
             // empty slot: place key here as a leaf
@@ -439,8 +463,8 @@ static inline bool RC_TRIE_ADD_(RC_TRIE_NAME *t, RC_TRIE_KEY_TYPE key,
 
         if (node->child_index == UINT32_MAX) {
             // first collision here: allocate a child block (may realloc the pool)
-            uint32_t child_idx = RC_TRIE_ALLOC_BLOCK_(t->pool, arena);
-            RC_TRIE_POOL_AT_(t->pool, block_idx)->node[slot].child_index = child_idx;
+            uint32_t child_idx = RC_TRIE_ALLOC_BLOCK_(pool, arena);
+            RC_TRIE_POOL_AT_(pool, block_idx)->node[slot].child_index = child_idx;
             block_idx = child_idx;
         }
         else {
@@ -528,11 +552,14 @@ static inline bool RC_TRIE_DEL_FROM_(RC_TRIE_POOL_ *pool, uint32_t block_idx,
 
 /* ---- delete ---- */
 
-/* Remove key.  Returns true if the key was present.  t->pool != NULL. */
-static inline bool RC_TRIE_DELETE_(RC_TRIE_NAME *t, RC_TRIE_KEY_TYPE key)
+/* Remove key.  Returns true if the key was present (false on an empty trie). */
+static inline bool RC_TRIE_DELETE_(RC_TRIE_NAME t, RC_TRIE_POOL_ *pool, RC_TRIE_KEY_TYPE key)
 {
-    RC_ASSERT(t->pool != NULL);
-    return RC_TRIE_DEL_FROM_(t->pool, t->root, key, 0);
+    RC_ASSERT(pool != NULL);
+    if (t.root == 0) {
+        return false;   // empty trie: nothing to delete
+    }
+    return RC_TRIE_DEL_FROM_(pool, t.root - 1, key, 0);
 }
 
 /* ---- cleanup ---- */
@@ -543,11 +570,11 @@ static inline bool RC_TRIE_DELETE_(RC_TRIE_NAME *t, RC_TRIE_KEY_TYPE key)
 #undef RC_TRIE_POOL_ALLOC_
 #undef RC_TRIE_POOL_FREE_
 #undef RC_TRIE_POOL_AT_
+#undef RC_TRIE_POOL_AT_CONST_
 #undef RC_TRIE_ALLOC_BLOCK_
 #undef RC_TRIE_BLOCK_EMPTY_
 #undef RC_TRIE_DEL_FROM_
 #undef RC_TRIE_PROBE_
-#undef RC_TRIE_MAKE_
 #undef RC_TRIE_CONTAINS_
 #undef RC_TRIE_FIND_
 #undef RC_TRIE_FIND_PTR_

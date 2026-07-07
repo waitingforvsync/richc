@@ -968,6 +968,12 @@ the hash. Nodes are stored 16 to a block, and the blocks live in an `rc_pool`
 recycled by a later allocation rather than leaking. One pool can back many
 independent tries.
 
+A trie is a **value**, not a handle: it is nothing but a root block index, so it
+is trivially copyable and a zero-initialised trie (`{ 0 }`) is a valid empty trie
+- no `make` call, matching the pool it sits on. The pool is **not** stored in the
+trie; it is passed to every operation (like the pool's own accessors), so a struct
+that owns tries plus a shared pool can be copied or returned by value freely.
+
 Define `RC_TRIE_VALUE_TYPE` for a map; omit it for a set (then the node carries
 no value, `add` takes no value, and `find` / `find_ptr` / `value_*` are not
 generated).
@@ -992,30 +998,43 @@ multi-token keys). All are `#undef`'d by the header.
 
 ```c
 rc_trie_u64_pool                              // an rc_pool of 16-node blocks
-rc_trie_u64                                   // { pool *; uint32_t root; }
+rc_trie_u64                                   // { uint32_t root; }  ({ 0 } is a valid empty trie)
 
 rc_trie_u64_pool rc_trie_u64_pool_make(uint32_t min_blocks, rc_arena *arena);
 void             rc_trie_u64_pool_reserve(rc_trie_u64_pool *pool, uint32_t min_blocks, rc_arena *arena);
 void             rc_trie_u64_pool_deinit(rc_trie_u64_pool *pool, rc_arena *arena);
 
-rc_trie_u64      rc_trie_u64_make(rc_trie_u64_pool *pool, rc_arena *arena);
-bool             rc_trie_u64_contains(rc_trie_u64 *t, uint64_t key);                   // both set and map
-bool             rc_trie_u64_add(rc_trie_u64 *t, uint64_t key, int val, rc_arena *arena);  // a set omits val
-bool             rc_trie_u64_delete(rc_trie_u64 *t, uint64_t key);                     // true if present
+// The pool is passed to every op; the trie goes BY VALUE, except add() which takes it by
+// pointer (it may lazily set the root on the first insert). Index accessors take only the pool.
+// Read-only ops take a CONST pool; only mutators + the pointer accessors take a mutable one.
+bool             rc_trie_u64_contains(rc_trie_u64 t, const rc_trie_u64_pool *pool, uint64_t key);             // both set and map
+bool             rc_trie_u64_add(rc_trie_u64 *t, rc_trie_u64_pool *pool, uint64_t key, int val, rc_arena *arena);  // a set omits val
+bool             rc_trie_u64_delete(rc_trie_u64 t, rc_trie_u64_pool *pool, uint64_t key);                     // true if present
 
 // map only (RC_TRIE_VALUE_TYPE defined):
-uint32_t         rc_trie_u64_find(rc_trie_u64 *t, uint64_t key);                       // node index, or RC_INDEX_NONE
-int             *rc_trie_u64_find_ptr(rc_trie_u64 *t, uint64_t key);                   // value pointer, or NULL
-int              rc_trie_u64_value_get(rc_trie_u64 *t, uint32_t index);
-void             rc_trie_u64_value_set(rc_trie_u64 *t, uint32_t index, int value);
-int             *rc_trie_u64_value_at(rc_trie_u64 *t, uint32_t index);
+uint32_t         rc_trie_u64_find(rc_trie_u64 t, const rc_trie_u64_pool *pool, uint64_t key);                 // node index, or RC_INDEX_NONE
+int             *rc_trie_u64_find_ptr(rc_trie_u64 t, rc_trie_u64_pool *pool, uint64_t key);                   // value pointer, or NULL
+int              rc_trie_u64_value_get(const rc_trie_u64_pool *pool, uint32_t index);
+void             rc_trie_u64_value_set(rc_trie_u64_pool *pool, uint32_t index, int value);
+int             *rc_trie_u64_value_at(rc_trie_u64_pool *pool, uint32_t index);
 
-// key read-back by node index (both set and map):
-uint64_t         rc_trie_u64_key_get(rc_trie_u64 *t, uint32_t index);
-uint64_t        *rc_trie_u64_key_at(rc_trie_u64 *t, uint32_t index);
+// key read-back by node index (both set and map); keys are immutable, so both are const:
+uint64_t         rc_trie_u64_key_get(const rc_trie_u64_pool *pool, uint32_t index);
+const uint64_t  *rc_trie_u64_key_at(const rc_trie_u64_pool *pool, uint32_t index);
 ```
 
+- A trie is constructed by zero-initialising it (`rc_trie_u64 t = { 0 };`) - there is no `make`.
+  The root block is allocated lazily by the first `add`; `find` / `contains` / `delete` on an empty
+  trie report "absent" without touching the pool. `root` stores the block index + 1, so `0` means
+  "no root block" (the same off-by-one the pool free-list uses).
 - `contains` reports membership and works for both set and map tries.
+- `add` is the only op taking the trie by pointer (it may allocate + store the root on the first
+  insert); every other op takes the trie by value, and the index accessors take only the pool (a
+  node index is pool-global, not tied to one trie).
+- Read-only ops take a `const` pool, so a const owner can look symbols up without casting: `contains`,
+  `find`, `value_get`, `key_get`, and both key accessors (`key_at` returns a `const` pointer - a key is
+  immutable once placed). Only the mutators (`add`, `delete`, `value_set`) and the writable value
+  accessors (`value_at`, `find_ptr`, which hand out mutable access) take a mutable pool.
 - `add` returns true when the key was new, false when it was already present (a
   map then replaces its value); a set's `add` takes no `val`.
 - `find` (map only) returns a node index (`block * 16 + slot`), or `RC_INDEX_NONE`
@@ -1027,10 +1046,10 @@ uint64_t        *rc_trie_u64_key_at(rc_trie_u64 *t, uint32_t index);
   access, but the pointer follows the usual pool rule (survives in-place growth,
   invalidated by a relocating grow), whereas the index from `find` is always
   growth-stable.
-- `key_get` / `key_at` read the KEY at a node index (by value / by pointer),
+- `key_get` / `key_at` read the KEY at a node index (by value / by const pointer),
   available for both set and map tries. A node index comes from `find` (map) or is
   handed to a [`hash_trie_foreach`](#richctemplatealgorithmhash_trie_foreachh---iterate-every-entry)
-  callback. A key is immutable once placed, so there is no `key_set`.
+  callback. A key is immutable once placed, so there is no `key_set` and `key_at` is const.
 - The trie has no built-in iteration; the
   [`hash_trie_foreach`](#richctemplatealgorithmhash_trie_foreachh---iterate-every-entry)
   algorithm template visits every entry (walking from the root, since one pool can
@@ -1082,6 +1101,7 @@ void          rc_pool_thing_free(rc_pool_thing *pool, uint32_t index);
 thing         rc_pool_thing_get(const rc_pool_thing *pool, uint32_t index);
 void          rc_pool_thing_set(rc_pool_thing *pool, uint32_t index, thing value);
 thing        *rc_pool_thing_at(rc_pool_thing *pool, uint32_t index);    // pointer; see below
+const thing  *rc_pool_thing_at_const(const rc_pool_thing *pool, uint32_t index);  // read-only pointer
 rc_bitset     rc_pool_thing_free_bitset(const rc_pool_thing *pool, rc_arena *arena);  // dead slots
 ```
 
@@ -1089,7 +1109,8 @@ rc_bitset     rc_pool_thing_free_bitset(const rc_pool_thing *pool, rc_arena *are
   a freed slot when one exists, otherwise appends, growing the backing. The index
   is always stable; `at` pointers survive in-place growth (the intended
   one-growable-per-arena case) but are invalidated if the backing relocates
-  because it shares an arena with other growables.
+  because it shares an arena with other growables. `at_const` is the same pointer
+  through a `const` pool, for read-only access.
 - `free` pushes the slot onto the free list, except when it is the final slot,
   which is popped so the backing does not keep a dead tail (this does not cascade
   into earlier free entries). Double-freeing or freeing an out-of-range index is
@@ -1156,7 +1177,7 @@ allocates nothing.
 A preprocessor template (like `pool_foreach.h`) that generates a function to visit
 every live entry of an `rc_trie`. The trie has no built-in iteration; this template
 bridges that by walking from the root over the 16-node blocks and invoking a
-caller-supplied macro with the trie and each entry's node index. It walks from the
+caller-supplied macro with the POOL and each entry's node index. It walks from the
 root (rather than scanning the backing pool) because one pool can back many tries,
 so a flat pool scan could not tell one trie's entries from another's. Include it
 again (after redefining the control macros) to generate another iterator.
@@ -1170,40 +1191,52 @@ again (after redefining the control macros) to generate another iterator.
 #include "richc/template/hash_trie.h"       // rc_trie_uint64_t + key_get / value_get
 
 typedef struct { int total; } sum_ctx;
-static void add_val(sum_ctx *c, rc_trie_uint64_t *t, uint32_t i)
-{ c->total += rc_trie_uint64_t_value_get(t, i); }
+static void add_val(sum_ctx *c, const rc_trie_uint64_t_pool *pool, uint32_t i)
+{ c->total += rc_trie_uint64_t_value_get(pool, i); }
 
-#define RC_TRIE_FOREACH_TYPE          uint64_t
+#define RC_TRIE_FOREACH_TRIE          rc_trie_uint64_t
 #define RC_TRIE_FOREACH_CTX           sum_ctx
-#define RC_TRIE_FOREACH_FUNC(c, t, i) add_val(c, t, i)
+#define RC_TRIE_FOREACH_CONST                       // read-only walk: const pool
+#define RC_TRIE_FOREACH_FUNC(c, p, i) add_val(c, p, i)
 #include "richc/template/algorithm/hash_trie_foreach.h"
-// void rc_trie_foreach_uint64_t(rc_trie_uint64_t *t, sum_ctx *ctx);
+// void rc_trie_uint64_t_foreach(rc_trie_uint64_t t, const rc_trie_uint64_t_pool *pool, sum_ctx *ctx);
 ```
 
 | Control macro | Required | Default | Meaning |
 |---------------|----------|---------|---------|
-| `RC_TRIE_FOREACH_TYPE` | yes | - | trie suffix; drives the defaults |
+| `RC_TRIE_FOREACH_TRIE` | yes | - | trie type name (the same passed to `RC_TRIE_NAME`, e.g. `rc_trie_symbol`); drives the defaults |
 | `RC_TRIE_FOREACH_FUNC` | yes | - | per-entry callback (see below) |
 | `RC_TRIE_FOREACH_CTX`  | no  | none | context type threaded to the callback |
-| `RC_TRIE_FOREACH_TRIE` | no  | `rc_trie_<TYPE>` | trie type name (override for a custom `RC_TRIE_NAME`) |
-| `RC_TRIE_FOREACH_NAME` | no  | `rc_trie_foreach_<TYPE>` | generated function name |
+| `RC_TRIE_FOREACH_CONST` | no | (mutable) | define for a read-only walk (const pool) |
+| `RC_TRIE_FOREACH_NAME` | no  | `<TRIE>_foreach` | generated function name |
 
 All macros defined before inclusion are undefined again by the header.
 
+### Const or mutable
+
+By default the pool is **mutable**, so a callback may update entries in place with
+`value_set` (the walk never adds or deletes, so in-place updates are safe). Define
+`RC_TRIE_FOREACH_CONST` for a **read-only** walk: the pool arrives as a `const` pointer,
+so a const owner can iterate without casting, but the callback may only read (via
+`key_get` / `value_get`) - accumulate any output into the mutable context. The example
+above adds `#define RC_TRIE_FOREACH_CONST` (a pure accumulator, so read-only fits).
+
 ### Callback and context
 
-Without a context the callback is `RC_TRIE_FOREACH_FUNC(trie, index)`, where `trie`
-is the `TRIE *` and `index` is the live entry's node index - the callback reaches
-the key and value through the trie's `key_get` / `value_get` (the index-over-pointer
-convention). Defining `RC_TRIE_FOREACH_CTX` adds a context pointer as the callback's
-first argument and as a function parameter:
+Without a context the callback is `RC_TRIE_FOREACH_FUNC(pool, index)`, where `pool`
+is the `TRIE_pool *` (`const` iff `RC_TRIE_FOREACH_CONST` is defined) and `index` is the
+live entry's node index - the callback reaches the key and value through the trie's
+`key_get` / `value_get` (which take the pool, the index-over-pointer convention).
+Defining `RC_TRIE_FOREACH_CTX` adds a context pointer as the callback's first argument
+and as a function parameter:
 
 ```c
-#define RC_TRIE_FOREACH_FUNC(ctx, trie, index)  ...   // ctx is RC_TRIE_FOREACH_CTX *
+#define RC_TRIE_FOREACH_FUNC(ctx, pool, index)  ...   // ctx is RC_TRIE_FOREACH_CTX *
 ```
 
-The generated signature is `void NAME(TRIE *t)` without a context, or
-`void NAME(TRIE *t, CTX *ctx)` with one. Entries are visited in an unspecified order
+The generated signature is `void NAME(TRIE t, [const] TRIE_pool *pool)` without a context, or
+`void NAME(TRIE t, [const] TRIE_pool *pool, CTX *ctx)` with one - the trie by value, the pool
+explicitly (an empty trie visits nothing). Entries are visited in an unspecified order
 (a trie is unordered). Iteration allocates nothing (no scratch arena, unlike
 `pool_foreach`); do not add or delete keys during iteration.
 
@@ -1327,20 +1360,19 @@ typedef struct { int total; } sum_ctx;
 static void add_cost(sum_ctx *c, rc_pool_thing *pool, uint32_t i)
 { c->total += rc_pool_thing_at(pool, i)->cost; }
 
-#define RC_POOL_FOREACH_TYPE          thing
+#define RC_POOL_FOREACH_POOL          rc_pool_thing
 #define RC_POOL_FOREACH_CTX           sum_ctx
 #define RC_POOL_FOREACH_FUNC(c, p, i) add_cost(c, p, i)
 #include "richc/template/algorithm/pool_foreach.h"
-// void rc_pool_foreach_thing(rc_pool_thing *pool, sum_ctx *ctx, rc_arena scratch);
+// void rc_pool_thing_foreach(rc_pool_thing *pool, sum_ctx *ctx, rc_arena scratch);
 ```
 
 | Control macro | Required | Default | Meaning |
 |---------------|----------|---------|---------|
-| `RC_POOL_FOREACH_TYPE` | yes | - | element type / suffix; drives the defaults |
+| `RC_POOL_FOREACH_POOL` | yes | - | pool type name (the same passed to `RC_POOL_NAME`, e.g. `rc_pool_thing`); drives the defaults |
 | `RC_POOL_FOREACH_FUNC` | yes | - | per-element callback (see below) |
 | `RC_POOL_FOREACH_CTX`  | no  | none | context type threaded to the callback |
-| `RC_POOL_FOREACH_POOL` | no  | `rc_pool_<TYPE>` | pool type name (override for a custom `RC_POOL_NAME`) |
-| `RC_POOL_FOREACH_NAME` | no  | `rc_pool_foreach_<TYPE>` | generated function name |
+| `RC_POOL_FOREACH_NAME` | no  | `<POOL>_foreach` | generated function name |
 
 All macros defined before inclusion are undefined again by the header.
 

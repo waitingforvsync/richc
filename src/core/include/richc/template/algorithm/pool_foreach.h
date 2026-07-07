@@ -9,11 +9,11 @@
  *
  * Control macros (define before including)
  * ----------------------------------------
- *   RC_POOL_FOREACH_TYPE   element type / suffix (required); drives the defaults
+ *   RC_POOL_FOREACH_POOL   pool type name (required), e.g. rc_pool_thing - the same
+ *                          name passed to RC_POOL_NAME; drives the defaults
  *   RC_POOL_FOREACH_FUNC   per-element callback (required; see below)
  *   RC_POOL_FOREACH_CTX    context type threaded to the callback (optional)
- *   RC_POOL_FOREACH_POOL   pool type name (optional; default rc_pool_<TYPE>)
- *   RC_POOL_FOREACH_NAME   function name (optional; default rc_pool_foreach_<TYPE>)
+ *   RC_POOL_FOREACH_NAME   function name (optional; default <POOL>_foreach)
  *
  * All macros defined before inclusion are undefined again by this header.
  *
@@ -43,19 +43,19 @@
  *   static void add_cost(sum_ctx *c, rc_pool_thing *pool, uint32_t i)
  *   { c->total += rc_pool_thing_at(pool, i)->cost; }
  *
- *   #define RC_POOL_FOREACH_TYPE          thing
+ *   #define RC_POOL_FOREACH_POOL          rc_pool_thing
  *   #define RC_POOL_FOREACH_CTX           sum_ctx
  *   #define RC_POOL_FOREACH_FUNC(c, p, i) add_cost(c, p, i)
  *   #include "richc/template/algorithm/pool_foreach.h"
- *   // void rc_pool_foreach_thing(rc_pool_thing *pool, sum_ctx *ctx, rc_arena scratch);
+ *   // void rc_pool_thing_foreach(rc_pool_thing *pool, sum_ctx *ctx, rc_arena scratch);
  */
 
 #include "richc/arena.h"    // rc_arena (by value), RC_CONCAT
 #include "richc/bitset.h"   // rc_bitset, rc_bitset_is_set
 
-#ifndef RC_POOL_FOREACH_TYPE
-#  define RC_POOL_FOREACH_TYPE int   // to keep intellisense happy
-#  error "RC_POOL_FOREACH_TYPE must be defined before including richc/template/algorithm/pool_foreach.h"
+#ifndef RC_POOL_FOREACH_POOL
+#  define RC_POOL_FOREACH_POOL rc_pool_int   // to keep intellisense happy
+#  error "RC_POOL_FOREACH_POOL must be defined before including richc/template/algorithm/pool_foreach.h"
 #endif
 
 #ifndef RC_POOL_FOREACH_FUNC
@@ -63,12 +63,8 @@
 #  error "RC_POOL_FOREACH_FUNC must be defined before including richc/template/algorithm/pool_foreach.h"
 #endif
 
-#ifndef RC_POOL_FOREACH_POOL
-#  define RC_POOL_FOREACH_POOL RC_CONCAT(rc_pool_, RC_POOL_FOREACH_TYPE)
-#endif
-
 #ifndef RC_POOL_FOREACH_NAME
-#  define RC_POOL_FOREACH_NAME RC_CONCAT(rc_pool_foreach_, RC_POOL_FOREACH_TYPE)
+#  define RC_POOL_FOREACH_NAME RC_CONCAT(RC_POOL_FOREACH_POOL, _foreach)
 #endif
 
 /*
@@ -113,4 +109,3 @@ static inline void RC_POOL_FOREACH_NAME(RC_POOL_FOREACH_POOL_CTX_PARAM_, rc_aren
 #undef RC_POOL_FOREACH_POOL
 #undef RC_POOL_FOREACH_CTX
 #undef RC_POOL_FOREACH_FUNC
-#undef RC_POOL_FOREACH_TYPE

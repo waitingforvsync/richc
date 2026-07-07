@@ -58,6 +58,7 @@
  *   RC_POOL_TYPE  NAME_get(const NAME *pool, uint32_t index)
  *   void          NAME_set(NAME *pool, uint32_t index, RC_POOL_TYPE value)
  *   RC_POOL_TYPE *NAME_at(NAME *pool, uint32_t index)             // pointer; see below
+ *   const RC_POOL_TYPE *NAME_at_const(const NAME *pool, uint32_t index)  // read-only pointer
  *   rc_bitset     NAME_free_bitset(const NAME *pool, rc_arena *arena)  // dead slots; see Iteration
  *
  * alloc returns an INDEX, not a pointer.  The index is always stable.  at returns
@@ -123,6 +124,7 @@
 #define RC_POOL_GET_     RC_CONCAT(RC_POOL_NAME, _get)
 #define RC_POOL_SET_     RC_CONCAT(RC_POOL_NAME, _set)
 #define RC_POOL_AT_      RC_CONCAT(RC_POOL_NAME, _at)
+#define RC_POOL_AT_CONST_ RC_CONCAT(RC_POOL_NAME, _at_const)
 #define RC_POOL_ALLOC_   RC_CONCAT(RC_POOL_NAME, _alloc)
 #define RC_POOL_FREE_    RC_CONCAT(RC_POOL_NAME, _free)
 #define RC_POOL_FREE_BITSET_ RC_CONCAT(RC_POOL_NAME, _free_bitset)
@@ -210,6 +212,14 @@ static inline RC_POOL_TYPE *RC_POOL_AT_(RC_POOL_NAME *pool, uint32_t index)
     return &pool->items.data[index].value;
 }
 
+/* Read-only pointer to the element at index, for access through a const pool.  Same
+ * growth/relocation caveat as at(); use it when the pool is only being read. */
+static inline const RC_POOL_TYPE *RC_POOL_AT_CONST_(const RC_POOL_NAME *pool, uint32_t index)
+{
+    RC_ASSERT(index < pool->items.num);
+    return &pool->items.data[index].value;
+}
+
 /* ---- allocation ---- */
 
 /*
@@ -285,6 +295,7 @@ static inline rc_bitset RC_POOL_FREE_BITSET_(const RC_POOL_NAME *pool, rc_arena 
 #undef RC_POOL_GET_
 #undef RC_POOL_SET_
 #undef RC_POOL_AT_
+#undef RC_POOL_AT_CONST_
 #undef RC_POOL_ALLOC_
 #undef RC_POOL_FREE_
 #undef RC_POOL_FREE_BITSET_

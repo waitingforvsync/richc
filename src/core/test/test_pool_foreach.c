@@ -15,25 +15,25 @@ static void visit_record(visit_ctx *c, rc_pool_int *pool, uint32_t index)
     c->sum += v;
 }
 
-#define RC_POOL_FOREACH_TYPE          int
+#define RC_POOL_FOREACH_POOL          rc_pool_int
 #define RC_POOL_FOREACH_CTX           visit_ctx
 #define RC_POOL_FOREACH_FUNC(c, p, i) visit_record(c, p, i)
-#include "richc/template/algorithm/pool_foreach.h"   // rc_pool_foreach_int
+#include "richc/template/algorithm/pool_foreach.h"   // rc_pool_int_foreach
 
 // non-context callback accumulating through file-scope state
 static int      g_sum;
 static uint32_t g_count;
 static void sum_one(rc_pool_int *pool, uint32_t index) { g_sum += rc_pool_int_get(pool, index); g_count++; }
 
-#define RC_POOL_FOREACH_TYPE       int
+#define RC_POOL_FOREACH_POOL       rc_pool_int
 #define RC_POOL_FOREACH_FUNC(p, i) sum_one(p, i)
-#define RC_POOL_FOREACH_NAME       rc_pool_foreach_int_sum
+#define RC_POOL_FOREACH_NAME       rc_pool_int_foreach_sum
 #include "richc/template/algorithm/pool_foreach.h"
 
 // non-context callback mutating the element in place, via the pool's at
-#define RC_POOL_FOREACH_TYPE       int
+#define RC_POOL_FOREACH_POOL       rc_pool_int
 #define RC_POOL_FOREACH_FUNC(p, i) (*rc_pool_int_at(p, i) *= 2)
-#define RC_POOL_FOREACH_NAME       rc_pool_foreach_int_double
+#define RC_POOL_FOREACH_NAME       rc_pool_int_foreach_double
 #include "richc/template/algorithm/pool_foreach.h"
 
 RC_TEST_GROUP_DATA(pool_foreach) {
@@ -65,7 +65,7 @@ RC_TEST_STEP(pool_foreach, empty, fix)
 {
     rc_pool_int pool = {0};
     visit_ctx ctx = {0};
-    rc_pool_foreach_int(&pool, &ctx, fix->a);
+    rc_pool_int_foreach(&pool, &ctx, fix->a);
     RC_CHECK(ctx.count, ==, 0u);
 }
 
@@ -73,7 +73,7 @@ RC_TEST_STEP(pool_foreach, all_live, fix)
 {
     rc_pool_int pool = make_pool(10, &fix->a);
     visit_ctx ctx = {0};
-    rc_pool_foreach_int(&pool, &ctx, fix->a);
+    rc_pool_int_foreach(&pool, &ctx, fix->a);
     RC_CHECK(ctx.count, ==, 10u);
     RC_CHECK(ctx.sum, ==, 450);             // 0 + 10 + ... + 90
     for (uint32_t i = 0; i < 10; i++) {
@@ -90,7 +90,7 @@ RC_TEST_STEP(pool_foreach, holes, fix)
     rc_pool_int_free(&pool, 7);
 
     visit_ctx ctx = {0};
-    rc_pool_foreach_int(&pool, &ctx, fix->a);
+    rc_pool_int_foreach(&pool, &ctx, fix->a);
     RC_CHECK(ctx.count, ==, 7u);
     int expect[]            = {0, 10, 30, 40, 60, 80, 90};
     uint32_t expect_idx[]   = {0, 1, 3, 4, 6, 8, 9};   // the live slots (2,5,7 freed)
@@ -109,7 +109,7 @@ RC_TEST_STEP(pool_foreach, free_tail, fix)
     RC_CHECK(pool.items.num, ==, 9u);
 
     visit_ctx ctx = {0};
-    rc_pool_foreach_int(&pool, &ctx, fix->a);
+    rc_pool_int_foreach(&pool, &ctx, fix->a);
     RC_CHECK(ctx.count, ==, 8u);    // 0..8 minus 4
     int expect[] = {0, 10, 20, 30, 50, 60, 70, 80};
     for (uint32_t i = 0; i < 8; i++) RC_CHECK(ctx.values[i], ==, expect[i]);
@@ -122,7 +122,7 @@ RC_TEST_STEP(pool_foreach, non_context, fix)
 
     g_sum = 0;
     g_count = 0;
-    rc_pool_foreach_int_sum(&pool, fix->a);
+    rc_pool_int_foreach_sum(&pool, fix->a);
     RC_CHECK(g_count, ==, 4u);
     RC_CHECK(g_sum, ==, 0 + 20 + 30 + 40);
 }
@@ -132,7 +132,7 @@ RC_TEST_STEP(pool_foreach, mutate, fix)
     rc_pool_int pool = make_pool(6, &fix->a);   // values 0,10,20,30,40,50
     rc_pool_int_free(&pool, 3);                 // drop value 30
 
-    rc_pool_foreach_int_double(&pool, fix->a);  // double each live element
+    rc_pool_int_foreach_double(&pool, fix->a);  // double each live element
     RC_CHECK(rc_pool_int_get(&pool, 0), ==, 0);
     RC_CHECK(rc_pool_int_get(&pool, 1), ==, 20);
     RC_CHECK(rc_pool_int_get(&pool, 2), ==, 40);
