@@ -31,12 +31,26 @@
  *        geometrically (the larger of 2*cap, the request, or 64 bits).
  *   rc_bitset_push_n_zero(bs, n, arena) -> uint32_t
  *        Append n zero bits; return the first index.  Grows geometrically.
+ *   rc_bitset_make_copy(src, arena) -> rc_bitset
+ *        A freshly allocated duplicate of src (same num).
  *
  * Non-allocating operations (bitset.c)
  * ------------------------------------
  *   rc_bitset_reset(bs)                  - clear all bits; num and cap unchanged
  *   rc_bitset_get_next_set(bs, pos)      - index of the first set bit at >= pos,
  *                                          or RC_INDEX_NONE
+ *   rc_bitset_copy(dst, src)             - assign src into dst; requires dst->num
+ *                                          == src->num (the only equal-width op)
+ *   rc_bitset_union(dst, src)            - dst |= src, capped to dst->num (src
+ *                                          bits above it are dropped); NOT
+ *                                          commutative; any two widths
+ *   rc_bitset_intersection(dst, src)     - dst &= src, capped to dst->num (dst
+ *                                          bits above src->num cleared); NOT
+ *                                          commutative; any two widths
+ *   rc_bitset_intersects(a, b) -> bool   - do they share a bit within the first
+ *                                          min(a->num, b->num) bits?
+ *   rc_bitset_is_equal(a, b) -> bool     - identical? differing num -> false
+ *   rc_bitset_num_set_bits(bs) -> uint32 - population count (computed, not cached)
  *
  * Inline operations
  * -----------------
@@ -79,6 +93,21 @@ uint32_t rc_bitset_push(rc_bitset *bs, bool val, rc_arena *arena);
 uint32_t rc_bitset_push_n_zero(rc_bitset *bs, uint32_t n, rc_arena *arena);
 void     rc_bitset_reset(rc_bitset *bs);
 uint32_t rc_bitset_get_next_set(const rc_bitset *bs, uint32_t pos);
+
+/* A freshly allocated duplicate of src (out->num == src->num).  arena is last, per convention. */
+rc_bitset rc_bitset_make_copy(const rc_bitset *src, rc_arena *arena);
+/* Assign src into dst in place.  Asserts dst->num == src->num (the one equal-width op - no arena to grow). */
+void     rc_bitset_copy(rc_bitset *dst, const rc_bitset *src);
+/* dst |= src, in place, capped to dst->num (src bits at/above dst->num are dropped).  Not commutative. */
+void     rc_bitset_union(rc_bitset *dst, const rc_bitset *src);
+/* dst &= src, in place, capped to dst->num (dst bits at/above src->num are cleared).  Not commutative. */
+void     rc_bitset_intersection(rc_bitset *dst, const rc_bitset *src);
+/* Do the two sets share a set bit within the overlapping min(a->num, b->num) bits? */
+bool     rc_bitset_intersects(const rc_bitset *a, const rc_bitset *b);
+/* Are the two sets identical?  A differing num is immediately not-equal. */
+bool     rc_bitset_is_equal(const rc_bitset *a, const rc_bitset *b);
+/* How many bits are set (population count).  Computed on demand; the count is not cached. */
+uint32_t rc_bitset_num_set_bits(const rc_bitset *bs);
 
 /* ---- inline operations ---- */
 

@@ -152,6 +152,7 @@ void     rc_bitset_reserve(rc_bitset *bs, uint32_t min_bits, rc_arena *arena);
 void     rc_bitset_resize(rc_bitset *bs, uint32_t new_num, rc_arena *arena);
 uint32_t rc_bitset_push(rc_bitset *bs, bool val, rc_arena *arena);
 uint32_t rc_bitset_push_n_zero(rc_bitset *bs, uint32_t n, rc_arena *arena);
+rc_bitset rc_bitset_make_copy(const rc_bitset *src, rc_arena *arena);
 ```
 
 - `reserve` ensures capacity for at least `min_bits`, allocated exactly (rounded
@@ -160,6 +161,7 @@ uint32_t rc_bitset_push_n_zero(rc_bitset *bs, uint32_t n, rc_arena *arena);
   bits 0; shrinking zeroes the vacated bits to keep the invariant.
 - `push` appends one bit set to `val` and returns its index (the old `num`).
 - `push_n_zero` appends `n` zero bits and returns the first index.
+- `make_copy` returns a freshly allocated duplicate of `src` (same `num`).
 
 `push` and `push_n_zero` grow geometrically - the larger of `2 * cap`, the
 request, or 64 bits (8 bytes) - matching the array growth policy. `arena` may be
@@ -170,7 +172,30 @@ NULL whenever no growth is needed (a fitting `reserve`/`resize`, or any shrink).
 ```c
 void     rc_bitset_reset(rc_bitset *bs);                       // clear all bits; num/cap unchanged
 uint32_t rc_bitset_get_next_set(const rc_bitset *bs, uint32_t pos);  // first set bit at >= pos, or RC_INDEX_NONE
+void     rc_bitset_copy(rc_bitset *dst, const rc_bitset *src);       // assign; asserts dst->num == src->num
+void     rc_bitset_union(rc_bitset *dst, const rc_bitset *src);      // dst |= src, capped to dst->num
+void     rc_bitset_intersection(rc_bitset *dst, const rc_bitset *src); // dst &= src, capped to dst->num
+bool     rc_bitset_intersects(const rc_bitset *a, const rc_bitset *b); // share a bit within min(num)?
+bool     rc_bitset_is_equal(const rc_bitset *a, const rc_bitset *b);   // identical? differing num -> false
+uint32_t rc_bitset_num_set_bits(const rc_bitset *bs);               // population count (computed, not cached)
 ```
+
+- `copy` assigns `src` into `dst` in place. It is the one op that **requires equal
+  width** (`dst->num == src->num`) - a bare buffer copy with no arena to grow into.
+- `union` (`dst |= src`) and `intersection` (`dst &= src`) mutate `dst` in place and
+  are **capped to `dst->num`**: `union` drops any `src` bits at or above `dst->num`
+  (nowhere to store them); `intersection` clears any `dst` bit at or above `src->num`
+  (`src` has no bit there, so it counts as 0). Both are therefore **not commutative** -
+  the result takes the first argument's width. They accept any two widths.
+- `intersects` asks whether the two share a set bit within the overlapping
+  `min(a->num, b->num)` bits (commutative); `is_equal` treats a differing `num` as
+  immediately not-equal, else compares whole words.
+- `num_set_bits` is a population count, computed on demand - the count is **not**
+  cached anywhere. (A pure, commutative `make_union` / `make_intersection` returning a
+  fresh result is not provided yet; add one if a caller needs the non-capping form.)
+
+All of these lean on the zero-tail invariant (bits `>= num` are 0), so they operate a
+whole word at a time with no per-bit masking.
 
 ### Inline operations
 
@@ -534,6 +559,7 @@ uint32_t rc_clz_u32(uint32_t a);           // count leading zeros (32 for a == 0
 uint32_t rc_clz_u64(uint64_t a);           // count leading zeros (64 for a == 0)
 uint32_t rc_ctz_u32(uint32_t a);           // count trailing zeros (32 for a == 0)
 uint32_t rc_ctz_u64(uint64_t a);           // count trailing zeros (64 for a == 0)
+uint32_t rc_popcount_u32(uint32_t a);      // population count (number of set bits)
 
 bool rc_mul_overflows_u64(uint64_t a, uint64_t b);   bool rc_add_overflows_u64(uint64_t a, uint64_t b);
 bool rc_add_overflows_i64(int64_t a, int64_t b);     bool rc_sub_overflows_i64(int64_t a, int64_t b);

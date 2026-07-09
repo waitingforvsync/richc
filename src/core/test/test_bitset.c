@@ -273,3 +273,178 @@ RC_TEST_STEP(bitset, push_n_zero_empty, fix)
     RC_CHECK(rc_bitset_push_n_zero(&bs, 0, &fix->a), ==, 5u);
     RC_CHECK(bs.num, ==, 5u);
 }
+
+/* ---- set algebra: copy / make_copy / union / intersection / intersects / is_equal / num_set_bits ---- */
+
+RC_TEST_STEP(bitset, make_copy_independent, fix)
+{
+    rc_bitset a = {0};
+    rc_bitset_resize(&a, 100, &fix->a);
+    rc_bitset_set(&a, 3);
+    rc_bitset_set(&a, 64);
+    rc_bitset_set(&a, 99);
+
+    rc_bitset b = rc_bitset_make_copy(&a, &fix->a);
+    RC_CHECK(b.num, ==, 100u);
+    RC_CHECK_TRUE(rc_bitset_is_equal(&a, &b));
+
+    // mutating the copy leaves the source untouched (independent backing)
+    rc_bitset_clear(&b, 3);
+    rc_bitset_set(&b, 50);
+    RC_CHECK_TRUE(rc_bitset_is_set(&a, 3));
+    RC_CHECK_FALSE(rc_bitset_is_set(&a, 50));
+    RC_CHECK_FALSE(rc_bitset_is_equal(&a, &b));
+
+    // an empty source copies to an empty bitset
+    rc_bitset e = {0};
+    rc_bitset c = rc_bitset_make_copy(&e, &fix->a);
+    RC_CHECK(c.num, ==, 0u);
+    RC_CHECK(rc_bitset_num_set_bits(&c), ==, 0u);
+}
+
+RC_TEST_STEP(bitset, copy_in_place, fix)
+{
+    rc_bitset a = {0}, b = {0};
+    rc_bitset_resize(&a, 40, &fix->a);
+    rc_bitset_resize(&b, 40, &fix->a);
+    rc_bitset_set(&a, 1);
+    rc_bitset_set(&a, 39);
+    rc_bitset_set(&b, 5);            // pre-existing bit, must be overwritten by the assign
+    rc_bitset_copy(&b, &a);
+    RC_CHECK_TRUE(rc_bitset_is_equal(&a, &b));
+    RC_CHECK_FALSE(rc_bitset_is_set(&b, 5));
+}
+
+RC_TEST_STEP(bitset, union_same_and_mismatched, fix)
+{
+    // same width: the plain OR
+    rc_bitset a = {0}, b = {0};
+    rc_bitset_resize(&a, 64, &fix->a);
+    rc_bitset_resize(&b, 64, &fix->a);
+    rc_bitset_set(&a, 1);  rc_bitset_set(&a, 40);
+    rc_bitset_set(&b, 40); rc_bitset_set(&b, 63);
+    rc_bitset_union(&a, &b);
+    RC_CHECK(rc_bitset_num_set_bits(&a), ==, 3u);   // {1,40,63}
+    RC_CHECK_TRUE(rc_bitset_is_set(&a, 1));
+    RC_CHECK_TRUE(rc_bitset_is_set(&a, 40));
+    RC_CHECK_TRUE(rc_bitset_is_set(&a, 63));
+
+    // wider src: bits at/above dst->num are dropped and the dst tail stays clean. num_set_bits counts the
+    // WHOLE last word, so a stray tail bit would show up here.
+    rc_bitset d = {0}, s = {0};
+    rc_bitset_resize(&d, 40, &fix->a);   // 40 bits span 2 words; bits 40..63 must remain 0
+    rc_bitset_resize(&s, 80, &fix->a);
+    rc_bitset_set(&d, 2);
+    rc_bitset_set(&s, 39);   // in range -> kept
+    rc_bitset_set(&s, 45);   // above dst->num, same last word -> must be dropped (not leak into the tail)
+    rc_bitset_set(&s, 70);   // beyond dst entirely -> dropped
+    rc_bitset_union(&d, &s);
+    RC_CHECK(d.num, ==, 40u);
+    RC_CHECK(rc_bitset_num_set_bits(&d), ==, 2u);   // {2,39} only - proves the tail is clean
+    RC_CHECK_TRUE(rc_bitset_is_set(&d, 39));
+
+    // narrower src: only its bits contribute; dst keeps its own upper bits
+    rc_bitset d2 = {0}, s2 = {0};
+    rc_bitset_resize(&d2, 80, &fix->a);
+    rc_bitset_resize(&s2, 32, &fix->a);
+    rc_bitset_set(&d2, 70);
+    rc_bitset_set(&s2, 5);
+    rc_bitset_union(&d2, &s2);
+    RC_CHECK(rc_bitset_num_set_bits(&d2), ==, 2u);  // {5,70}
+    RC_CHECK_TRUE(rc_bitset_is_set(&d2, 5));
+    RC_CHECK_TRUE(rc_bitset_is_set(&d2, 70));
+}
+
+RC_TEST_STEP(bitset, intersection_same_and_mismatched, fix)
+{
+    rc_bitset a = {0}, b = {0};
+    rc_bitset_resize(&a, 64, &fix->a);
+    rc_bitset_resize(&b, 64, &fix->a);
+    rc_bitset_set(&a, 1); rc_bitset_set(&a, 40); rc_bitset_set(&a, 63);
+    rc_bitset_set(&b, 40); rc_bitset_set(&b, 63);
+    rc_bitset_intersection(&a, &b);
+    RC_CHECK(rc_bitset_num_set_bits(&a), ==, 2u);   // {40,63}
+    RC_CHECK_FALSE(rc_bitset_is_set(&a, 1));
+
+    // narrower src clears dst's upper bits (src has no bit there, so treated as 0)
+    rc_bitset d = {0}, s = {0};
+    rc_bitset_resize(&d, 80, &fix->a);
+    rc_bitset_resize(&s, 32, &fix->a);
+    rc_bitset_set(&d, 5); rc_bitset_set(&d, 70);
+    rc_bitset_set(&s, 5); rc_bitset_set(&s, 20);
+    rc_bitset_intersection(&d, &s);
+    RC_CHECK(rc_bitset_num_set_bits(&d), ==, 1u);   // {5}; 70 cleared (beyond src), 20 not in d
+    RC_CHECK_TRUE(rc_bitset_is_set(&d, 5));
+
+    // disjoint -> empty
+    rc_bitset p = {0}, q = {0};
+    rc_bitset_resize(&p, 40, &fix->a);
+    rc_bitset_resize(&q, 40, &fix->a);
+    rc_bitset_set(&p, 1);
+    rc_bitset_set(&q, 2);
+    rc_bitset_intersection(&p, &q);
+    RC_CHECK(rc_bitset_num_set_bits(&p), ==, 0u);
+}
+
+RC_TEST_STEP(bitset, intersects_predicate, fix)
+{
+    rc_bitset a = {0}, b = {0};
+    rc_bitset_resize(&a, 64, &fix->a);
+    rc_bitset_resize(&b, 64, &fix->a);
+    rc_bitset_set(&a, 10);
+    rc_bitset_set(&b, 50);
+    RC_CHECK_FALSE(rc_bitset_intersects(&a, &b));
+    rc_bitset_set(&b, 10);
+    RC_CHECK_TRUE(rc_bitset_intersects(&a, &b));
+
+    // mismatched widths: only the overlapping min(num) bits count, and it is order-independent
+    rc_bitset w = {0}, n = {0};
+    rc_bitset_resize(&w, 80, &fix->a);
+    rc_bitset_resize(&n, 32, &fix->a);
+    rc_bitset_set(&w, 40);   // beyond n's range - cannot be shared
+    rc_bitset_set(&n, 7);
+    RC_CHECK_FALSE(rc_bitset_intersects(&w, &n));
+    rc_bitset_set(&w, 7);
+    RC_CHECK_TRUE(rc_bitset_intersects(&w, &n));
+    RC_CHECK_TRUE(rc_bitset_intersects(&n, &w));   // commutative
+}
+
+RC_TEST_STEP(bitset, is_equal_predicate, fix)
+{
+    rc_bitset a = {0}, b = {0};
+    rc_bitset_resize(&a, 100, &fix->a);
+    rc_bitset_resize(&b, 100, &fix->a);
+    rc_bitset_set(&a, 3); rc_bitset_set(&a, 64);
+    rc_bitset_set(&b, 3); rc_bitset_set(&b, 64);
+    RC_CHECK_TRUE(rc_bitset_is_equal(&a, &b));
+    rc_bitset_set(&b, 65);
+    RC_CHECK_FALSE(rc_bitset_is_equal(&a, &b));
+
+    // differing num -> not equal, even when the set bits match
+    rc_bitset c = {0}, d = {0};
+    rc_bitset_resize(&c, 40, &fix->a);
+    rc_bitset_resize(&d, 64, &fix->a);
+    rc_bitset_set(&c, 1); rc_bitset_set(&d, 1);
+    RC_CHECK_FALSE(rc_bitset_is_equal(&c, &d));
+
+    // two empties of equal num compare equal
+    rc_bitset e = {0}, f = {0};
+    RC_CHECK_TRUE(rc_bitset_is_equal(&e, &f));
+}
+
+RC_TEST_STEP(bitset, num_set_bits_counts, fix)
+{
+    rc_bitset e = {0};
+    RC_CHECK(rc_bitset_num_set_bits(&e), ==, 0u);
+
+    rc_bitset a = {0};
+    rc_bitset_resize(&a, 100, &fix->a);
+    RC_CHECK(rc_bitset_num_set_bits(&a), ==, 0u);
+    rc_bitset_set(&a, 0);
+    rc_bitset_set(&a, 31);   // top of word 0
+    rc_bitset_set(&a, 32);   // bottom of word 1
+    rc_bitset_set(&a, 99);   // last word straddles the tail (num=100 -> bits 100..127 stay 0)
+    RC_CHECK(rc_bitset_num_set_bits(&a), ==, 4u);
+    rc_bitset_clear(&a, 31);
+    RC_CHECK(rc_bitset_num_set_bits(&a), ==, 3u);
+}

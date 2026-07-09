@@ -2,7 +2,8 @@
  * ops.h - scalar bit and math operations.
  *
  * Small static inline helpers: bit reinterpretation, integer min/max/sign,
- * GCD, count-leading-zeros, overflow checks, and degree/radian conversion.
+ * GCD, count-leading/trailing-zeros, population count, overflow checks, and
+ * degree/radian conversion.
  *
  * Functions carry a scalar type suffix (i32/i64/u32/u64/f32/f64), which also
  * avoids collisions with platform macros (Windows defines min/max as macros).
@@ -109,6 +110,17 @@ static inline uint32_t rc_ctz_u64(uint64_t a)
     return index;
 #else
     return (uint32_t)__builtin_ctzll(a);
+#endif
+}
+
+/* ---- population count (number of set bits) ---- */
+
+static inline uint32_t rc_popcount_u32(uint32_t a)
+{
+#ifdef _MSC_VER
+    return (uint32_t)__popcnt(a);
+#else
+    return (uint32_t)__builtin_popcount(a);
 #endif
 }
 

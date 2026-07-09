@@ -158,3 +158,113 @@ uint32_t rc_bitset_get_next_set(const rc_bitset *bs, uint32_t pos)
 
     return RC_INDEX_NONE;
 }
+
+/* ---- make_copy ---- */
+
+/* A freshly allocated duplicate of src (same num).  The zero tail rides along, so the invariant holds. */
+rc_bitset rc_bitset_make_copy(const rc_bitset *src, rc_arena *arena)
+{
+    rc_bitset out = {0};
+    rc_bitset_resize(&out, src->num, arena);
+    uint32_t words = words_for(src->num);
+    if (words != 0) {
+        memcpy(out.data, src->data, words * sizeof(uint32_t));
+    }
+    return out;
+}
+
+/* ---- copy ---- */
+
+/* Assign src into dst in place.  The one equal-width op - a bare buffer copy, with no arena to grow into. */
+void rc_bitset_copy(rc_bitset *dst, const rc_bitset *src)
+{
+    RC_ASSERT(dst->num == src->num);
+    uint32_t words = words_for(src->num);
+    if (words != 0) {
+        memcpy(dst->data, src->data, words * sizeof(uint32_t));
+    }
+}
+
+/* ---- union ---- */
+
+/*
+ * dst |= src, in place, capped to dst->num.  We OR the words the two share; a WIDER src may then have set bits
+ * above dst->num sitting in the last shared word, so we re-mask dst's partial tail word to restore the
+ * invariant (a no-op when src is no wider, or when dst is word-aligned).
+ */
+void rc_bitset_union(rc_bitset *dst, const rc_bitset *src)
+{
+    uint32_t dwords = words_for(dst->num);
+    uint32_t swords = words_for(src->num);
+    uint32_t shared = dwords < swords ? dwords : swords;
+    for (uint32_t j = 0; j < shared; j++) {
+        dst->data[j] |= src->data[j];
+    }
+    uint32_t bit = dst->num & 31u;
+    if (bit != 0u) {
+        dst->data[dst->num >> 5] &= (1u << bit) - 1u;
+    }
+}
+
+/* ---- intersection ---- */
+
+/*
+ * dst &= src, in place, capped to dst->num.  Over each of dst's words we AND the matching src word, or 0 where
+ * src has no word, so a NARROWER src correctly clears dst's upper bits.  AND never sets a bit, so the zero tail
+ * survives untouched - no re-mask needed.
+ */
+void rc_bitset_intersection(rc_bitset *dst, const rc_bitset *src)
+{
+    uint32_t dwords = words_for(dst->num);
+    uint32_t swords = words_for(src->num);
+    for (uint32_t j = 0; j < dwords; j++) {
+        dst->data[j] &= (j < swords) ? src->data[j] : 0u;
+    }
+}
+
+/* ---- intersects ---- */
+
+/*
+ * Do the two sets share a set bit within the first min(a->num, b->num) bits?  Only the words both hold can
+ * overlap; the zero tail keeps the boundary word exact (bits above the shorter set are 0, so never counted).
+ */
+bool rc_bitset_intersects(const rc_bitset *a, const rc_bitset *b)
+{
+    uint32_t awords = words_for(a->num);
+    uint32_t bwords = words_for(b->num);
+    uint32_t shared = awords < bwords ? awords : bwords;
+    for (uint32_t j = 0; j < shared; j++) {
+        if ((a->data[j] & b->data[j]) != 0u) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* ---- is_equal ---- */
+
+/*
+ * Identical sets?  A differing num is immediately not-equal; otherwise the layouts match and a whole-word
+ * compare is exact - the zero tail compares equal on both sides.
+ */
+bool rc_bitset_is_equal(const rc_bitset *a, const rc_bitset *b)
+{
+    if (a->num != b->num) {
+        return false;
+    }
+    uint32_t words = words_for(a->num);
+    return words == 0 || memcmp(a->data, b->data, words * sizeof(uint32_t)) == 0;
+}
+
+/* ---- num_set_bits ---- */
+
+/* Population count.  Summing whole-word popcounts is exact because every tail bit (>= num) is zero. */
+uint32_t rc_bitset_num_set_bits(const rc_bitset *bs)
+{
+    uint32_t words = words_for(bs->num);
+    uint32_t n = 0;
+    for (uint32_t j = 0; j < words; j++) {
+        n += rc_popcount_u32(bs->data[j]);
+    }
+    return n;
+}

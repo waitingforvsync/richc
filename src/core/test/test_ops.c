@@ -52,6 +52,15 @@ RC_TEST(ops, ctz)
     RC_CHECK(rc_ctz_u64(0x100000000ull), ==, 32u);  // crosses the 32-bit boundary
 }
 
+RC_TEST(ops, popcount)
+{
+    RC_CHECK(rc_popcount_u32(0u), ==, 0u);
+    RC_CHECK(rc_popcount_u32(1u), ==, 1u);
+    RC_CHECK(rc_popcount_u32(0xFFFFFFFFu), ==, 32u);
+    RC_CHECK(rc_popcount_u32(0x80000001u), ==, 2u);
+    RC_CHECK(rc_popcount_u32(0xA5u), ==, 4u);        // 1010 0101
+}
+
 RC_TEST(ops, overflow)
 {
     RC_CHECK_TRUE(rc_add_overflows_u64(UINT64_MAX, 1));
