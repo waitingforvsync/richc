@@ -104,13 +104,14 @@ RC_TEST_STEP(pool_foreach, holes, fix)
 RC_TEST_STEP(pool_foreach, free_tail, fix)
 {
     rc_pool_int pool = make_pool(10, &fix->a);
-    rc_pool_int_free(&pool, 9);     // tail -> pops, num shrinks to 9
+    rc_pool_int_free(&pool, 9);     // tail -> free list (num is not shrunk)
     rc_pool_int_free(&pool, 4);     // middle -> free list
-    RC_CHECK(pool.items.num, ==, 9u);
+    RC_CHECK(pool.items.num, ==, 10u);
 
+    // foreach must skip the freed tail slot 9 even though it is still within num
     visit_ctx ctx = {0};
     rc_pool_int_foreach(&pool, &ctx, fix->a);
-    RC_CHECK(ctx.count, ==, 8u);    // 0..8 minus 4
+    RC_CHECK(ctx.count, ==, 8u);    // 0..8 minus 4, and 9 is freed
     int expect[] = {0, 10, 20, 30, 50, 60, 70, 80};
     for (uint32_t i = 0; i < 8; i++) RC_CHECK(ctx.values[i], ==, expect[i]);
 }

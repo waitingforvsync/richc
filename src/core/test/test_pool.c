@@ -59,7 +59,7 @@ RC_TEST_STEP(pool, free_reuse_middle, fix)
     RC_CHECK(rc_pool_int_get(&pool, r), ==, 0);  // reused slot is zeroed
 }
 
-RC_TEST_STEP(pool, free_pop_trailing, fix)
+RC_TEST_STEP(pool, free_last_no_pop, fix)
 {
     rc_pool_int pool = rc_pool_int_make(0, &fix->a);
     rc_pool_int_alloc(&pool, &fix->a);          // 0
@@ -67,16 +67,52 @@ RC_TEST_STEP(pool, free_pop_trailing, fix)
     rc_pool_int_alloc(&pool, &fix->a);          // 2
     RC_CHECK(pool.items.num, ==, 3u);
 
-    // freeing a non-last slot leaves the backing length unchanged
+    // free always pushes onto the free list; the backing length never shrinks,
+    // not even when the freed slot is the last one
     rc_pool_int_free(&pool, 1);
     RC_CHECK(pool.items.num, ==, 3u);
-    // freeing the last slot pops it
     rc_pool_int_free(&pool, 2);
-    RC_CHECK(pool.items.num, ==, 2u);
+    RC_CHECK(pool.items.num, ==, 3u);
 
-    // the popped tail is re-appended on the next non-recycled alloc... but slot 1
-    // is still on the free list, so the next alloc reuses it first
+    // both freed slots are recycled LIFO: 2 was freed last, so it is reused first
+    RC_CHECK(rc_pool_int_alloc(&pool, &fix->a), ==, 2u);
     RC_CHECK(rc_pool_int_alloc(&pool, &fix->a), ==, 1u);
+    RC_CHECK(pool.items.num, ==, 3u);
+}
+
+RC_TEST_STEP(pool, alloc_free_inverse, fix)
+{
+    rc_pool_int pool = rc_pool_int_make(0, &fix->a);
+    rc_pool_int_alloc(&pool, &fix->a);          // 0
+    rc_pool_int_alloc(&pool, &fix->a);          // 1
+    rc_pool_int_alloc(&pool, &fix->a);          // 2
+
+    // build the state that used to break the round-trip: a free slot sitting at
+    // the top of the array (index num - 1).  free(1) then free(2) leaves slot 2
+    // as the free-list head at index num - 1 == 2.
+    rc_pool_int_free(&pool, 1);
+    rc_pool_int_free(&pool, 2);
+
+    uint32_t num_before = pool.items.num;
+    uint32_t first_free_before = pool.first_free;
+
+    // alloc(); free(i); must restore the pool exactly, even though i == num - 1
+    uint32_t i = rc_pool_int_alloc(&pool, &fix->a);
+    RC_CHECK(i, ==, 2u);                         // pops the top free slot
+    rc_pool_int_free(&pool, i);
+    RC_CHECK(pool.items.num, ==, num_before);
+    RC_CHECK(pool.first_free, ==, first_free_before);
+
+    // an isolated alloc/free pair restores (num, first_free) whatever the current
+    // free-list shape is
+    for (int step = 0; step < 6; step++) {
+        uint32_t n = pool.items.num;
+        uint32_t ff = pool.first_free;
+        uint32_t j = rc_pool_int_alloc(&pool, &fix->a);
+        rc_pool_int_free(&pool, j);
+        RC_CHECK(pool.items.num, ==, n);
+        RC_CHECK(pool.first_free, ==, ff);
+    }
 }
 
 RC_TEST_STEP(pool, free_list_lifo, fix)
@@ -129,7 +165,7 @@ RC_TEST_STEP(pool, zero_init, fix)
     RC_CHECK(rc_pool_int_get(&pool, 0), ==, 42);
     // free index 0 onto the list, then re-alloc it (index 0 must round-trip
     // through the + 1 free-list encoding)
-    rc_pool_int_alloc(&pool, &fix->a);   // 1, so freeing 0 is not a trailing pop
+    rc_pool_int_alloc(&pool, &fix->a);   // 1
     rc_pool_int_free(&pool, 0);
     RC_CHECK(rc_pool_int_alloc(&pool, &fix->a), ==, 0u);
     RC_CHECK(rc_pool_int_get(&pool, 0), ==, 0);   // reused slot is zeroed

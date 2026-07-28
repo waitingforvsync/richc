@@ -24,10 +24,10 @@
  * alloc / free
  * ------------
  * alloc pops the free-list head if there is one (zeroing the reused slot),
- * otherwise appends a fresh zeroed slot.  free pushes the slot onto the free
- * list - except when it is the final slot, which is popped instead so the
- * backing array does not accumulate a dead tail.  (The pop does not cascade into
- * earlier free-list entries, so holes in the middle persist.)
+ * otherwise appends a fresh zeroed slot.  free always pushes the slot onto the
+ * free list, so alloc and free are exact inverses: alloc(); free(i); restores
+ * the pool byte-for-byte.  Trailing free slots are not trimmed - the backing
+ * array holds its high-water mark until reset/deinit reclaim it wholesale.
  *
  * Iteration
  * ---------
@@ -113,7 +113,6 @@
 #define RC_POOL_ARRAY_RESET_       RC_CONCAT(RC_POOL_ARRAY_, _reset)
 #define RC_POOL_ARRAY_DEINIT_      RC_CONCAT(RC_POOL_ARRAY_, _deinit)
 #define RC_POOL_ARRAY_PUSH_N_ZERO_ RC_CONCAT(RC_POOL_ARRAY_, _push_n_zero)
-#define RC_POOL_ARRAY_POP_N_       RC_CONCAT(RC_POOL_ARRAY_, _pop_n)
 
 /* ---- public function-name macros ---- */
 
@@ -240,22 +239,19 @@ static inline uint32_t RC_POOL_ALLOC_(RC_POOL_NAME *pool, rc_arena *arena)
 }
 
 /*
- * Return a slot to the pool.  Freeing the final slot pops it (so the backing
- * does not keep a dead tail); any other slot is pushed onto the free list.
- * Freeing an already-free or out-of-range index is a caller error.
+ * Return a slot to the pool by pushing it onto the free list.  This is the exact
+ * inverse of alloc, so alloc(); free(i); leaves the pool unchanged.  The backing
+ * array is not shrunk, even when index is the final slot (trailing free slots are
+ * reclaimed by reset/deinit).  Freeing an already-free or out-of-range index is a
+ * caller error.
  */
 static inline void RC_POOL_FREE_(RC_POOL_NAME *pool, uint32_t index)
 {
     RC_ASSERT(index < pool->items.num);
-    if (index == pool->items.num - 1) {
-        RC_POOL_ARRAY_POP_N_(&pool->items, 1);
-    }
-    else {
-        // push onto the free list: link to the old head, become the new head.
-        // both are stored as index + 1, so 0 stays the empty/end marker.
-        pool->items.data[index].next_free_ = pool->first_free;
-        pool->first_free = index + 1;
-    }
+    // push onto the free list: link to the old head, become the new head.
+    // both are stored as index + 1, so 0 stays the empty/end marker.
+    pool->items.data[index].next_free_ = pool->first_free;
+    pool->first_free = index + 1;
 }
 
 /* ---- iteration support ---- */
@@ -287,7 +283,6 @@ static inline rc_bitset RC_POOL_FREE_BITSET_(const RC_POOL_NAME *pool, rc_arena 
 #undef RC_POOL_ARRAY_RESET_
 #undef RC_POOL_ARRAY_DEINIT_
 #undef RC_POOL_ARRAY_PUSH_N_ZERO_
-#undef RC_POOL_ARRAY_POP_N_
 #undef RC_POOL_MAKE_
 #undef RC_POOL_RESERVE_
 #undef RC_POOL_RESET_
