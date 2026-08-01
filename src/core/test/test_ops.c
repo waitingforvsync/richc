@@ -15,6 +15,10 @@ RC_TEST(ops, min_max_sgn)
     RC_CHECK(rc_max_i32(3, 7), ==, 7);
     RC_CHECK(rc_min_i64(-5, 2), ==, -5);
     RC_CHECK(rc_max_i64(-5, 2), ==, 2);
+    RC_CHECK(rc_min_f32(-1.5f, 2.0f), ==, -1.5f);
+    RC_CHECK(rc_max_f32(-1.5f, 2.0f), ==, 2.0f);
+    RC_CHECK(rc_min_f64(3.0, 3.0), ==, 3.0);
+    RC_CHECK(rc_max_f64(-2.0, -7.0), ==, -2.0);
     RC_CHECK(rc_sgn_i32(-9), ==, -1);
     RC_CHECK(rc_sgn_i32(0), ==, 0);
     RC_CHECK(rc_sgn_i32(9), ==, 1);

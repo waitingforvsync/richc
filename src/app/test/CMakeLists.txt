@@ -2,6 +2,8 @@
 
 add_executable(richc_app_test
     main.c
+    test_font.c
+    test_font_atlas.c
     test_image.c
     test_image_atlas.c
     test_image_pack.c

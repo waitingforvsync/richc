@@ -42,6 +42,10 @@ static inline int32_t rc_min_i32(int32_t a, int32_t b) { return (a < b) ? a : b;
 static inline int32_t rc_max_i32(int32_t a, int32_t b) { return (a > b) ? a : b; }
 static inline int64_t rc_min_i64(int64_t a, int64_t b) { return (a < b) ? a : b; }
 static inline int64_t rc_max_i64(int64_t a, int64_t b) { return (a > b) ? a : b; }
+static inline float   rc_min_f32(float a, float b)     { return (a < b) ? a : b; }
+static inline float   rc_max_f32(float a, float b)     { return (a > b) ? a : b; }
+static inline double  rc_min_f64(double a, double b)   { return (a < b) ? a : b; }
+static inline double  rc_max_f64(double a, double b)   { return (a > b) ? a : b; }
 
 // Return -1, 0, or +1 according to the sign of a.
 static inline int32_t rc_sgn_i32(int32_t a) { return (a < 0) ? -1 : (a > 0) ? 1 : 0; }
