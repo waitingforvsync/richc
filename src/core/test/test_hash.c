@@ -26,7 +26,7 @@ RC_TEST(hash, floats)
 
 RC_TEST(hash, pointer)
 {
-    int x;
+    int x = 0;
     RC_CHECK(rc_hash_ptr(&x), ==, rc_hash_ptr(&x));
     RC_CHECK(rc_hash_ptr(NULL), ==, rc_hash_u64(0u));
 }
