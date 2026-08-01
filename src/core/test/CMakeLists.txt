@@ -5,11 +5,13 @@ add_executable(richc_core_test
     test_arena.c
     test_array.c
     test_arrays.c
+    test_atomic.c
     test_bitset.c
     test_bitset_foreach.c
     test_box2f.c
     test_box2i.c
     test_bytes.c
+    test_cond.c
     test_file.c
     test_hash.c
     test_hash_trie.c
@@ -23,6 +25,7 @@ add_executable(richc_core_test
     test_max_element.c
     test_min_element.c
     test_mstr.c
+    test_mutex.c
     test_ops.c
     test_pool.c
     test_pool_foreach.c
@@ -30,9 +33,15 @@ add_executable(richc_core_test
     test_random.c
     test_rational.c
     test_rect_pack.c
+    test_rwlock.c
+    test_semaphore.c
     test_solve.c
     test_sort.c
+    test_spinlock.c
     test_str.c
+    test_thread.c
+    test_time.c
+    test_tls.c
     test_upper_bound.c
     test_vec2f.c
     test_vec2i.c
