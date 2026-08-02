@@ -17,6 +17,7 @@ add_library(richc STATIC
     src/thread/cond.c
     src/thread/mutex.c
     src/thread/rwlock.c
+    src/thread/scheduler.c
     src/thread/semaphore.c
     src/thread/thread.c
     src/thread/tls.c
@@ -76,6 +77,7 @@ add_library(richc STATIC
     include/richc/str.h
     include/richc/template/array.h
     include/richc/template/algorithm/bitset_foreach.h
+    include/richc/template/future.h
     include/richc/template/hash_trie.h
     include/richc/template/algorithm/lower_bound.h
     include/richc/template/algorithm/max_element.h
@@ -89,6 +91,7 @@ add_library(richc STATIC
     include/richc/thread/cond.h
     include/richc/thread/mutex.h
     include/richc/thread/rwlock.h
+    include/richc/thread/scheduler.h
     include/richc/thread/semaphore.h
     include/richc/thread/spinlock.h
     include/richc/thread/thread.h
