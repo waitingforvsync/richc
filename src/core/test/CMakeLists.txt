@@ -13,6 +13,8 @@ add_executable(richc_core_test
     test_bytes.c
     test_cond.c
     test_file.c
+    test_genpool.c
+    test_genpool_foreach.c
     test_hash.c
     test_hash_trie.c
     test_hash_trie_foreach.c
