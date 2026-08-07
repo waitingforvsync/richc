@@ -4,13 +4,18 @@ add_executable(richc_app_test
     main.c
     test_font.c
     test_font_atlas.c
+    test_gfx.c
+    test_gfx_gl.c
     test_image.c
     test_image_atlas.c
     test_image_pack.c
     test_image_png.c
 )
 
-target_link_libraries(richc_app_test PRIVATE richc_app)
+# glad is linked directly so the GL tests can read pixels back from the
+# default framebuffer after the present pass; the public gfx API deliberately
+# has no readback entry point yet.
+target_link_libraries(richc_app_test PRIVATE richc_app glad)
 
 if(MSVC)
     target_compile_options(richc_app_test PRIVATE /W3)

@@ -80,9 +80,11 @@ typedef struct {
     void (*on_minimize)    (void *ctx);
     void (*on_maximize)    (void *ctx);
 
-    /* Frame callbacks - call via rc_app_request_update/render, not directly */
+    /* Frame callbacks - call via rc_app_request_update/render, not directly.
+     * on_render receives the framebuffer size in physical pixels and is only
+     * invoked while it is non-zero (never while minimised). */
     void (*on_update)     (void *ctx, double dt);
-    void (*on_render)     (void *ctx);
+    void (*on_render)     (void *ctx, rc_vec2i size);
 } rc_app_callbacks;
 
 /* ---- descriptor ---- */
@@ -91,11 +93,7 @@ typedef struct {
     rc_str   title;
     rc_vec2i size;
     bool     resizable;
-
-    /* Graphics hints */
-    bool     srgb;
-    int32_t  depth_bits;    /* 0 = no depth buffer */
-    int32_t  msaa_samples;  /* 0 or 1 = no MSAA    */
+    bool     hidden;        /* create the window invisible (offscreen use, tests) */
 
     rc_app_callbacks callbacks;
 } rc_app_desc;
@@ -111,9 +109,12 @@ rc_vec2i rc_app_size           (void);
 /* Invoke on_update(ctx, dt) with the time elapsed since the last call. */
 void     rc_app_request_update (void);
 
-/* Set the viewport to the full framebuffer, invoke on_render(ctx), then
- * swap buffers.  Also called internally on OS window-refresh (e.g. during
- * modal resize) so rendering stays live without extra user code. */
+/* Invoke on_render(ctx, size) with the framebuffer size, then swap buffers.
+ * A no-op while the framebuffer is zero-sized (minimised) - the callback can
+ * assume a real surface.  Also called internally on OS window-refresh (e.g.
+ * during modal resize) so rendering stays live without extra user code.
+ * Viewport state is owned by the renderer (gfx sets it per pass); the app
+ * layer no longer touches it. */
 void     rc_app_request_render (void);
 
 /* Swap the front and back buffers directly.  Use this when managing

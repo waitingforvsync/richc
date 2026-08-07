@@ -3,7 +3,8 @@
 richc is a single C17 helper library that replaces the C standard library for
 console and windowed applications, in two layers: a dependency-free **core**
 (data structures, algorithms, math, strings, I/O) and an **app** layer
-(windowing, input, image loading, packing, and atlasing) built on top. This page
+(windowing, input, image loading, packing, and atlasing, and the gfx GPU
+abstraction) built on top. This page
 covers the philosophy and conventions shared by both; the per-header reference is
 split into [core.md](core.md) and [app.md](app.md).
 
@@ -102,6 +103,11 @@ The detailed, per-header reference is split in two:
 - **[Core reference](core.md)** - data structures, algorithms, math, strings, I/O.
 - **[App reference](app.md)** - windowing, input, image loading, packing, atlasing.
 
+For learning the gfx layer from scratch, start with the tutorial,
+**[An introduction to richc gfx](gfx_intro.md)** - it builds from a window and
+a triangle up to offscreen rendering, MSAA, instancing, and storage buffers,
+then hands over to the reference.
+
 ### Core (core.md)
 
 Headers:
@@ -163,3 +169,14 @@ Math:
 - [richc/image/image_png.h - PNG decoder](app.md#richcimageimage_pngh---png-decoder)
 - [richc/image/image_pack.h - image atlas packer](app.md#richcimageimage_packh---image-atlas-packer)
 - [richc/image/image_atlas.h - incremental image atlas](app.md#richcimageimage_atlash---incremental-image-atlas)
+- [richc/gfx - GPU abstraction](app.md#richcgfx---gpu-abstraction), split per
+  category:
+  - [richc/gfx/gfx.h - device, handles, shared vocabulary](app.md#richcgfxgfxh---device-handles-shared-vocabulary)
+  - [richc/gfx/color.h - sRGB conversion helpers](app.md#richcgfxcolorh---srgb-conversion-helpers)
+  - [richc/gfx/buffer.h - GPU buffers](app.md#richcgfxbufferh---gpu-buffers)
+  - [richc/gfx/texture.h - textures and samplers](app.md#richcgfxtextureh---textures-and-samplers)
+  - [richc/gfx/shader.h - shaders](app.md#richcgfxshaderh---shaders)
+  - [richc/gfx/bindings.h - bind groups and layouts](app.md#richcgfxbindingsh---bind-groups-and-layouts)
+  - [richc/gfx/pipeline.h - pipelines](app.md#richcgfxpipelineh---pipelines)
+  - [richc/gfx/pass.h - render targets and passes](app.md#richcgfxpassh---render-targets-and-passes)
+  - [richc/gfx/encoder.h - command recording and submission](app.md#richcgfxencoderh---command-recording-and-submission)

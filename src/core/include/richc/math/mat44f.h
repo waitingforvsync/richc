@@ -22,9 +22,18 @@
  *   rc_mat44f_make_zero()                 - all zeros
  *   rc_mat44f_make_identity()             - identity matrix
  *   rc_mat44f_make_translation(v)         - 3D translation (w row preserved)
- *   rc_mat44f_make_ortho(l,r,t,b,n,f)     - OpenGL-style ortho projection (n,f = near,far)
- *   rc_mat44f_make_perspective(fov,a,n,f) - OpenGL-style perspective projection
+ *   rc_mat44f_make_ortho(l,r,t,b,n,f)     - reverse-Z ortho projection (n,f = near,far)
+ *   rc_mat44f_make_ortho_2d(w,h)          - 2D pixel-rect ortho (top-left origin, y down)
+ *   rc_mat44f_make_perspective(fov,a,n,f) - reverse-Z perspective projection
+ *   rc_mat44f_make_perspective_inf(fov,a,n) - reverse-Z infinite-far perspective
  *   rc_mat44f_from_mat22f/33f/34f(m)      - embed a smaller matrix
+ *
+ * Projection convention
+ * ---------------------
+ * All projections produce the library's single canonical clip space: NDC x
+ * right and y up in [-1, 1], depth in [0, 1] with reverse-Z (near -> 1,
+ * far -> 0).  View space is right-handed with -Z forward.  There are no
+ * variants; backends conform to this convention, not the other way round.
  *   rc_mat44f_from_floats(p)              - from float[16], column-major
  *
  * Conversion
@@ -104,10 +113,11 @@ static inline rc_mat44f rc_mat44f_make_translation(rc_vec3f v)
 }
 
 /*
- * OpenGL-style orthographic projection.
+ * Reverse-Z orthographic projection.
  *
- * Maps the view volume [left,right] x [bottom,top] x [-n,-f] to the
- * NDC cube [-1,1]^3.
+ * Maps the view volume [left,right] x [bottom,top] x [-n,-f] to NDC
+ * [-1,1] x [-1,1] x [0,1], with the depth sense reversed: the near face
+ * (view z = -n) lands on depth 1 and the far face (view z = -f) on depth 0.
  */
 static inline rc_mat44f rc_mat44f_make_ortho(
     float left, float right, float top, float bottom, float n, float f)
@@ -116,30 +126,60 @@ static inline rc_mat44f rc_mat44f_make_ortho(
     float tb = top   - bottom;
     float fn = f - n;
     return (rc_mat44f) {
-        rc_vec4f_scalar_mul(rc_vec4f_make_unitx(),  2.0f / rl),
-        rc_vec4f_scalar_mul(rc_vec4f_make_unity(),  2.0f / tb),
-        rc_vec4f_scalar_mul(rc_vec4f_make_unitz(), -2.0f / fn),
-        {-(right + left) / rl, -(top + bottom) / tb, -(f + n) / fn, 1.0f}
+        rc_vec4f_scalar_mul(rc_vec4f_make_unitx(), 2.0f / rl),
+        rc_vec4f_scalar_mul(rc_vec4f_make_unity(), 2.0f / tb),
+        rc_vec4f_scalar_mul(rc_vec4f_make_unitz(), 1.0f / fn),
+        {-(right + left) / rl, -(top + bottom) / tb, f / fn, 1.0f}
     };
 }
 
 /*
- * OpenGL-style symmetric perspective projection (right-handed, -Z forward).
+ * 2D convenience projection: a pixel rect with origin top-left and y down,
+ * mapped to canonical NDC (y up).  Equivalent to
+ * rc_mat44f_make_ortho(0, w, 0, h, 0, 1); geometry at z = 0 lands on the
+ * near plane (depth 1).
+ */
+static inline rc_mat44f rc_mat44f_make_ortho_2d(float w, float h)
+{
+    return rc_mat44f_make_ortho(0.0f, w, 0.0f, h, 0.0f, 1.0f);
+}
+
+/*
+ * Reverse-Z symmetric perspective projection (right-handed, -Z forward).
  *
  *   y_fov  - vertical field of view in radians
  *   aspect - viewport width / height
  *   n, f   - near and far plane distances (positive values)
  *
- * Produces a clip matrix with depth in [-1, 1].
+ * Depth is [0, 1] with the reverse-Z mapping: view z = -n gives depth 1
+ * exactly, view z = -f gives depth 0 exactly.  Clip w is -z (the positive
+ * view-space distance).
  */
 static inline rc_mat44f rc_mat44f_make_perspective(float y_fov, float aspect, float n, float f)
 {
     float a = 1.0f / tanf(y_fov / 2.0f);
     return (rc_mat44f) {
-        {a / aspect, 0.0f,                    0.0f,  0.0f},
-        {0.0f,          a,                    0.0f,  0.0f},
-        {0.0f,       0.0f,      -(f + n) / (f - n), -1.0f},
-        {0.0f,       0.0f, -2.0f * f * n / (f - n),  0.0f}
+        {a / aspect, 0.0f,              0.0f,  0.0f},
+        {0.0f,          a,              0.0f,  0.0f},
+        {0.0f,       0.0f,       n / (f - n), -1.0f},
+        {0.0f,       0.0f,   f * n / (f - n),  0.0f}
+    };
+}
+
+/*
+ * Reverse-Z infinite-far perspective projection: the f -> infinity limit of
+ * rc_mat44f_make_perspective.  View z = -n gives depth 1; depth approaches 0
+ * at infinity (depth = n / -z for a view-space point).  The default to reach
+ * for in 3D: no far plane to tune, and reverse-Z keeps the precision.
+ */
+static inline rc_mat44f rc_mat44f_make_perspective_inf(float y_fov, float aspect, float n)
+{
+    float a = 1.0f / tanf(y_fov / 2.0f);
+    return (rc_mat44f) {
+        {a / aspect, 0.0f, 0.0f,  0.0f},
+        {0.0f,          a, 0.0f,  0.0f},
+        {0.0f,       0.0f, 0.0f, -1.0f},
+        {0.0f,       0.0f,    n,  0.0f}
     };
 }
 

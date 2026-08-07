@@ -5,7 +5,7 @@
  *
  * Generator: C/C++
  * Specification: gl
- * Extensions: 0
+ * Extensions: 1
  *
  * APIs:
  *  - gl:core=3.3
@@ -19,10 +19,10 @@
  *  - ON_DEMAND = False
  *
  * Commandline:
- *    --api='gl:core=3.3' --extensions='' c
+ *    --api='gl:core=3.3' --extensions='GL_ARB_clip_control' c
  *
  * Online:
- *    http://glad.sh/#api=gl%3Acore%3D3.3&extensions=&generator=c&options=
+ *    http://glad.sh/#api=gl%3Acore%3D3.3&extensions=GL_ARB_clip_control&generator=c&options=
  *
  */
 
@@ -231,6 +231,7 @@ typedef void (*GLADpostcallback)(void *ret, const char *name, GLADapiproc apipro
 #define GL_CLAMP_TO_BORDER 0x812D
 #define GL_CLAMP_TO_EDGE 0x812F
 #define GL_CLEAR 0x1500
+#define GL_CLIP_DEPTH_MODE 0x935D
 #define GL_CLIP_DISTANCE0 0x3000
 #define GL_CLIP_DISTANCE1 0x3001
 #define GL_CLIP_DISTANCE2 0x3002
@@ -239,6 +240,7 @@ typedef void (*GLADpostcallback)(void *ret, const char *name, GLADapiproc apipro
 #define GL_CLIP_DISTANCE5 0x3005
 #define GL_CLIP_DISTANCE6 0x3006
 #define GL_CLIP_DISTANCE7 0x3007
+#define GL_CLIP_ORIGIN 0x935C
 #define GL_COLOR 0x1800
 #define GL_COLOR_ATTACHMENT0 0x8CE0
 #define GL_COLOR_ATTACHMENT1 0x8CE1
@@ -540,6 +542,7 @@ typedef void (*GLADpostcallback)(void *ret, const char *name, GLADapiproc apipro
 #define GL_NEAREST 0x2600
 #define GL_NEAREST_MIPMAP_LINEAR 0x2702
 #define GL_NEAREST_MIPMAP_NEAREST 0x2700
+#define GL_NEGATIVE_ONE_TO_ONE 0x935E
 #define GL_NEVER 0x0200
 #define GL_NICEST 0x1102
 #define GL_NONE 0
@@ -993,6 +996,7 @@ typedef void (*GLADpostcallback)(void *ret, const char *name, GLADapiproc apipro
 #define GL_WRITE_ONLY 0x88B9
 #define GL_XOR 0x1506
 #define GL_ZERO 0
+#define GL_ZERO_TO_ONE 0x935F
 
 
 #include <KHR/khrplatform.h>
@@ -1084,6 +1088,8 @@ GLAD_API_CALL int GLAD_GL_VERSION_3_1;
 GLAD_API_CALL int GLAD_GL_VERSION_3_2;
 #define GL_VERSION_3_3 1
 GLAD_API_CALL int GLAD_GL_VERSION_3_3;
+#define GL_ARB_clip_control 1
+GLAD_API_CALL int GLAD_GL_ARB_clip_control;
 
 
 typedef void (GLAD_API_PTR *PFNGLACTIVETEXTUREPROC)(GLenum texture);
@@ -1121,6 +1127,7 @@ typedef void (GLAD_API_PTR *PFNGLCLEARCOLORPROC)(GLfloat red, GLfloat green, GLf
 typedef void (GLAD_API_PTR *PFNGLCLEARDEPTHPROC)(GLdouble depth);
 typedef void (GLAD_API_PTR *PFNGLCLEARSTENCILPROC)(GLint s);
 typedef GLenum (GLAD_API_PTR *PFNGLCLIENTWAITSYNCPROC)(GLsync sync, GLbitfield flags, GLuint64 timeout);
+typedef void (GLAD_API_PTR *PFNGLCLIPCONTROLPROC)(GLenum origin, GLenum depth);
 typedef void (GLAD_API_PTR *PFNGLCOLORMASKPROC)(GLboolean red, GLboolean green, GLboolean blue, GLboolean alpha);
 typedef void (GLAD_API_PTR *PFNGLCOLORMASKIPROC)(GLuint index, GLboolean r, GLboolean g, GLboolean b, GLboolean a);
 typedef void (GLAD_API_PTR *PFNGLCOMPILESHADERPROC)(GLuint shader);
@@ -1501,6 +1508,8 @@ GLAD_API_CALL PFNGLCLEARSTENCILPROC glad_glClearStencil;
 #define glClearStencil glad_glClearStencil
 GLAD_API_CALL PFNGLCLIENTWAITSYNCPROC glad_glClientWaitSync;
 #define glClientWaitSync glad_glClientWaitSync
+GLAD_API_CALL PFNGLCLIPCONTROLPROC glad_glClipControl;
+#define glClipControl glad_glClipControl
 GLAD_API_CALL PFNGLCOLORMASKPROC glad_glColorMask;
 #define glColorMask glad_glColorMask
 GLAD_API_CALL PFNGLCOLORMASKIPROC glad_glColorMaski;

@@ -123,20 +123,23 @@ static void window_maximize_callback(GLFWwindow *w, int maximized)
         app.callbacks.on_maximize(app.callbacks.ctx);
 }
 
-static void set_viewport(void)
+/* Invoke on_render(ctx, size) and swap, skipping both entirely while the
+ * framebuffer is zero-sized (minimised): there is nothing to render into. */
+static void render_and_swap(void)
 {
-    int fw, fh;
-    glfwGetFramebufferSize(app.window, &fw, &fh);
-    glViewport(0, 0, fw, fh);
+    if (!app.callbacks.on_render) return;
+    int width = 0;
+    int height = 0;
+    glfwGetFramebufferSize(app.window, &width, &height);
+    if (width <= 0 || height <= 0) return;
+    app.callbacks.on_render(app.callbacks.ctx, rc_vec2i_make(width, height));
+    glfwSwapBuffers(app.window);
 }
 
 static void window_refresh_callback(GLFWwindow *w)
 {
     (void)w;
-    if (!app.callbacks.on_render) return;
-    set_viewport();
-    app.callbacks.on_render(app.callbacks.ctx);
-    glfwSwapBuffers(app.window);
+    render_and_swap();
 }
 
 /* ---- public API ---- */
@@ -149,13 +152,13 @@ void rc_app_init(const rc_app_desc *desc)
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_RESIZABLE, desc->resizable ? GLFW_TRUE : GLFW_FALSE);
+    if (desc->hidden)
+        glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
 
-    if (desc->srgb)
-        glfwWindowHint(GLFW_SRGB_CAPABLE, GLFW_TRUE);
-    if (desc->depth_bits > 0)
-        glfwWindowHint(GLFW_DEPTH_BITS, desc->depth_bits);
-    if (desc->msaa_samples > 1)
-        glfwWindowHint(GLFW_SAMPLES, desc->msaa_samples);
+    // always request an sRGB-capable default framebuffer: capability does not
+    // force encoding (GL_FRAMEBUFFER_SRGB and the format do), and gfx wants
+    // the hardware-encode present path whenever the driver grants it
+    glfwWindowHint(GLFW_SRGB_CAPABLE, GLFW_TRUE);
 
     char title_buf[256];
     const char *title_cstr = rc_str_as_cstr(desc->title, title_buf, (uint32_t)sizeof(title_buf));
@@ -168,9 +171,6 @@ void rc_app_init(const rc_app_desc *desc)
     glfwSwapInterval(1);
 
     RC_PANIC(gladLoadGL(glad_get_proc));
-
-    if (desc->srgb)
-        glEnable(GL_FRAMEBUFFER_SRGB);
 
     app.callbacks        = desc->callbacks;
     app.current_mods     = (rc_mod)0;
@@ -224,10 +224,7 @@ void rc_app_request_update(void)
 
 void rc_app_request_render(void)
 {
-    if (!app.callbacks.on_render) return;
-    set_viewport();
-    app.callbacks.on_render(app.callbacks.ctx);
-    glfwSwapBuffers(app.window);
+    render_and_swap();
 }
 
 void rc_app_swap_buffers(void)

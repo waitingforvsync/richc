@@ -374,6 +374,38 @@ to decode without reallocation. Pass `0` when it is unknown.
 
 ---
 
+## richc/genpool_handle.h - generational pool handle
+
+The handle type handed out by
+[`genpool.h`](#richctemplategenpoolh---generational-object-pool): a slot index
+paired with the slot's generation at issue time. It lives in its own small
+guarded header (rather than the template) so a public header can declare
+handle-carrying types without instantiating a pool.
+
+```c
+rc_genpool_handle              // { uint32_t index_; uint32_t gen_; } - {0} is the null handle
+
+rc_genpool_handle rc_genpool_handle_make(uint32_t index, uint32_t gen);
+bool              rc_genpool_handle_is_null(rc_genpool_handle h);   // NOT a liveness check
+uint32_t          rc_genpool_handle_index(rc_genpool_handle h);     // asserts h is not null
+uint32_t          rc_genpool_handle_gen(rc_genpool_handle h);
+bool              rc_genpool_handle_equal(rc_genpool_handle a, rc_genpool_handle b);
+```
+
+`index_` stores the slot index **plus one**, with 0 meaning "no slot" - the same
+off-by-one used by the pool free lists - so a **zero-initialised handle is the
+null handle**. The fields are internal (trailing underscore); inspect a handle
+only through the functions.
+
+`is_null` says whether the handle refers to any slot at all; it says nothing
+about whether that slot is still live - only the owning pool's `is_valid` can
+tell. One handle type serves every genpool instantiation (handles are not
+typesafe per pool, just as pool indices are plain `uint32_t`); where mixing
+handles from different pools must be a compile error, wrap the handle in a
+one-member struct per pool (the app layer's gfx handles do this).
+
+---
+
 ## richc/hash.h - hashing
 
 `uint32_t` hash functions for richc types, suitable as the hash expression for
@@ -1091,6 +1123,98 @@ const uint64_t  *rc_trie_u64_key_at(const rc_trie_u64_pool *pool, uint32_t index
 
 ---
 
+## richc/template/genpool.h - generational object pool
+
+A preprocessor template (like `pool.h`, which it closely mirrors) for a
+free-list object pool whose slots carry a generation counter. `alloc` returns an
+[`rc_genpool_handle`](#richcgenpool_handleh---generational-pool-handle) rather
+than a bare index, and `free` increments the slot's generation, invalidating
+every handle issued for the slot's previous lifetime: a stale handle is
+*detected* (`is_valid` false, `at` NULL, `get`/`set`/`free` assert) instead of
+silently aliasing the slot's next occupant. Use a genpool where handles outlive
+their elements (resource tables, scene objects); use a plain pool where indices
+are managed strictly.
+
+### Instantiation
+
+```c
+#define RC_GENPOOL_TYPE thing
+#define RC_GENPOOL_NAME rc_genpool_thing   // optional; default rc_genpool_<TYPE>
+#include "richc/template/genpool.h"
+```
+
+Control macros: `RC_GENPOOL_TYPE` (required); `RC_GENPOOL_NAME` (optional; the
+default requires a single-identifier element type). Both are `#undef`'d by the
+header. Each slot is
+
+```c
+struct { union { uint32_t next_free_; RC_GENPOOL_TYPE value; }; uint32_t gen; }
+```
+
+- the free-list link shares storage with the value exactly as in `pool.h`
+(references stored as `index + 1`, 0 = none, so a **zero-initialised pool is a
+valid empty pool**), while the generation lives *outside* the union, so it
+survives the slot's dead period. An element type smaller than `uint32_t` rounds
+the union up to 4 bytes, and the generation adds 4 more (plus any alignment
+padding the element type demands).
+
+### Generated type and functions
+
+```c
+rc_genpool_thing                                 // { array items; uint32_t first_free; } - { 0 } is valid
+
+rc_genpool_thing  rc_genpool_thing_make(uint32_t capacity, rc_arena *arena);  // optional; only to pre-reserve
+void              rc_genpool_thing_reserve(rc_genpool_thing *pool, uint32_t min_capacity, rc_arena *arena);
+void              rc_genpool_thing_reset(rc_genpool_thing *pool);             // drop all elements, keep backing
+void              rc_genpool_thing_deinit(rc_genpool_thing *pool, rc_arena *arena);  // free backing + zero
+rc_genpool_handle rc_genpool_thing_alloc(rc_genpool_thing *pool, rc_arena *arena);   // handle to a zeroed slot
+void              rc_genpool_thing_free(rc_genpool_thing *pool, rc_genpool_handle h);  // asserts is_valid; gen += 1
+bool              rc_genpool_thing_is_valid(const rc_genpool_thing *pool, rc_genpool_handle h);
+thing             rc_genpool_thing_get(const rc_genpool_thing *pool, rc_genpool_handle h);   // asserts is_valid
+void              rc_genpool_thing_set(rc_genpool_thing *pool, rc_genpool_handle h, thing value);  // asserts is_valid
+thing            *rc_genpool_thing_at(rc_genpool_thing *pool, rc_genpool_handle h);          // NULL if not valid
+const thing      *rc_genpool_thing_at_const(const rc_genpool_thing *pool, rc_genpool_handle h);  // NULL likewise
+rc_genpool_handle rc_genpool_thing_handle_at(const rc_genpool_thing *pool, uint32_t index);  // live slots only
+rc_bitset         rc_genpool_thing_free_bitset(const rc_genpool_thing *pool, rc_arena *arena);  // dead slots
+```
+
+- `is_valid` is true when the handle is non-null, in range, and its generation
+  matches the slot's - i.e. the element it named is still live. `get`/`set`
+  assert it; `at`/`at_const` are the non-trapping accessors, returning NULL for
+  a null, out-of-range, or stale handle. `at` pointers have the same stability
+  caveat as `pool.h`: they survive in-place growth but are invalidated if the
+  backing relocates because it shares an arena with other growables - prefer the
+  handle for long-lived references.
+- `alloc` reuses a freed slot when one exists (the returned handle carries the
+  slot's advanced generation, so handles from the previous lifetime stay stale),
+  otherwise appends a fresh slot at generation 0; the value is zeroed either
+  way.
+- `free` asserts the handle is valid - trapping null, stale, and **double-free**
+  (a genuine improvement over `pool.h`, whose in-band free list cannot detect
+  one) - then bumps the slot's generation and pushes the slot onto the free
+  list. Because free advances the generation, `alloc(); free(h);` is *not*
+  byte-identical, unlike `pool.h` - that is the feature. The backing is never
+  trimmed; `reset`/`deinit` reclaim it wholesale.
+- Handles are the shared `rc_genpool_handle` type, not typesafe per pool: a
+  handle presented to the wrong genpool goes undetected when index and
+  generation happen to match there. Wrap the handle in a one-member struct per
+  pool where mixing must be a compile error.
+- `reset`/`deinit` drop the slot array, so slots recreated afterwards restart at
+  generation 0: a handle issued before the reset can alias one issued after
+  (same caveat class as `pool.h` index reuse; there is no epoch mechanism). A
+  single slot's generation wraps after 2^32 frees, momentarily revalidating an
+  ancient handle; noted, not defended.
+- The generation does not encode liveness (it only advances on free), so as with
+  `pool.h` the only liveness information is the free list, exposed by
+  `free_bitset` (set bits are the dead slots). `handle_at` reconstructs the
+  handle a slot currently validates against; on a *free* slot that is the handle
+  the next alloc will issue, which `is_valid` would accept - so call it only for
+  slots known to be live, e.g. the clear bits of `free_bitset`. The
+  [`genpool_foreach`](#richctemplatealgorithmgenpool_foreachh---iterate-live-genpool-entries)
+  template combines the two to visit the live elements.
+
+---
+
 ## richc/template/pool.h - free-list object pool
 
 A preprocessor template (like `array.h`) for an index-stable object pool backed
@@ -1137,10 +1261,11 @@ rc_bitset     rc_pool_thing_free_bitset(const rc_pool_thing *pool, rc_arena *are
   one-growable-per-arena case) but are invalidated if the backing relocates
   because it shares an arena with other growables. `at_const` is the same pointer
   through a `const` pool, for read-only access.
-- `free` pushes the slot onto the free list, except when it is the final slot,
-  which is popped so the backing does not keep a dead tail (this does not cascade
-  into earlier free entries). Double-freeing or freeing an out-of-range index is
-  a caller error.
+- `free` always pushes the slot onto the free list, even when it is the final
+  slot, so `alloc` and `free` are exact inverses: `alloc(); free(i);` restores
+  the pool byte-for-byte. Trailing free slots are not trimmed - the backing
+  array holds its high-water mark until `reset`/`deinit` reclaim it wholesale.
+  Double-freeing or freeing an out-of-range index is a caller error.
 - The pool itself does not iterate (a freed slot is indistinguishable from a live
   one by inspection), but `free_bitset` exposes the liveness information: it
   returns an `rc_bitset`, sized to `items.num` and allocated from `arena`, whose
@@ -1195,6 +1320,64 @@ pointer as the callback's first argument and as a function parameter:
 The generated signature is `void NAME(const rc_bitset *bs)` without a context, or
 `void NAME(const rc_bitset *bs, CTX *ctx)` with one. Iteration is read-only and
 allocates nothing.
+
+---
+
+## richc/template/algorithm/genpool_foreach.h - iterate live genpool entries
+
+A preprocessor template (like `sort.h`) that generates a function to visit the
+*live* entries of a genpool. The genpool has no built-in iteration because the
+generation does not encode liveness; this template bridges that by calling the
+pool's `free_bitset` to find the dead slots in a scratch arena, then invoking a
+caller-supplied macro with the pool and each live slot's handle (reconstructed
+via the pool's `handle_at`). Include it again (after redefining the control
+macros) to generate another iterator.
+
+### Instantiation
+
+```c
+#define RC_GENPOOL_TYPE thing
+#include "richc/template/genpool.h"   // rc_genpool_thing + free_bitset + handle_at
+
+typedef struct { int total; } sum_ctx;
+static void add_cost(sum_ctx *c, rc_genpool_thing *pool, rc_genpool_handle h)
+{ c->total += rc_genpool_thing_at(pool, h)->cost; }
+
+#define RC_GENPOOL_FOREACH_POOL          rc_genpool_thing
+#define RC_GENPOOL_FOREACH_CTX           sum_ctx
+#define RC_GENPOOL_FOREACH_FUNC(c, p, h) add_cost(c, p, h)
+#include "richc/template/algorithm/genpool_foreach.h"
+// void rc_genpool_thing_foreach(rc_genpool_thing *pool, sum_ctx *ctx, rc_arena scratch);
+```
+
+| Control macro | Required | Default | Meaning |
+|---------------|----------|---------|---------|
+| `RC_GENPOOL_FOREACH_POOL` | yes | - | pool type name (the same passed to `RC_GENPOOL_NAME`, e.g. `rc_genpool_thing`); drives the defaults |
+| `RC_GENPOOL_FOREACH_FUNC` | yes | - | per-element callback (see below) |
+| `RC_GENPOOL_FOREACH_CTX`  | no  | none | context type threaded to the callback |
+| `RC_GENPOOL_FOREACH_NAME` | no  | `<POOL>_foreach` | generated function name |
+
+All macros defined before inclusion are undefined again by the header.
+
+### Callback and context
+
+Without a context the callback is `RC_GENPOOL_FOREACH_FUNC(pool, handle)`, where
+`pool` is the `POOL *` and `handle` is the live element's `rc_genpool_handle` -
+the callback reaches the object through the pool's `get` / `set` / `at` (the
+handle-over-pointer convention; `at` is writable, so it can mutate in place).
+Each handle carries the slot's current generation, so it satisfies `is_valid`.
+Defining `RC_GENPOOL_FOREACH_CTX` adds a context pointer as the callback's first
+argument and as a function parameter:
+
+```c
+#define RC_GENPOOL_FOREACH_FUNC(ctx, pool, handle)  ...   // ctx is RC_GENPOOL_FOREACH_CTX *
+```
+
+The generated signature is `void NAME(POOL *pool, rc_arena scratch)` without a
+context, or `void NAME(POOL *pool, CTX *ctx, rc_arena scratch)` with one. The
+`scratch` arena is taken by value (the standard scratch pattern): the dead-slot
+bitset is built in the caller's snapshot and discarded on return, leaving the
+caller's arena untouched.
 
 ---
 
@@ -1740,10 +1923,22 @@ All operations are inline.
 
 - Construction: `rc_mat44f_make(cx, cy, cz, cw)`, `_make_transpose(...)` (from
   row vectors), `_make_zero`, `_make_identity`, `_make_translation(v)` (3D
-  translation), `_make_ortho(left, right, top, bottom, n, f)` and
-  `_make_perspective(y_fov, aspect, n, f)` (OpenGL-style projections, right-
-  handed with -Z forward and depth in [-1, 1]), `_from_mat22f/33f/34f(m)` (embed
-  a smaller matrix), `_from_floats(p)` (from `float[16]`).
+  translation), the projections below, `_from_mat22f/33f/34f(m)` (embed a
+  smaller matrix), `_from_floats(p)` (from `float[16]`).
+- Projections - all in the library's one canonical clip space (NDC x right and
+  y up in [-1, 1], depth in [0, 1] with reverse-Z: near -> 1, far -> 0; view
+  space right-handed, -Z forward); there are no variants and no handedness or
+  depth-range parameters:
+  - `_make_perspective(y_fov, aspect, n, f)` - finite far plane; view z = -n
+    gives depth exactly 1, z = -f exactly 0; clip w is the positive view
+    distance.
+  - `_make_perspective_inf(y_fov, aspect, n)` - the f -> infinity limit
+    (depth = n / -z); the default to reach for in 3D.
+  - `_make_ortho(left, right, top, bottom, n, f)` - maps the box to NDC with
+    the depth sense reversed (near face -> 1).
+  - `_make_ortho_2d(w, h)` - 2D convenience: a pixel rect with origin
+    top-left and y down to canonical NDC; geometry at z = 0 lands on depth 1.
+    Equivalent to `_make_ortho(0, w, 0, h, 0, 1)`.
 - Conversion: `_as_floats(m)` -> `const float *` (column-major `float[16]`).
 - Operations: `_add`, `_sub`, `_scalar_mul`, `_vec4f_mul(m, v)`, `_mul(a, b)`,
   `_transpose`, `_determinant` -> `float`, `_inverse` (asserts determinant != 0).
