@@ -270,9 +270,11 @@ uint32_t        rc_gfx_backend_format_caps(rc_gfx_texture_format fmt);
 rc_str          rc_gfx_backend_name(void);
 
 /* Frame lifecycle.  begin_frame (re)creates the swapchain target on size
- * change; end_frame resolves a multisampled swapchain and runs the present
- * draw into the default framebuffer. */
-void rc_gfx_backend_begin_frame(rc_vec2i size, rc_gfx_texture_format format, uint32_t sample_count);
+ * change (depth_format NONE => colour-only); end_frame resolves a
+ * multisampled swapchain and runs the present draw into the default
+ * framebuffer. */
+void rc_gfx_backend_begin_frame(rc_vec2i size, rc_gfx_texture_format format,
+                                rc_gfx_texture_format depth_format, uint32_t sample_count);
 void rc_gfx_backend_end_frame(rc_gfx_color_space color_space);
 
 /* Resources.  Each fills in the gl_* members of the given object. */

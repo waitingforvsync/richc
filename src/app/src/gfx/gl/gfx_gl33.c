@@ -75,9 +75,11 @@ static struct {
     /* swapchain target */
     rc_vec2i              sc_size;
     rc_gfx_texture_format sc_format;
+    rc_gfx_texture_format sc_depth_format;   /* NONE => colour-only */
     uint32_t              sc_samples;
     GLuint                sc_texture;
     GLuint                sc_fbo;
+    GLuint                sc_depth_rbo;      /* 0 when sc_depth_format is NONE */
     GLuint                sc_msaa_rbo;
     GLuint                sc_msaa_fbo;
 
@@ -449,6 +451,7 @@ void rc_gfx_backend_shutdown(void)
     glDeleteBuffers(1, &gl.ring_buffer);
     glDeleteTextures(1, &gl.sc_texture);
     glDeleteFramebuffers(1, &gl.sc_fbo);
+    glDeleteRenderbuffers(1, &gl.sc_depth_rbo);
     glDeleteRenderbuffers(1, &gl.sc_msaa_rbo);
     glDeleteFramebuffers(1, &gl.sc_msaa_fbo);
     memset(&gl, 0, sizeof(gl));
@@ -511,17 +514,21 @@ uint32_t rc_gfx_backend_format_caps(rc_gfx_texture_format fmt)
 
 /* ---- frame lifecycle ---- */
 
-void rc_gfx_backend_begin_frame(rc_vec2i size, rc_gfx_texture_format format, uint32_t sample_count)
+void rc_gfx_backend_begin_frame(rc_vec2i size, rc_gfx_texture_format format,
+                                rc_gfx_texture_format depth_format, uint32_t sample_count)
 {
     if (size.x == gl.sc_size.x && size.y == gl.sc_size.y
-        && format == gl.sc_format && sample_count == gl.sc_samples) {
+        && format == gl.sc_format && depth_format == gl.sc_depth_format
+        && sample_count == gl.sc_samples) {
         return;
     }
     gl_cache_forget_texture(gl.sc_texture);
     glDeleteTextures(1, &gl.sc_texture);
     glDeleteFramebuffers(1, &gl.sc_fbo);
+    glDeleteRenderbuffers(1, &gl.sc_depth_rbo);
     glDeleteRenderbuffers(1, &gl.sc_msaa_rbo);
     glDeleteFramebuffers(1, &gl.sc_msaa_fbo);
+    gl.sc_depth_rbo = 0;
     gl.sc_msaa_rbo = 0;
     gl.sc_msaa_fbo = 0;
 
@@ -536,9 +543,30 @@ void rc_gfx_backend_begin_frame(rc_vec2i size, rc_gfx_texture_format format, uin
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
+    // the optional depth buffer lives as a renderbuffer on whichever FBO the
+    // user's passes render into (the MSAA one when multisampling); the resolve
+    // and present paths are colour-only, so no other FBO carries depth
+    if (depth_format != RC_GFX_TEXTURE_FORMAT_NONE) {
+        rc_gfx_gl_format gldepth = rc_gfx_gl_format_get(depth_format);
+        glGenRenderbuffers(1, &gl.sc_depth_rbo);
+        glBindRenderbuffer(GL_RENDERBUFFER, gl.sc_depth_rbo);
+        if (sample_count > 1) {
+            glRenderbufferStorageMultisample(GL_RENDERBUFFER, (GLsizei)sample_count,
+                                             gldepth.internal_format, size.x, size.y);
+        } else {
+            glRenderbufferStorage(GL_RENDERBUFFER, gldepth.internal_format, size.x, size.y);
+        }
+    }
+    GLenum depth_attachment = rc_gfx_texture_format_is_stencil(depth_format)
+        ? GL_DEPTH_STENCIL_ATTACHMENT
+        : GL_DEPTH_ATTACHMENT;
+
     glGenFramebuffers(1, &gl.sc_fbo);
     glBindFramebuffer(GL_FRAMEBUFFER, gl.sc_fbo);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gl.sc_texture, 0);
+    if (gl.sc_depth_rbo != 0 && sample_count <= 1) {
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, depth_attachment, GL_RENDERBUFFER, gl.sc_depth_rbo);
+    }
     RC_PANIC(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
 
     if (sample_count > 1) {
@@ -549,11 +577,15 @@ void rc_gfx_backend_begin_frame(rc_vec2i size, rc_gfx_texture_format format, uin
         glGenFramebuffers(1, &gl.sc_msaa_fbo);
         glBindFramebuffer(GL_FRAMEBUFFER, gl.sc_msaa_fbo);
         glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, gl.sc_msaa_rbo);
+        if (gl.sc_depth_rbo != 0) {
+            glFramebufferRenderbuffer(GL_FRAMEBUFFER, depth_attachment, GL_RENDERBUFFER, gl.sc_depth_rbo);
+        }
         RC_PANIC(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
     }
 
     gl.sc_size = size;
     gl.sc_format = format;
+    gl.sc_depth_format = depth_format;
     gl.sc_samples = sample_count;
 }
 
@@ -1377,7 +1409,7 @@ static void gl_play_pass_begin(const rc_gfx_pass_desc *desc)
         gl.play.target_size = gl.sc_size;
         gl.play.color_count = 1;
         gl.play.color_formats[0] = gl.sc_format;
-        gl.play.depth_format = RC_GFX_TEXTURE_FORMAT_NONE;
+        gl.play.depth_format = gl.sc_depth_format;
         gl.play.sample_count = gl.sc_samples;
         fbo = gl.sc_samples > 1 ? gl.sc_msaa_fbo : gl.sc_fbo;
     } else {

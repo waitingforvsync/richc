@@ -80,6 +80,7 @@ static struct {
     rc_gfx_color_space color_space;
     uint32_t           swapchain_samples;
     rc_gfx_texture_format swapchain_format;
+    rc_gfx_texture_format swapchain_depth_format;
     rc_vec2i           swapchain_size;
     bool               in_frame;
     uint64_t           frame_index;
@@ -219,6 +220,9 @@ void rc_gfx_init(const rc_gfx_desc *desc)
     gfx.swapchain_format = desc->color_space == RC_GFX_COLOR_SPACE_LINEAR
         ? RC_GFX_TEXTURE_FORMAT_RGBA8_UNORM
         : RC_GFX_TEXTURE_FORMAT_RGBA8_SRGB;
+    RC_ASSERT(desc->swapchain_depth_format == RC_GFX_TEXTURE_FORMAT_NONE
+              || rc_gfx_texture_format_is_depth(desc->swapchain_depth_format));
+    gfx.swapchain_depth_format = desc->swapchain_depth_format;
 #ifndef NDEBUG
     gfx.validation = true;
 #else
@@ -340,7 +344,8 @@ void rc_gfx_begin_frame(rc_vec2i size)
     rc_atomic_u32_store(&gfx.ring_cursor, 0, RC_MEMORY_ORDER_RELAXED);
     gfx.ring_flushed = 0;
 
-    rc_gfx_backend_begin_frame(size, gfx.swapchain_format, gfx.swapchain_samples);
+    rc_gfx_backend_begin_frame(size, gfx.swapchain_format, gfx.swapchain_depth_format,
+                               gfx.swapchain_samples);
 }
 
 void rc_gfx_end_frame(void)
@@ -377,6 +382,12 @@ rc_gfx_texture_format rc_gfx_swapchain_format(void)
 {
     RC_ASSERT(gfx.initialized);
     return gfx.swapchain_format;
+}
+
+rc_gfx_texture_format rc_gfx_swapchain_depth_format(void)
+{
+    RC_ASSERT(gfx.initialized);
+    return gfx.swapchain_depth_format;
 }
 
 rc_gfx_features rc_gfx_features_query(void)

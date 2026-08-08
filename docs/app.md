@@ -246,15 +246,18 @@ remembering:
   (NONE/U16/U32), `rc_gfx_stage` bit flags (VERTEX, FRAGMENT),
   `rc_gfx_color_space` (SRGB default, LINEAR).
 - `rc_gfx_desc` - `arena` (required; gfx's persistent allocations),
-  `color_space`, `swapchain_sample_count` (0/1 = no MSAA),
-  `uniform_ring_size` (bytes per in-flight frame, 0 => 1 MB), `validation`
-  (extra load-time checks; forced on in debug builds).
+  `color_space`, `swapchain_depth_format` (NONE = colour-only swapchain; a
+  depth format such as DEPTH32F gives the swapchain target a depth/stencil
+  buffer that follows the window size), `swapchain_sample_count` (0/1 = no
+  MSAA), `uniform_ring_size` (bytes per in-flight frame, 0 => 1 MB),
+  `validation` (extra load-time checks; forced on in debug builds).
 - Lifecycle: `rc_gfx_init(desc)` / `rc_gfx_shutdown()` (destroys anything
   still alive); per frame `rc_gfx_begin_frame(size)` (current framebuffer
   size; the swapchain target recreates on change) and `rc_gfx_end_frame()`
   (present pass + retires deferred destructions - the swap itself stays with
   the app layer). Destroys are deferred `RC_GFX_FRAMES_IN_FLIGHT` frames.
-- Queries: `rc_gfx_swapchain_size()` / `rc_gfx_swapchain_format()`,
+- Queries: `rc_gfx_swapchain_size()` / `rc_gfx_swapchain_format()` /
+  `rc_gfx_swapchain_depth_format()` (NONE when colour-only),
   `rc_gfx_features_query()` (`rc_gfx_features`: compute, storage_buffers,
   storage_buffers_via_tbo, base_instance, indirect_draw,
   native_depth_zero_to_one, cube_map_array, texture_view,
@@ -425,8 +428,15 @@ group 1 per pass, group 2 per material, group 3 per draw (dynamic offsets).
 - `rc_gfx_color_attachment_action` - `load_op`, `store_op`, `clear_value`
   (**linear**, even for sRGB attachments). `rc_gfx_depth_stencil_action` -
   depth and stencil load/store + clear values (reverse-Z: clear depth to
-  0.0). `rc_gfx_pass_desc` - `target` (`{0}` => the swapchain target, which
-  is colour-only), per-attachment actions, `label`.
+  0.0). `rc_gfx_pass_desc` - `target` (`{0}` => the swapchain target),
+  per-attachment actions, `label`. The swapchain target is the internal
+  window-sized colour image `rc_gfx_end_frame` presents, plus the optional
+  depth/stencil buffer requested via `rc_gfx_desc.swapchain_depth_format`. A
+  pipeline drawing to it must declare exactly that depth format - NONE when
+  no depth was requested (validated at bind; depth/stencil actions are
+  ignored on a colour-only swapchain). It has no texture handle, so it can
+  never be sampled - anything that must be read back (post-processing
+  inputs) renders to an explicit render target instead.
 - MSAA resolve is expressed as `RC_GFX_STORE_OP_RESOLVE` on a colour
   attachment whose render target has a resolve destination; the resolve
   happens at pass end. A multisampled swapchain

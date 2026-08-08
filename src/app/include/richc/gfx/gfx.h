@@ -172,6 +172,9 @@ typedef enum rc_gfx_color_space {
 typedef struct rc_gfx_desc {
     rc_arena          *arena;         /* arena for gfx's persistent allocations; required */
     rc_gfx_color_space color_space;   /* default SRGB */
+    rc_gfx_texture_format swapchain_depth_format; /* NONE (default) => colour-only swapchain;
+                                                     a depth format (e.g. DEPTH32F) gives the
+                                                     swapchain target a depth/stencil buffer */
     uint32_t           swapchain_sample_count;  /* 0 or 1 => no MSAA */
     uint32_t           uniform_ring_size;       /* bytes per in-flight frame; 0 => 1 MB */
     bool               validation;    /* extra load-time checks; forced on in debug builds */
@@ -193,6 +196,7 @@ void rc_gfx_end_frame(void);
 
 rc_vec2i              rc_gfx_swapchain_size(void);
 rc_gfx_texture_format rc_gfx_swapchain_format(void);
+rc_gfx_texture_format rc_gfx_swapchain_depth_format(void);   /* NONE when colour-only */
 
 /* ---- features and limits ---- */
 

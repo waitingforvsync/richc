@@ -670,6 +670,131 @@ RC_TEST_STEP(gfx_gl, offscreen_depth_reverse_z, fix)
     rc_gfx_shutdown();
 }
 
+RC_TEST_STEP(gfx_gl, swapchain_depth_reverse_z, fix)
+{
+    // a depth buffer on the swapchain itself (rc_gfx_desc.swapchain_depth_format):
+    // draw red near (0.75) then green far (0.25) straight to target {0}; the
+    // far draw must be rejected by the reverse-Z GREATER_EQUAL test, with no
+    // offscreen target or blit pass involved
+    rc_gfx_init(&(rc_gfx_desc) {
+        .arena = &fix->arena,
+        .swapchain_depth_format = RC_GFX_TEXTURE_FORMAT_DEPTH32F,
+    });
+    RC_CHECK((uint32_t)rc_gfx_swapchain_depth_format(), ==, (uint32_t)RC_GFX_TEXTURE_FORMAT_DEPTH32F);
+
+    typedef struct draw_uniforms {
+        rc_vec4f color;
+        float    z;
+        float    pad[3];
+    } draw_uniforms;
+    static const char vs_src[] =
+        "layout(location = 0) in vec2 a_pos;\n"
+        "layout(std140) uniform DrawUniforms {\n"
+        "    vec4 u_color;\n"
+        "    float u_z;\n"
+        "};\n"
+        "void main() { gl_Position = rc_clip(vec4(a_pos, u_z, 1.0)); }\n";
+    static const char fs_src[] =
+        "layout(std140) uniform DrawUniforms {\n"
+        "    vec4 u_color;\n"
+        "    float u_z;\n"
+        "};\n"
+        "out vec4 o_color;\n"
+        "void main() { o_color = u_color; }\n";
+    rc_gfx_shader shader = rc_gfx_shader_make(&(rc_gfx_shader_desc) {
+        .vs_source = RC_STR(vs_src),
+        .fs_source = RC_STR(fs_src),
+        .uniform_blocks = (const rc_gfx_shader_uniform_block[]) {
+            {
+                .glsl_name = RC_STR("DrawUniforms"),
+                .binding = 0,
+                .size = sizeof(draw_uniforms),
+            },
+        },
+        .uniform_block_count = 1,
+    });
+    rc_gfx_simple_layout layout = rc_gfx_simple_layout_make(
+        (const rc_gfx_bind_group_layout_entry[]) {
+            {
+                .binding = 0,
+                .visibility = RC_GFX_STAGE_VERTEX | RC_GFX_STAGE_FRAGMENT,
+                .type = RC_GFX_BINDING_UNIFORM_BUFFER,
+                .has_dynamic_offset = true,
+                .min_binding_size = sizeof(draw_uniforms),
+            },
+        },
+        1, RC_STR("swapchain depth layout"));
+    rc_gfx_bind_group group = rc_gfx_bind_group_make(&(rc_gfx_bind_group_desc) {
+        .layout = layout.group0,
+        .entries = {
+            {
+                .binding = 0,
+                .buffer = rc_gfx_uniform_buffer(),
+                .buffer_size = sizeof(draw_uniforms),
+            },
+        },
+        .entry_count = 1,
+    });
+    rc_gfx_pipeline pip = rc_gfx_pipeline_make(&(rc_gfx_pipeline_desc) {
+        .shader = shader,
+        .layout = layout.layout,
+        .vertex_layout = {
+            .attributes = {
+                {.location = 0, .format = RC_GFX_VERTEX_FORMAT_F32X2},
+            },
+        },
+        .colors = {
+            {
+                .format = rc_gfx_swapchain_format(),
+            },
+        },
+        .color_count = 1,
+        .depth_stencil = {
+            .format = rc_gfx_swapchain_depth_format(),
+            .depth_write = true,
+            .depth_compare = RC_GFX_COMPARE_GREATER_EQUAL,
+        },
+    });
+    rc_gfx_buffer vbuf = make_fullscreen_vbuf();
+
+    rc_gfx_begin_frame(rc_app_size());
+    rc_gfx_encoder *enc = rc_gfx_encoder_begin(&fix->frame);
+
+    rc_gfx_encoder_pass_begin(enc, &(rc_gfx_pass_desc) {
+        .depth_stencil = {
+            .depth_clear_value = 0.0f,   // reverse-Z far
+        },
+    });
+    rc_gfx_encoder_set_pipeline(enc, pip);
+    rc_gfx_encoder_set_vertex_buffer(enc, 0, vbuf, 0);
+    rc_gfx_uniform_alloc near_u = rc_gfx_encoder_alloc_uniforms(enc, sizeof(draw_uniforms));
+    *(draw_uniforms *)near_u.ptr = (draw_uniforms) {
+        .color = {1.0f, 0.0f, 0.0f, 1.0f},
+        .z = 0.75f,
+    };
+    rc_gfx_encoder_set_bind_group(enc, 0, group, &near_u.offset, 1);
+    rc_gfx_encoder_draw(enc, &(rc_gfx_draw_desc) {.vertex_count = 3});
+    rc_gfx_uniform_alloc far_u = rc_gfx_encoder_alloc_uniforms(enc, sizeof(draw_uniforms));
+    *(draw_uniforms *)far_u.ptr = (draw_uniforms) {
+        .color = {0.0f, 1.0f, 0.0f, 1.0f},
+        .z = 0.25f,
+    };
+    rc_gfx_encoder_set_bind_group(enc, 0, group, &far_u.offset, 1);
+    rc_gfx_encoder_draw(enc, &(rc_gfx_draw_desc) {.vertex_count = 3});
+    rc_gfx_encoder_pass_end(enc);
+
+    rc_gfx_cmd_buffer cb = rc_gfx_encoder_finish(enc);
+    rc_gfx_submit(&cb, 1);
+    rc_gfx_end_frame();
+
+    // the far (green) draw failed the reverse-Z test: centre stays red
+    uint32_t px = read_window_pixel(128, 128);
+    RC_CHECK(channel_r(px), ==, 255);
+    RC_CHECK(channel_g(px), ==, 0);
+
+    rc_gfx_shutdown();
+}
+
 RC_TEST_STEP(gfx_gl, msaa_resolve, fix)
 {
     // a 4x MSAA target cleared to solid red resolves (STORE_OP_RESOLVE)

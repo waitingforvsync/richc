@@ -3,9 +3,9 @@
  *
  * Exercises the 3D half of the gfx layer:
  * - 3D projection: reverse-Z infinite-far perspective, orbiting lookat camera
- * - depth buffer: an offscreen colour + DEPTH32F target (the swapchain target
- *   is colour-only), cleared to 0.0 and tested GREATER_EQUAL, then sampled
- *   into the swapchain by a fullscreen blit pass
+ * - depth buffer: the swapchain target carries a DEPTH32F buffer
+ *   (rc_gfx_desc.swapchain_depth_format), cleared to 0.0 and tested
+ *   GREATER_EQUAL, so the scene renders straight to the swapchain
  * - instancing: one cube mesh drawn CUBE_COUNT times; the model matrix and
  *   texture layer come from a per-instance vertex buffer rewritten each frame
  * - textures: a generated RGBA8_SRGB 2D array (checker, stripes, rings,
@@ -149,28 +149,6 @@ static const char fs_src[] =
     "    o_color = vec4(albedo * (0.15 + 0.85 * diffuse), 1.0);\n"
     "}\n";
 
-/* Fullscreen blit: samples the offscreen colour target into the swapchain. */
-static const char blit_vs_src[] =
-    "layout(location = 0) in vec2 a_pos;\n"
-    "out vec2 v_uv;\n"
-    "void main() {\n"
-    "    v_uv = a_pos * 0.5 + 0.5;\n"
-    "    gl_Position = rc_clip(vec4(a_pos, 0.0, 1.0));\n"
-    "}\n";
-
-static const char blit_fs_src[] =
-    "uniform sampler2D u_tex;\n"
-    "in vec2 v_uv;\n"
-    "out vec4 o_color;\n"
-    "void main() { o_color = texture(u_tex, v_uv); }\n";
-
-/* One oversized triangle covering the whole screen. */
-static const rc_vec2f blit_vertices[3] = {
-    {-1.0f, -1.0f},
-    {3.0f, -1.0f},
-    {-1.0f, 3.0f},
-};
-
 /* ---- state ---- */
 
 static struct {
@@ -186,19 +164,6 @@ static struct {
     rc_gfx_simple_layout layout;
     rc_gfx_bind_group    group0;
     rc_gfx_pipeline      pip;
-
-    rc_gfx_shader        blit_shader;
-    rc_gfx_sampler       blit_sampler;
-    rc_gfx_simple_layout blit_layout;
-    rc_gfx_pipeline      blit_pip;
-    rc_gfx_buffer        blit_vbuf;
-
-    /* offscreen target, recreated to follow the framebuffer size */
-    rc_vec2i             target_size;
-    rc_gfx_texture       color;
-    rc_gfx_texture       depth;
-    rc_gfx_render_target rt;
-    rc_gfx_bind_group    blit_group;    /* references color, so recreated with it */
 
     cube_params          cubes[CUBE_COUNT];
     instance             instances[CUBE_COUNT];
@@ -335,6 +300,7 @@ static void gfx_setup(void)
 {
     rc_gfx_init(&(rc_gfx_desc) {
         .arena = &state.arena,
+        .swapchain_depth_format = RC_GFX_TEXTURE_FORMAT_DEPTH32F,
     });
 
     state.vbuf = rc_gfx_buffer_make(&(rc_gfx_buffer_desc) {
@@ -519,143 +485,17 @@ static void gfx_setup(void)
         .cull = RC_GFX_CULL_BACK,
         .colors = {
             {
-                .format = RC_GFX_TEXTURE_FORMAT_RGBA8_SRGB,
+                .format = rc_gfx_swapchain_format(),
             },
         },
         .color_count = 1,
         .depth_stencil = {
-            .format = RC_GFX_TEXTURE_FORMAT_DEPTH32F,
+            .format = rc_gfx_swapchain_depth_format(),
             .depth_write = true,
             .depth_compare = RC_GFX_COMPARE_GREATER_EQUAL,   /* reverse-Z */
         },
         .label = RC_STR("cube pipeline"),
     });
-
-    /* blit pass objects */
-
-    state.blit_shader = rc_gfx_shader_make(&(rc_gfx_shader_desc) {
-        .vs_source = RC_STR(blit_vs_src),
-        .fs_source = RC_STR(blit_fs_src),
-        .texture_samplers = (const rc_gfx_shader_texture_sampler_pair[]) {
-            {
-                .glsl_name = RC_STR("u_tex"),
-                .texture_binding = 0,
-                .sampler_binding = 1,
-            },
-        },
-        .texture_sampler_count = 1,
-        .label = RC_STR("blit shader"),
-    });
-
-    state.blit_sampler = rc_gfx_sampler_make(&(rc_gfx_sampler_desc) {
-        .label = RC_STR("blit sampler"),
-    });
-
-    state.blit_layout = rc_gfx_simple_layout_make(
-        (const rc_gfx_bind_group_layout_entry[]) {
-            {
-                .binding = 0,
-                .visibility = RC_GFX_STAGE_FRAGMENT,
-                .type = RC_GFX_BINDING_TEXTURE,
-            },
-            {
-                .binding = 1,
-                .visibility = RC_GFX_STAGE_FRAGMENT,
-                .type = RC_GFX_BINDING_SAMPLER,
-            },
-        },
-        2,
-        RC_STR("blit layout"));
-
-    state.blit_pip = rc_gfx_pipeline_make(&(rc_gfx_pipeline_desc) {
-        .shader = state.blit_shader,
-        .layout = state.blit_layout.layout,
-        .vertex_layout = {
-            .attributes = {
-                {
-                    .location = 0,
-                    .format = RC_GFX_VERTEX_FORMAT_F32X2,
-                },
-            },
-        },
-        .colors = {
-            {
-                .format = rc_gfx_swapchain_format(),
-            },
-        },
-        .color_count = 1,
-        .label = RC_STR("blit pipeline"),
-    });
-
-    state.blit_vbuf = rc_gfx_buffer_make(&(rc_gfx_buffer_desc) {
-        .size = sizeof(blit_vertices),
-        .usage = RC_GFX_BUFFER_USAGE_VERTEX,
-        .data = {
-            .data = (const uint8_t *)blit_vertices,
-            .num = sizeof(blit_vertices),
-        },
-        .label = RC_STR("blit vertices"),
-    });
-}
-
-/* Recreate the offscreen colour + depth target (and the bind group that
- * samples it) whenever the framebuffer size changes.  Destroys are deferred
- * internally, so in-flight frames stay valid. */
-static void ensure_target(rc_vec2i size)
-{
-    if (rc_vec2i_is_equal(size, state.target_size)) {
-        return;
-    }
-
-    if (!rc_genpool_handle_is_null(state.rt.h)) {
-        rc_gfx_bind_group_destroy(state.blit_group);
-        rc_gfx_render_target_destroy(state.rt);
-        rc_gfx_texture_destroy(state.color);
-        rc_gfx_texture_destroy(state.depth);
-    }
-
-    state.color = rc_gfx_texture_make(&(rc_gfx_texture_desc) {
-        .format = RC_GFX_TEXTURE_FORMAT_RGBA8_SRGB,
-        .size = size,
-        .usage = RC_GFX_TEXTURE_USAGE_RENDER_ATTACHMENT | RC_GFX_TEXTURE_USAGE_SAMPLED,
-        .label = RC_STR("scene color"),
-    });
-
-    state.depth = rc_gfx_texture_make(&(rc_gfx_texture_desc) {
-        .format = RC_GFX_TEXTURE_FORMAT_DEPTH32F,
-        .size = size,
-        .usage = RC_GFX_TEXTURE_USAGE_RENDER_ATTACHMENT,
-        .label = RC_STR("scene depth"),
-    });
-
-    state.rt = rc_gfx_render_target_make(&(rc_gfx_render_target_desc) {
-        .colors = {
-            {
-                .texture = state.color,
-            },
-        },
-        .color_count = 1,
-        .depth_stencil = {.texture = state.depth},
-        .label = RC_STR("scene target"),
-    });
-
-    state.blit_group = rc_gfx_bind_group_make(&(rc_gfx_bind_group_desc) {
-        .layout = state.blit_layout.group0,
-        .entries = {
-            {
-                .binding = 0,
-                .texture = state.color,
-            },
-            {
-                .binding = 1,
-                .sampler = state.blit_sampler,
-            },
-        },
-        .entry_count = 2,
-        .label = RC_STR("blit bind group"),
-    });
-
-    state.target_size = size;
 }
 
 /* ---- per frame ---- */
@@ -687,7 +527,6 @@ static void on_render(void *ctx, rc_vec2i size)
 
     rc_gfx_begin_frame(size);
     rc_arena_reset(&state.frame_arena);
-    ensure_target(size);
 
     float t = (float)rc_app_time();
     update_instances(t);
@@ -709,9 +548,9 @@ static void on_render(void *ctx, rc_vec2i size)
             rc_vec3f_normalize(rc_vec3f_make(0.4f, 1.0f, 0.6f)), 0.0f),
     };
 
-    // scene pass: cubes into the offscreen target, reverse-Z depth cleared to 0
+    // scene pass straight to the swapchain target {0}, which carries the
+    // DEPTH32F buffer requested at init; reverse-Z depth cleared to 0
     rc_gfx_encoder_pass_begin(enc, &(rc_gfx_pass_desc) {
-        .target = state.rt,
         .colors = {
             {
                 .clear_value = {0.012f, 0.014f, 0.02f, 1.0f},   // linear!
@@ -731,20 +570,6 @@ static void on_render(void *ctx, rc_vec2i size)
     rc_gfx_encoder_draw_indexed(enc, &(rc_gfx_draw_indexed_desc) {
         .index_count = 36,
         .instance_count = CUBE_COUNT,
-    });
-
-    rc_gfx_encoder_pass_end(enc);
-
-    // blit pass: sample the scene colour into the swapchain target {0}
-    rc_gfx_encoder_pass_begin(enc, &(rc_gfx_pass_desc) {
-        .label = RC_STR("blit"),
-    });
-
-    rc_gfx_encoder_set_pipeline(enc, state.blit_pip);
-    rc_gfx_encoder_set_bind_group(enc, 0, state.blit_group, NULL, 0);
-    rc_gfx_encoder_set_vertex_buffer(enc, 0, state.blit_vbuf, 0);
-    rc_gfx_encoder_draw(enc, &(rc_gfx_draw_desc) {
-        .vertex_count = 3,
     });
 
     rc_gfx_encoder_pass_end(enc);

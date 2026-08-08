@@ -99,9 +99,11 @@ int main(void)
 
 `rc_gfx_desc` has a few more knobs, all optional: `color_space` (sRGB output
 by default; `RC_GFX_COLOR_SPACE_LINEAR` for bit-exact output such as an
-emulator framebuffer), `swapchain_sample_count` (MSAA for the window, section
-12), `uniform_ring_size` (section 6; default 1 MB per in-flight frame), and
-`validation` (extra load-time checks; always on in debug builds).
+emulator framebuffer), `swapchain_depth_format` (a depth buffer for the
+window itself, section 11; colour-only by default), `swapchain_sample_count`
+(MSAA for the window, section 12), `uniform_ring_size` (section 6; default
+1 MB per in-flight frame), and `validation` (extra load-time checks; always
+on in debug builds).
 
 Per frame, `on_render` receives the framebuffer size in physical pixels and
 is only invoked while that size is non-zero (a minimised window renders
@@ -427,11 +429,29 @@ buffer updates at all - that is what the uniform ring is for.
 
 ## 6. Uniforms and the uniform ring
 
-All shader constants are std140 uniform blocks backed by buffers. For data
-that changes every frame (cameras, per-draw transforms), gfx maintains a
-single internal *uniform ring*: one buffer with `RC_GFX_FRAMES_IN_FLIGHT`
-rotating per-frame regions, written through a CPU-side shadow and flushed at
-submit. You never create it; you allocate from it while encoding:
+All shader constants are std140 uniform blocks backed by buffers. Before the
+mechanics, be clear about what is shared and what is private, because the
+system has three layers with three different owners:
+
+- **Blocks belong to shaders.** Each shader declares its own uniform blocks,
+  as many as it likes, and its desc maps them to (group, binding) slots.
+  Shaders never share a block declaration or its data - two shaders need not
+  even agree on what a binding index means, since every pipeline carries its
+  own layout.
+- **The ring is a shared allocator, nothing more.** gfx owns one internal
+  *uniform ring*: a single buffer with `RC_GFX_FRAMES_IN_FLIGHT` rotating
+  per-frame regions, written through a CPU-side shadow that is flushed to the
+  GPU at submit. It has no layout of its own - think of it as malloc for
+  constant data that lives exactly one frame. It is the only "single" thing
+  in the system, and what it hands out are private slices.
+- **Allocations belong to individual uses.** Every
+  `rc_gfx_encoder_alloc_uniforms` call returns a fresh, independent,
+  256-aligned slice of the current frame's region. The dynamic offset you
+  pass at `set_bind_group` selects which slice that particular draw reads.
+  Two shaders - or two hundred draws using one shader - each take their own
+  slice and never see each other's data.
+
+You never create the ring; you allocate from it while encoding:
 
 ```c
 rc_gfx_uniform_alloc u = rc_gfx_encoder_alloc_uniforms(enc, sizeof(frame_uniforms));
@@ -439,17 +459,65 @@ rc_gfx_uniform_alloc u = rc_gfx_encoder_alloc_uniforms(enc, sizeof(frame_uniform
 rc_gfx_encoder_set_bind_group(enc, 0, group0, &u.offset, 1);
 ```
 
-The pieces fit together like this:
+The plumbing that makes this work, set up once at load time: the bind group
+entry points at `rc_gfx_uniform_buffer()` (the ring's handle) with
+`buffer_size` = your block size, under a layout entry with
+`has_dynamic_offset = true`. Because only the offset varies, the bind group
+is created once and reused forever.
 
-- The bind group entry points at `rc_gfx_uniform_buffer()` (the ring's
-  handle) with `buffer_size` = your block size, under a layout entry with
-  `has_dynamic_offset = true`. Created once.
-- Each allocation returns a write pointer (valid until end of frame) and a
-  256-aligned `offset`; passing the offset as the dynamic offset at
-  `set_bind_group` time selects that allocation.
-- Allocations are cheap (an atomic bump), so take one per draw if you like.
-  If you overflow the region, it is a panic telling you to raise
-  `uniform_ring_size` in `rc_gfx_desc`.
+### Allocation granularity
+
+Match allocations to how the data actually varies - the examples allocate
+once per frame only because their single block (the camera) genuinely is
+per-frame data, deliberately shared by every draw through the same offset:
+
+```c
+// per-frame data: allocate once, every draw passes the same offset
+rc_gfx_uniform_alloc frame_u = rc_gfx_encoder_alloc_uniforms(enc, sizeof(frame_uniforms));
+*(frame_uniforms *)frame_u.ptr = (frame_uniforms) {.view_proj = view_proj};
+rc_gfx_encoder_set_bind_group(enc, 0, frame_group, &frame_u.offset, 1);
+
+// per-draw data: allocate inside the loop, each draw gets its own offset
+for (uint32_t i = 0; i < object_count; i += 1) {
+    rc_gfx_uniform_alloc obj_u = rc_gfx_encoder_alloc_uniforms(enc, sizeof(object_uniforms));
+    *(object_uniforms *)obj_u.ptr = (object_uniforms) {.model = objects[i].model};
+    rc_gfx_encoder_set_bind_group(enc, 3, object_group, &obj_u.offset, 1);
+    rc_gfx_encoder_draw_indexed(enc, &draw);
+}
+```
+
+A typical renderer does both at once - a per-frame block in group 0 and a
+per-draw block in group 3, following the four-group convention of section 8.
+Allocations are cheap (an atomic bump), so one per draw is fine; if a frame
+overflows its region, it is a panic telling you to raise `uniform_ring_size`
+in `rc_gfx_desc`.
+
+The ring is also entirely optional. Constants that do *not* change every
+frame - material parameters fixed at load time, say - belong in your own
+`UNIFORM`-usage buffer (IMMUTABLE, or DYNAMIC with `rc_gfx_buffer_update`),
+bound in a bind group with a plain `buffer_offset` and no dynamic offset.
+The ring earns its keep specifically for transient data, where it replaces
+per-frame buffer churn with a pointer bump and one contiguous upload.
+
+### Writing through the pointer
+
+`*(frame_uniforms *)u.ptr = (frame_uniforms) {...}` looks like it builds a
+struct and copies it, but it does not: a compound-literal assignment is
+direct initialization of the destination, and compiles to plain stores
+through `u.ptr`. It is exactly equivalent to the field-by-field form, which
+reads better for incremental fills:
+
+```c
+frame_uniforms *fu = (frame_uniforms *)u.ptr;
+fu->view_proj = view_proj;
+fu->light_dir = light_dir;
+```
+
+The one real copy in the path is architectural, not syntactic: `u.ptr` points
+into the ring's CPU-side shadow, and submit flushes the written range to the
+GPU buffer in a single upload. That indirection is deliberate - it is what
+makes `alloc_uniforms` safe to call from any recording thread (no GPU memory
+mapping involved) and batches all uniform traffic per submit.
 
 ### std140 will bite you exactly once
 
@@ -720,11 +788,60 @@ rc_gfx_encoder_draw_indexed(enc, &(rc_gfx_draw_indexed_desc) {
 (`first_instance` requires `features.base_instance`, which GL 3.3 lacks -
 keep it 0 there; `instance_count` 0 means 1.)
 
-## 11. Render targets and offscreen passes
+## 11. The swapchain, render targets, and offscreen passes
 
-So far every pass targeted `{0}`, the swapchain. To render offscreen - for
-post-processing, shadow maps, picking, anything - create textures with
-`RENDER_ATTACHMENT` usage and bake them into a render target:
+So far every pass targeted `{0}`, the swapchain - time to define that
+precisely.
+
+### What exactly is "the swapchain"?
+
+"Swapchain" is the modern-API name (Vulkan, D3D12, WebGPU's surface) for the
+window's chain of presentable images; GL's equivalent is the default
+framebuffer. gfx adopts the modern term, and on GL builds a small virtual
+swapchain of its own: pass target `{0}` names an internal window-sized colour
+texture that tracks the size passed to `rc_gfx_begin_frame`, and
+`rc_gfx_end_frame` presents it to the actual window with a fullscreen draw
+(which is also where the single y-flip between gfx's conventions and the
+window system happens). Your passes never touch the window's real
+framebuffer, on any backend.
+
+To you the swapchain behaves like a render target with one colour attachment
+and fixed properties, and its restrictions are enforced:
+
+| Property | Rule |
+|----------|------|
+| colour | one attachment; the format is `rc_gfx_swapchain_format()`, fixed at init by `color_space` |
+| depth / stencil | optional: `rc_gfx_desc.swapchain_depth_format` (NONE by default). A pipeline drawing to `{0}` must declare exactly that depth format - NONE included - validated when the pipeline is bound |
+| sample count | `rc_gfx_desc.swapchain_sample_count`, baked into swapchain pipelines, resolved internally at end of frame |
+| as a texture | not available - `{0}` has no texture handle, so it cannot be sampled or attached to another target |
+| load / store | per-pass actions work exactly as on any other target |
+
+A depth-tested scene that goes straight to the screen therefore needs exactly
+one extra init field - the cubes example does this:
+
+```c
+rc_gfx_init(&(rc_gfx_desc) {
+    .arena = &state.arena,
+    .swapchain_depth_format = RC_GFX_TEXTURE_FORMAT_DEPTH32F,
+});
+// pipeline: .colors[0].format = rc_gfx_swapchain_format(),
+//           .depth_stencil.format = rc_gfx_swapchain_depth_format()
+// pass:     target {0}, .depth_stencil.depth_clear_value = 0.0f
+```
+
+gfx creates the depth buffer, resizes it with the window, and never exposes
+it as a texture (it cannot be sampled - use an explicit render target for
+depth you want to read). Prefer `DEPTH32F`: the reverse-Z precision the depth
+convention is built on needs a float format, which is also why depth never
+comes from the window system's own framebuffer - its format would be whatever
+fixed-point buffer the context happened to get.
+
+### Offscreen render targets
+
+Everything that cannot happen on the swapchain - sampling the result
+(post-processing, blur chains), shadow maps, picking, MRT, rendering into
+texture mips or layers - happens on an explicit render target: create
+textures with `RENDER_ATTACHMENT` usage and bake them into one:
 
 ```c
 rc_gfx_texture color = rc_gfx_texture_make(&(rc_gfx_texture_desc) {
@@ -806,9 +923,9 @@ rc_gfx_encoder_pass_end(enc);
 ```
 
 Window-sized offscreen targets must follow resizes yourself (only the
-swapchain is automatic). The pattern from the cubes example - destroy and
-recreate when the size changes; deferred destruction (section 14) makes this
-safe even with frames in flight:
+swapchain and its optional depth buffer are automatic). The idiom is
+destroy-and-recreate when the size changes; deferred destruction (section 14)
+makes this safe even with frames in flight:
 
 ```c
 static void ensure_target(rc_vec2i size)
@@ -1016,8 +1133,8 @@ frame, after `rc_gfx_begin_frame`.
 - `src/app/example/hellotriangle/main.c` - sections 2 and 3 as a complete
   program.
 - `src/app/example/cubes/main.c` - sections 5, 7, 9, 10, and 11 in one scene:
-  instanced textured cubes with reverse-Z depth into an offscreen target,
-  blitted to the swapchain.
+  instanced textured cubes drawn with reverse-Z depth straight to a swapchain
+  carrying a `DEPTH32F` buffer.
 - `docs/app.md`, "richc/gfx - GPU abstraction" - the exhaustive reference for
   every descriptor field, enum, and backend note that this tutorial
   paraphrased.
