@@ -146,6 +146,14 @@ static void window_refresh_callback(GLFWwindow *w)
 
 void rc_app_init(const rc_app_desc *desc)
 {
+    // a hidden window never shows decorations, so skip libdecor on Wayland:
+    // its GTK plugin would otherwise load GTK into this process and print a
+    // spurious "gtk_disable_setlocale() must be called before gtk_init()"
+    // warning on every init/destroy cycle after the first (as the GL tests
+    // do).  Ignored on other platforms.
+    if (desc->hidden)
+        glfwInitHint(GLFW_WAYLAND_LIBDECOR, GLFW_WAYLAND_DISABLE_LIBDECOR);
+
     RC_PANIC(glfwInit());
 
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
