@@ -62,7 +62,7 @@ rc_font_result rc_font_make(rc_view_bytes ttf, float pixel_size, rc_arena *arena
         .loca_long_   = t.loca_long,
         .units_per_em_= t.units_per_em,
         .scale_       = scale,
-        .spread_      = derive_spread(pixel_size),
+        .spread       = derive_spread(pixel_size),
     };
     return (rc_font_result) {.font = f};
 }
@@ -94,7 +94,7 @@ rc_font_glyph_result rc_font_get_glyph(rc_font *font, uint32_t codepoint,
     rc_vec2f bmin = rc_box2f_min(ol.bbox);
     rc_vec2f bmax = rc_box2f_max(ol.bbox);
 
-    float spread = font->spread_;
+    float spread = font->spread;
     float pad    = ceilf(spread);
     float ox     = floorf(bmin.x) - pad;    // image left, pixel space (x right)
     float oy_top = ceilf(bmax.y) + pad;     // image top, font-up pixel space (y up)

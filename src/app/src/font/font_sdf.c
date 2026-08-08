@@ -109,25 +109,58 @@ static int sdf_line_winding(rc_vec2f a, rc_vec2f b, rc_vec2f p)
     return ca ? 1 : -1;
 }
 
+/*
+ * Winding of one y-monotone piece of the quadratic, spanning t in [t0, t1]
+ * with endpoint heights y0, y1.  Deciding the crossing from ENDPOINT
+ * MEMBERSHIP - the same half-open "a vertex exactly on the ray belongs below"
+ * rule as sdf_line_winding - rather than from which roots the solver reports
+ * keeps adjacent edges consistent when a shared vertex or an on-curve
+ * extremum lies exactly on the sample row.  (The previous root-interval
+ * convention double-counted there, painting a one-texel-tall streak across
+ * the row; Roboto's 'r' at pixel_size 48 lands its arch apex on a sample row
+ * and showed exactly that.)
+ */
+static int sdf_quad_piece_winding(const sdf_edge *e, rc_vec2f p,
+                                  float t0, float t1, float y0, float y1)
+{
+    bool ca = y0 <= p.y;
+    bool cb = y1 <= p.y;
+    if (ca == cb)
+        return 0;
+    // the endpoints straddle the ray, so exactly one root of By(t) = p.y lies
+    // in [t0, t1]; take the reported root nearest the piece, clamped into it
+    rc_quadratic_roots r = rc_solve_quadratic(e->b.y, 2.0f * e->a.y, e->p0.y - p.y);
+    if (r.num_roots == 0)
+        return 0;   // float-degenerate graze; both pieces agree, so no streak
+    float t = r.root[0];
+    if (r.num_roots == 2) {
+        float mid = 0.5f * (t0 + t1);
+        if (fabsf(r.root[1] - mid) < fabsf(t - mid))
+            t = r.root[1];
+    }
+    t = t < t0 ? t0 : (t > t1 ? t1 : t);
+    if (sdf_quad_eval(e, t).x <= p.x)
+        return 0;
+    return ca ? 1 : -1;
+}
+
 static int sdf_quad_winding(const sdf_edge *e, rc_vec2f p)
 {
-    // By(t) = p0.y + 2 A.y t + B.y t^2
+    // By(t) = p0.y + 2 A.y t + B.y t^2, so dBy/dt = 2 (A.y + B.y t): split at
+    // the y extremum t = -A.y / B.y when it falls inside the span, giving
+    // y-monotone pieces that share the computed extremum height (so a graze
+    // at the apex counts both crossings or neither, never just one)
     float u = e->b.y;
     float v = e->a.y;
-    rc_quadratic_roots r = rc_solve_quadratic(u, 2.0f * v, e->p0.y - p.y);
-    int wn = 0;
-    for (int i = 0; i < r.num_roots; ++i) {
-        float t = r.root[i];
-        if (t < 0.0f || t >= 1.0f)            // [0, 1): start-inclusive
-            continue;
-        rc_vec2f q = sdf_quad_eval(e, t);
-        if (q.x <= p.x)
-            continue;
-        float dydt = v + u * t;               // sign of dBy/dt (up vs down)
-        if (dydt > 0.0f)      ++wn;
-        else if (dydt < 0.0f) --wn;
+    if (u != 0.0f) {
+        float te = -v / u;
+        if (te > 0.0f && te < 1.0f) {
+            float ye = sdf_quad_eval(e, te).y;
+            return sdf_quad_piece_winding(e, p, 0.0f, te, e->p0.y, ye)
+                 + sdf_quad_piece_winding(e, p, te, 1.0f, ye, e->p2.y);
+        }
     }
-    return wn;
+    return sdf_quad_piece_winding(e, p, 0.0f, 1.0f, e->p0.y, e->p2.y);
 }
 
 rc_image font_sdf_render(rc_view_font_edge edges, rc_vec2i size, rc_vec2f origin,

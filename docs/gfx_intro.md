@@ -1135,6 +1135,10 @@ frame, after `rc_gfx_begin_frame`.
 - `src/app/example/cubes/main.c` - sections 5, 7, 9, 10, and 11 in one scene:
   instanced textured cubes drawn with reverse-Z depth straight to a swapchain
   carrying a `DEPTH32F` buffer.
+- `src/app/example/text/main.c` - 2D instancing over the same machinery: SDF
+  text through the font layer, pixel-space rendering via
+  `rc_mat44f_make_ortho_2d`, alpha blending, and a derivative-based
+  antialiasing shader.
 - `docs/app.md`, "richc/gfx - GPU abstraction" - the exhaustive reference for
   every descriptor field, enum, and backend note that this tutorial
   paraphrased.

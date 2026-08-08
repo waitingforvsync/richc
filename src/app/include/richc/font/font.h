@@ -19,9 +19,11 @@
  * on the outline, values above 128 are inside, below are outside; the byte is
  *   clamp(round(128 + signed_distance_px * 128 / spread), 0, 255),
  * with signed_distance_px positive inside.  spread (the distance, in pixels, that
- * maps onto the full byte range) is an internal detail derived from pixel_size
- * and is also the margin of padding around the glyph, so the field saturates to
- * 0 / 255 by the image edge.  An empty (whitespace) glyph has a zero-size image.
+ * maps onto the full byte range) is derived from pixel_size and is also the
+ * margin of padding around the glyph, so the field saturates to 0 / 255 by the
+ * image edge.  It is exposed on rc_font because an SDF shader needs it to turn
+ * sampled values back into distances (see example/text).  An empty (whitespace)
+ * glyph has a zero-size image.
  *
  * Subpixel positioning
  * --------------------
@@ -60,14 +62,16 @@ typedef enum rc_font_error {
 /* ---- font ---- */
 
 /*
- * A parsed font configured for one pixel size.  ascent / descent / line_gap are
- * public, in pixels (descent is negative, below the baseline); the trailing-_
- * fields are internal parse state.
+ * A parsed font configured for one pixel size.  ascent / descent / line_gap /
+ * spread are public, in pixels (descent is negative, below the baseline); the
+ * trailing-_ fields are internal parse state.
  */
 typedef struct rc_font {
     float ascent;            /* baseline to top, pixels (>= 0)              */
     float descent;           /* baseline to bottom, pixels (<= 0)          */
     float line_gap;          /* extra leading between lines, pixels        */
+    float spread;            /* SDF half-range and padding, pixels; a shader
+                                needs it to map sampled values to distances */
 
     rc_view_bytes ttf_;      /* borrowed font data                          */
     rc_view_bytes cmap_;     /* selected cmap subtable (from its start)      */
@@ -80,7 +84,6 @@ typedef struct rc_font {
     int32_t  loca_long_;     /* indexToLocFormat: 0 = short, 1 = long        */
     uint32_t units_per_em_;
     float    scale_;         /* pixel_size / units_per_em                    */
-    float    spread_;        /* SDF half-range and padding, pixels           */
 } rc_font;
 
 typedef struct rc_font_result {

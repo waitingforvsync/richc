@@ -136,3 +136,36 @@ RC_TEST_STEP(font, glyphs_pack_into_atlas, fix)
         RC_CHECK_TRUE(p.placed);
     }
 }
+
+/*
+ * Regression: winding when a quad endpoint or an on-curve extremum lies
+ * exactly on a sample row.  The old root-interval crossing convention could
+ * double-count there, painting a one-texel-tall "inside" streak across the
+ * row (Roboto's 'r' at pixel_size 48 put its arch apex exactly on a sample
+ * row and streaked 14 texels from the bitmap's left edge).  Detect the streak
+ * shape: a horizontal RUN of inside texels with no inside vertical neighbour.
+ * Genuine sharp corners (diagonal stroke tips of V, X, w, backslash) produce
+ * single such texels - at this size the longest legitimate run is 1 - so only
+ * runs of 3 or more fail.
+ */
+RC_TEST_STEP(font, no_single_row_winding_streaks, fix)
+{
+    rc_font f = make_roboto(&fix->a, 48.0f);
+    for (uint32_t cp = 0x20; cp <= 0x7E; cp += 1) {
+        rc_font_glyph_result r = rc_font_get_glyph(&f, cp, &fix->a, fix->scratch);
+        RC_CHECK_TRUE(r.error == RC_FONT_OK);
+        rc_image img = r.glyph.image;
+        uint32_t max_run = 0;
+        for (int32_t y = 0; y < img.size.y; y += 1) {
+            uint32_t run = 0;
+            for (int32_t x = 0; x < img.size.x; x += 1) {
+                bool inside = r8(img, x, y) >= 128;
+                bool above = y > 0 && r8(img, x, y - 1) >= 128;
+                bool below = y + 1 < img.size.y && r8(img, x, y + 1) >= 128;
+                run = (inside && !above && !below) ? run + 1 : 0;
+                max_run = run > max_run ? run : max_run;
+            }
+        }
+        RC_CHECK(max_run, <, 3u);
+    }
+}
