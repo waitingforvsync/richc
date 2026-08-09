@@ -1,15 +1,17 @@
 /*
  * example/text/main.c - gfx sandbox: SDF text rendering.
  *
- * Renders one string at the top-left of the window, at 100% size (one atlas
- * texel per screen pixel), through the font layer and instancing:
+ * Renders one string at the top-left of the window through the font layer and
+ * instancing, at TEXT_SCALE times the rasterised glyph size (1.0 = one atlas
+ * texel per screen pixel):
  * - font/font_atlas: Roboto is parsed and its printable-ASCII glyphs are
  *   rasterised as SDFs into one R8 atlas, uploaded once; the build arena
  *   (ttf bytes, atlas pixels, packer) is then freed and only the glyph table
  *   survives
  * - instancing: a single unit quad drawn once per visible glyph; each
- *   instance carries the quad's screen-pixel position, its atlas UV origin,
- *   and its pixel size (equal to its texel size at 100%)
+ *   instance carries the quad's screen-pixel position (laid out at
+ *   TEXT_SCALE), its atlas UV origin, and its TEXEL size - the vertex shader
+ *   scales the corner expansion by u_scale, so the UV math never changes
  * - projection: rc_mat44f_make_ortho_2d, so vertex positions are plain
  *   pixels with the origin at the window's top-left, y down
  * - SDF shader: the fragment shader recovers a signed distance in atlas
@@ -40,9 +42,10 @@
 #include "richc/gfx/texture.h"
 #include "richc/math/mat44f.h"
 
-#define PIXEL_SIZE  18.0f   /* em height, px; glyphs render at exactly this size */
+#define PIXEL_SIZE  18.0f   /* em height, px, as rasterised into the atlas */
+#define TEXT_SCALE  2.0f    /* on-screen size relative to the rasterised size */
 #define MARGIN      16.0f   /* distance from the window's top-left corner, px */
-#define ATLAS_SIZE  256
+#define ATLAS_SIZE  256     /* fits 18 px ASCII; 36 px needs 512 */
 
 static const char message[] = "The quick brown fox jumps over the lazy dog.";
 
@@ -59,7 +62,7 @@ typedef struct frame_uniforms {
     rc_mat44f proj;
     rc_vec2f  atlas_dim;   /* atlas size, texels */
     float     spread;      /* SDF half-range, texels (rc_font.spread) */
-    float     pad;
+    float     scale;       /* screen pixels per atlas texel */
 } frame_uniforms;
 
 /* A unit quad as a triangle strip; instances scale and place it. */
@@ -80,10 +83,11 @@ static const char vs_src[] =
     "    mat4 u_proj;\n"
     "    vec2 u_atlas_dim;\n"
     "    float u_spread;\n"
+    "    float u_scale;\n"
     "};\n"
     "void main() {\n"
     "    v_uv = i_uv_pos + a_corner * (i_size / u_atlas_dim);\n"
-    "    vec2 pos = i_pos + a_corner * i_size;\n"
+    "    vec2 pos = i_pos + a_corner * i_size * u_scale;\n"
     "    gl_Position = rc_clip(u_proj * vec4(pos, 0.0, 1.0));\n"
     "}\n";
 
@@ -101,6 +105,7 @@ static const char fs_src[] =
     "    mat4 u_proj;\n"
     "    vec2 u_atlas_dim;\n"
     "    float u_spread;\n"
+    "    float u_scale;\n"
     "};\n"
     "out vec4 o_color;\n"
     "void main() {\n"
@@ -178,23 +183,25 @@ static void text_setup(void)
     state.atlas_dim = rc_vec2f_make((float)atlas.image.size.x, (float)atlas.image.size.y);
     state.spread = font.font.spread;
 
-    // lay the string out along the baseline: MARGIN px of headroom above the
-    // tallest glyph puts the baseline at MARGIN + ascent
+    // lay the string out along the baseline in SCALED screen space: metrics
+    // (ascent, offset, advance) are in rasterised-glyph pixels, so multiply
+    // each by TEXT_SCALE; instance sizes stay in texels (the vertex shader
+    // applies u_scale to the quad expansion, leaving the UV math untouched)
     glyph_instance instances[sizeof(message) - 1];
     uint32_t count = 0;
-    rc_vec2f pen = rc_vec2f_make(MARGIN, MARGIN + font.font.ascent);
+    rc_vec2f pen = rc_vec2f_make(MARGIN, MARGIN + font.font.ascent * TEXT_SCALE);
     for (uint32_t i = 0; i < sizeof(message) - 1; i += 1) {
         rc_glyph glyph = rc_glyph_table_find(&table, (uint32_t)message[i]);
         rc_vec2f uv_size = rc_box2f_size(glyph.uv);
         if (uv_size.x > 0.0f) {   // whitespace has a zero-size quad
             instances[count] = (glyph_instance) {
-                .pos = rc_vec2f_add(pen, glyph.offset),
+                .pos = rc_vec2f_add(pen, rc_vec2f_scalar_mul(glyph.offset, TEXT_SCALE)),
                 .uv_pos = rc_box2f_min(glyph.uv),
                 .size = rc_vec2f_component_mul(uv_size, state.atlas_dim),
             };
             count += 1;
         }
-        pen.x += glyph.advance;
+        pen.x += glyph.advance * TEXT_SCALE;
     }
     state.instance_count = count;
 
@@ -209,10 +216,11 @@ static void text_setup(void)
     });
 
     // one more instance through the same vertex path: the whole atlas at 1:1
-    // (uv [0,1] over a quad of atlas_dim pixels), a margin below the text line
+    // (uv [0,1] over a quad of atlas_dim pixels; its draw passes u_scale = 1),
+    // a margin below the text line
     glyph_instance atlas_quad = {
         .pos = rc_vec2f_make(MARGIN,
-                             MARGIN + (font.font.ascent - font.font.descent) + MARGIN),
+                             MARGIN + (font.font.ascent - font.font.descent) * TEXT_SCALE + MARGIN),
         .uv_pos = rc_vec2f_make(0.0f, 0.0f),
         .size = state.atlas_dim,
     };
@@ -268,8 +276,9 @@ static void gfx_setup(void)
                     {.name = RC_STR("u_proj"), .offset = offsetof(frame_uniforms, proj), .size = sizeof(rc_mat44f)},
                     {.name = RC_STR("u_atlas_dim"), .offset = offsetof(frame_uniforms, atlas_dim), .size = sizeof(rc_vec2f)},
                     {.name = RC_STR("u_spread"), .offset = offsetof(frame_uniforms, spread), .size = sizeof(float)},
+                    {.name = RC_STR("u_scale"), .offset = offsetof(frame_uniforms, scale), .size = sizeof(float)},
                 },
-                .member_count = 3,
+                .member_count = 4,
             },
         },
         .uniform_block_count = 1,
@@ -473,16 +482,18 @@ static void on_render(void *ctx, rc_vec2i size)
         .label = RC_STR("text"),
     });
 
-    rc_gfx_uniform_alloc u = rc_gfx_encoder_alloc_uniforms(enc, sizeof(frame_uniforms));
-    *(frame_uniforms *)u.ptr = (frame_uniforms) {
+    frame_uniforms frame = {
         .proj = rc_mat44f_make_ortho_2d((float)size.x, (float)size.y),
         .atlas_dim = state.atlas_dim,
         .spread = state.spread,
     };
 
-    // the atlas view quad, opaque, below the text
+    // the atlas view quad, opaque, below the text, at scale 1
+    rc_gfx_uniform_alloc atlas_u = rc_gfx_encoder_alloc_uniforms(enc, sizeof(frame_uniforms));
+    frame.scale = 1.0f;
+    *(frame_uniforms *)atlas_u.ptr = frame;
     rc_gfx_encoder_set_pipeline(enc, state.atlas_pip);
-    rc_gfx_encoder_set_bind_group(enc, 0, state.group0, &u.offset, 1);
+    rc_gfx_encoder_set_bind_group(enc, 0, state.group0, &atlas_u.offset, 1);
     rc_gfx_encoder_set_vertex_buffer(enc, 0, state.quad_vbuf, 0);
     rc_gfx_encoder_set_vertex_buffer(enc, 1, state.atlas_quad_buf, 0);
     rc_gfx_encoder_draw(enc, &(rc_gfx_draw_desc) {
@@ -490,7 +501,10 @@ static void on_render(void *ctx, rc_vec2i size)
         .instance_count = 1,
     });
 
-    // the string, alpha-blended
+    // the string, alpha-blended, at TEXT_SCALE
+    rc_gfx_uniform_alloc u = rc_gfx_encoder_alloc_uniforms(enc, sizeof(frame_uniforms));
+    frame.scale = TEXT_SCALE;
+    *(frame_uniforms *)u.ptr = frame;
     rc_gfx_encoder_set_pipeline(enc, state.pip);
     rc_gfx_encoder_set_bind_group(enc, 0, state.group0, &u.offset, 1);
     rc_gfx_encoder_set_vertex_buffer(enc, 0, state.quad_vbuf, 0);
