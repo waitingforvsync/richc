@@ -15,6 +15,9 @@
 #include <GLFW/glfw3.h>
 #include <glad/gl.h>
 
+#include <stdio.h>
+#include <stdlib.h>
+
 #include "richc/macros.h"
 
 /* ---- global state ---- */
@@ -22,8 +25,11 @@
 static struct {
     GLFWwindow       *window;
     rc_app_callbacks  callbacks;
-    rc_mod            current_mods;     /* tracked for on_key_char              */
-    double            last_update_time; /* glfwGetTime() at last request_update */
+    rc_mod            current_mods;       /* tracked for on_key_char              */
+    double            last_update_time;   /* glfwGetTime() at last request_update */
+    bool              rendered_since_poll; /* refresh callback already rendered   */
+    bool              trace;              /* RC_APP_TRACE: log events + timings   */
+    bool              trace_finish;       /* RC_APP_TRACE_FINISH: time glFinish   */
 } app;
 
 /* ---- glad proc loader ---- */
@@ -89,6 +95,8 @@ static void scroll_callback(GLFWwindow *w, double xoff, double yoff)
 static void framebuffer_size_callback(GLFWwindow *w, int width, int height)
 {
     (void)w;
+    if (app.trace)
+        fprintf(stderr, "[%9.4f] event: framebuffer size %dx%d\n", glfwGetTime(), width, height);
     if (!app.callbacks.on_resize) return;
     rc_vec2i size = { width, height };
     app.callbacks.on_resize(app.callbacks.ctx, size);
@@ -132,13 +140,28 @@ static void render_and_swap(void)
     int height = 0;
     glfwGetFramebufferSize(app.window, &width, &height);
     if (width <= 0 || height <= 0) return;
+    double t0 = glfwGetTime();
     app.callbacks.on_render(app.callbacks.ctx, rc_vec2i_make(width, height));
+    double t1 = glfwGetTime();
+    // draining the GPU here exposes the true per-frame GPU cost that async GL
+    // hides from the CPU-side timings (submission is cheap; completion isn't)
+    if (app.trace_finish)
+        glFinish();
+    double t2 = glfwGetTime();
     glfwSwapBuffers(app.window);
+    if (app.trace) {
+        double t3 = glfwGetTime();
+        fprintf(stderr, "[%9.4f] render %dx%d: on_render %6.2f ms, finish %6.2f ms, swap %6.2f ms\n",
+                t0, width, height, (t1 - t0) * 1000.0, (t2 - t1) * 1000.0, (t3 - t2) * 1000.0);
+    }
+    app.rendered_since_poll = true;
 }
 
 static void window_refresh_callback(GLFWwindow *w)
 {
     (void)w;
+    if (app.trace)
+        fprintf(stderr, "[%9.4f] event: window refresh\n", glfwGetTime());
     render_and_swap();
 }
 
@@ -183,6 +206,8 @@ void rc_app_init(const rc_app_desc *desc)
     app.callbacks        = desc->callbacks;
     app.current_mods     = (rc_mod)0;
     app.last_update_time = glfwGetTime();
+    app.trace            = getenv("RC_APP_TRACE") != NULL;
+    app.trace_finish     = getenv("RC_APP_TRACE_FINISH") != NULL;
 
     glfwSetKeyCallback             (app.window, key_callback);
     glfwSetCharCallback            (app.window, char_callback);
@@ -206,7 +231,15 @@ void rc_app_destroy(void)
 
 void rc_app_poll(void)
 {
+    app.rendered_since_poll = false;
+    double t0 = glfwGetTime();
     glfwPollEvents();
+    if (app.trace) {
+        double t1 = glfwGetTime();
+        // only worth a line when events actually cost something
+        if (t1 - t0 > 0.001)
+            fprintf(stderr, "[%9.4f] poll took %6.2f ms\n", t0, (t1 - t0) * 1000.0);
+    }
 }
 
 bool rc_app_is_running(void)
@@ -232,6 +265,14 @@ void rc_app_request_update(void)
 
 void rc_app_request_render(void)
 {
+    // the window-refresh callback renders from inside rc_app_poll (e.g. per
+    // resize step during an interactive drag); rendering again here would
+    // draw the same frame twice and block on a second vsync interval
+    if (app.rendered_since_poll) {
+        if (app.trace)
+            fprintf(stderr, "[%9.4f] loop render skipped (refresh already rendered)\n", glfwGetTime());
+        return;
+    }
     render_and_swap();
 }
 

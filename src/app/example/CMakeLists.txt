@@ -1,4 +1,4 @@
-foreach(example cubes hellotriangle text)
+foreach(example cubes cubes_overlay hellotriangle text)
     add_executable(richc_example_${example}
         ${example}/main.c
     )
@@ -14,14 +14,17 @@ foreach(example cubes hellotriangle text)
     endif()
 endforeach()
 
-# The text example loads the Roboto test fixture at runtime; stage it next to
-# the binary so "data/fonts/..." resolves when run from the binary's directory.
-add_custom_command(
-    TARGET richc_example_text POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory
-            $<TARGET_FILE_DIR:richc_example_text>/data/fonts
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            ${CMAKE_CURRENT_SOURCE_DIR}/../test/data/fonts/Roboto-Regular.ttf
-            $<TARGET_FILE_DIR:richc_example_text>/data/fonts/Roboto-Regular.ttf
-    VERBATIM
-)
+# The text and cubes_overlay examples load the Roboto test fixture at runtime;
+# stage it next to each binary so "data/fonts/..." resolves when run from the
+# binary's directory.
+foreach(example cubes_overlay text)
+    add_custom_command(
+        TARGET richc_example_${example} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+                $<TARGET_FILE_DIR:richc_example_${example}>/data/fonts
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${CMAKE_CURRENT_SOURCE_DIR}/../test/data/fonts/Roboto-Regular.ttf
+                $<TARGET_FILE_DIR:richc_example_${example}>/data/fonts/Roboto-Regular.ttf
+        VERBATIM
+    )
+endforeach()

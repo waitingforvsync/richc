@@ -1139,6 +1139,12 @@ frame, after `rc_gfx_begin_frame`.
   text through the font layer, pixel-space rendering via
   `rc_mat44f_make_ortho_2d`, alpha blending, and a derivative-based
   antialiasing shader.
+- `src/app/example/cubes_overlay/main.c` - section 11 end to end: the cubes
+  scene through an offscreen colour + depth render target, a fixed-size
+  regional blur chain for the frosted rect (tent downsample to quarter rect
+  resolution, then a separable gaussian), and a composite on the swapchain
+  with SDF text on top, including the destroy-and-recreate resize idiom for
+  the window-sized scene target.
 - `docs/app.md`, "richc/gfx - GPU abstraction" - the exhaustive reference for
   every descriptor field, enum, and backend note that this tutorial
   paraphrased.

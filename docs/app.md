@@ -35,9 +35,21 @@ handle. GLFW and glad are private to the backend and never appear in the API.
   framebuffer size, then swaps buffers; a no-op while the framebuffer is
   zero-sized) rather than calling the callbacks directly - the backend also
   fires `on_render` from the OS window-refresh, so rendering stays live during a
-  modal resize. Viewport state belongs to the renderer (gfx sets it per pass);
-  the app layer does not touch it. Use `rc_app_swap_buffers()` to swap directly
-  when driving rendering elsewhere (e.g. a render thread).
+  modal resize. When a window-refresh has already rendered since the last
+  `rc_app_poll` (e.g. per step of an interactive resize drag),
+  `rc_app_request_render` is a no-op, so each loop iteration draws at most one
+  frame and never blocks on a second vsync interval. Viewport state belongs to
+  the renderer (gfx sets it per pass); the app layer does not touch it. Use
+  `rc_app_swap_buffers()` to swap directly when driving rendering elsewhere
+  (e.g. a render thread).
+- Diagnostics: two environment variables, checked once at `rc_app_init`, log
+  frame timing to stderr. `RC_APP_TRACE=1` logs window events (framebuffer
+  size, window refresh), each render (`on_render` and swap duration in ms),
+  skipped duplicate renders, and any `rc_app_poll` that takes over 1 ms.
+  `RC_APP_TRACE_FINISH=1` additionally issues a `glFinish` between `on_render`
+  and the swap and reports its duration - the true per-frame GPU cost that
+  asynchronous GL otherwise hides from CPU-side timings (it serialises the
+  GPU, so expect slightly different pacing while enabled).
 
 ---
 

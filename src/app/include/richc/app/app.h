@@ -112,7 +112,10 @@ void     rc_app_request_update (void);
 /* Invoke on_render(ctx, size) with the framebuffer size, then swap buffers.
  * A no-op while the framebuffer is zero-sized (minimised) - the callback can
  * assume a real surface.  Also called internally on OS window-refresh (e.g.
- * during modal resize) so rendering stays live without extra user code.
+ * during modal resize) so rendering stays live without extra user code; when
+ * that has already rendered since the last rc_app_poll, this call is a no-op,
+ * so each poll/render loop iteration draws at most one frame (a second draw
+ * would repeat the same frame and block on a second vsync interval).
  * Viewport state is owned by the renderer (gfx sets it per pass); the app
  * layer no longer touches it. */
 void     rc_app_request_render (void);
