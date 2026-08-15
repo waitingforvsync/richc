@@ -291,6 +291,36 @@ RC_TEST_STEP(mstr, append_floats, fix)
     RC_CHECK(s.view, ==, RC_STR("3.5 0.5"));
 }
 
+RC_TEST_STEP(mstr, append_hex, fix)
+{
+    // Fixed width, zero padded, uppercase - each variant always emits its full digit count.
+    rc_mstr s = {0};
+    rc_mstr_append_hex8(&s, 0x0A, &fix->a);
+    rc_mstr_append_char(&s, ' ', &fix->a);
+    rc_mstr_append_hex16(&s, 0x0900, &fix->a);
+    rc_mstr_append_char(&s, ' ', &fix->a);
+    rc_mstr_append_hex32(&s, 0xDEADBEEF, &fix->a);
+    rc_mstr_append_char(&s, ' ', &fix->a);
+    rc_mstr_append_hex64(&s, 0x0123456789ABCDEFull, &fix->a);
+    RC_CHECK(s.view, ==, RC_STR("0A 0900 DEADBEEF 0123456789ABCDEF"));
+
+    rc_mstr z = {0};   // zero pads to the full width in every variant
+    rc_mstr_append_hex8(&z, 0, &fix->a);
+    rc_mstr_append_hex16(&z, 0, &fix->a);
+    RC_CHECK(z.view, ==, RC_STR("000000"));
+}
+
+RC_TEST_STEP(mstr, append_n, fix)
+{
+    rc_mstr s = {0};   // allocates on first use, like the other appends
+    rc_mstr_append_n(&s, '-', 3, &fix->a);
+    rc_mstr_append_n(&s, ' ', 0, &fix->a);   // zero count is a no-op
+    rc_mstr_append_n(&s, '=', 1, &fix->a);
+    RC_CHECK(s.view, ==, RC_STR("---="));
+    RC_CHECK(s.len, ==, 4u);
+    RC_CHECK_TRUE(s.data[4] == '\0');   // the terminator invariant holds after a block append
+}
+
 /* ---- teardown ---- */
 
 RC_TEST_STEP(mstr, deinit, fix)

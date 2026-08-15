@@ -98,6 +98,17 @@ void rc_mstr_append_char(rc_mstr *s, char c, rc_arena *arena)
     s->data[s->len] = '\0';
 }
 
+void rc_mstr_append_n(rc_mstr *s, char c, uint32_t n, rc_arena *arena)
+{
+    RC_ASSERT(s);
+    if (n == 0) return;
+    uint32_t new_len = s->len + n;
+    grow(s, new_len + 1, arena);   // room for the content and the terminator
+    memset(s->data + s->len, (unsigned char)c, n);
+    s->len = new_len;
+    s->data[new_len] = '\0';
+}
+
 void rc_mstr_append_u64(rc_mstr *s, uint64_t value, rc_arena *arena)
 {
     // Decimal text built back to front, no printf in sight.
@@ -127,6 +138,38 @@ void rc_mstr_append_u32(rc_mstr *s, uint32_t value, rc_arena *arena)
 void rc_mstr_append_i32(rc_mstr *s, int32_t value, rc_arena *arena)
 {
     rc_mstr_append_i64(s, value, arena);
+}
+
+// Fixed-width uppercase hexadecimal, zero-padded to `digits` characters, built
+// straight into a stack buffer - no printf in sight here either.
+static void append_hex(rc_mstr *s, uint64_t value, uint32_t digits, rc_arena *arena)
+{
+    static const char hex_digit[] = "0123456789ABCDEF";
+    char buf[16];   // hex64 is the widest: sixteen digits
+    for (uint32_t i = 0; i < digits; i++) {
+        buf[digits - 1 - i] = hex_digit[(value >> (4 * i)) & 0xF];
+    }
+    rc_mstr_append(s, rc_str_make(buf, digits), arena);
+}
+
+void rc_mstr_append_hex8(rc_mstr *s, uint8_t value, rc_arena *arena)
+{
+    append_hex(s, value, 2, arena);
+}
+
+void rc_mstr_append_hex16(rc_mstr *s, uint16_t value, rc_arena *arena)
+{
+    append_hex(s, value, 4, arena);
+}
+
+void rc_mstr_append_hex32(rc_mstr *s, uint32_t value, rc_arena *arena)
+{
+    append_hex(s, value, 8, arena);
+}
+
+void rc_mstr_append_hex64(rc_mstr *s, uint64_t value, rc_arena *arena)
+{
+    append_hex(s, value, 16, arena);
 }
 
 void rc_mstr_append_f64(rc_mstr *s, double value, rc_arena *arena)

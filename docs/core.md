@@ -540,6 +540,11 @@ void rc_mstr_reset(rc_mstr *s);
 void rc_mstr_reserve(rc_mstr *s, uint32_t capacity, rc_arena *a);
 void rc_mstr_append(rc_mstr *s, rc_str str, rc_arena *a);
 void rc_mstr_append_char(rc_mstr *s, char c, rc_arena *a);
+void rc_mstr_append_n(rc_mstr *s, char c, uint32_t n, rc_arena *a);
+void rc_mstr_append_hex8(rc_mstr *s, uint8_t value, rc_arena *a);
+void rc_mstr_append_hex16(rc_mstr *s, uint16_t value, rc_arena *a);
+void rc_mstr_append_hex32(rc_mstr *s, uint32_t value, rc_arena *a);
+void rc_mstr_append_hex64(rc_mstr *s, uint64_t value, rc_arena *a);
 void rc_mstr_replace(rc_mstr *s, rc_str find, rc_str replacement, rc_arena *a);
 ```
 
@@ -549,6 +554,11 @@ void rc_mstr_replace(rc_mstr *s, rc_str find, rc_str replacement, rc_arena *a);
 - `rc_mstr_append` / `rc_mstr_append_char` append, growing geometrically as
   needed; appending an empty `rc_str` is a no-op. They accept an invalid
   (zero-initialised) `rc_mstr` and allocate on first use, like `rc_array` push.
+- `rc_mstr_append_n` appends `n` copies of `c` (column padding, rules); `n == 0`
+  is a no-op.
+- `rc_mstr_append_hex8/16/32/64` append the value as fixed-width uppercase
+  hexadecimal, zero-padded to the type's full digit count (2 / 4 / 8 / 16) - no
+  prefix, no locale, no printf.
 - `rc_mstr_replace` replaces every non-overlapping occurrence of `find` with
   `replacement`, rewriting in place (left-to-right when the result is no larger,
   otherwise reserving and rewriting right-to-left). An empty `find` is a no-op.
