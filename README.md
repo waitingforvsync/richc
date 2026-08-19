@@ -14,6 +14,57 @@ The library is organised in two layers within this one repository:
   image loading, built on top of core. Uses GLFW and glad as private implementation
   details that never appear in the public API.
 
+## Why use richc?
+
+C has a reputation as a language past its time - unfit for modern engineering,
+kept alive by legacy. richc is a counter-argument: with a small set of
+conventions applied consistently, C code can be elegant, readable, safe(ish),
+and very fast, with no runtime, no garbage collector, and no language machinery
+working against you.
+
+- **An allocation model that is explicit but simple.** One allocator - the
+  arena - and every allocating call names it. No malloc/free bookkeeping, no
+  NULL-checking boilerplate (allocation never returns NULL), no hidden heap
+  traffic: where memory comes from is visible at every call site.
+- **Arenas are the arbiters of lifetime.** Lifetimes are reasoned about in
+  broad strokes - per frame, per load, per session - rather than per object.
+  Freeing is wholesale, so whole classes of leaks and double-frees have
+  nowhere to occur, and temporary memory is a by-value arena that cleans
+  itself up on return.
+- **Containers are views over storage, not owners of storage.** An array
+  borrows its arena's memory; spans and views borrow the array's. Nothing has
+  a destructor, conversions are field accesses, and passing data around never
+  raises the question of who frees it - nobody does; the arena owns it.
+- **Identity is an index or a handle, not an address.** Indices survive
+  growth and relocation, are half the size of a pointer, and serialise
+  trivially. Generational handles go further: a stale reference is *detected*
+  and traps, instead of silently aliasing whatever lives there now.
+- **Objects are context-free.** An object holds only what is intrinsic to
+  itself; operations take the context - the arena to grow into, the pool a
+  trie lives in. Objects stay small, trivially copyable, and free of
+  back-pointers.
+- **Zero is a valid value.** A zero-initialised trie, pool, bitset, lock, or
+  handle is ready to use, and zero fields in a descriptor mean "the default".
+  Construction is `= {0}`, and a whole class of initialisation bugs never
+  exists.
+- **Data is just data.** A struct is bytes: memcpy it, zero it, write it to
+  disk, inspect it in a debugger and see the truth. No vtables, no
+  destructors, no operator overloads, no hidden copies - unlike C++ objects,
+  data carries no logic, so the only code that runs is the code you can see
+  at the call site, and the cost of a line is what it looks like.
+- **Safe(ish), by convention plus cheap checks.** Bounds-checked accessors,
+  asserted preconditions, untrusted input that returns errors rather than
+  trapping, handles that catch use-after-free. Not a borrow checker - but the
+  classic C footguns are each dealt with at the point where they arise.
+- **Performance falls out of the design.** Contiguous, cache-friendly
+  layouts; bump allocation; growth in place over a reserved address range so
+  pointers stay put; containers monomorphised per type, as optimisable as
+  hand-written code. Fast is the default, not an optimisation pass.
+- **Builds are fast and stay fast.** Full rebuilds in seconds: no template
+  instantiation explosions, no dependency graph to appease. Plain C17 with
+  zero dependencies in core compiles everywhere today, will still compile
+  decades from now, and is trivially callable from any language with a C FFI.
+
 ## Building
 
 It's written in C17 and tested with clang, CMake and Ninja, but should build with
@@ -47,54 +98,35 @@ void example(void)
 }
 ```
 
-## Philosophy
+Generic containers and algorithms are preprocessor templates: define a control
+macro, include a `richc/template/` header, and it generates fully typed code,
+then `#undef`s its macros so it can be included again for another type. No
+runtime polymorphism, no `void *`.
 
-A handful of principles run through the whole library; once they are clear,
-most of the API follows from them.
-
-- **Arenas are the only allocation.** The library never calls `malloc` or
-  `free`. Every allocating function takes an `rc_arena *` - a
-  virtual-memory-backed bump allocator - as its last parameter. Allocation
-  never returns NULL (running out of space is a panic, not an error to handle),
-  and you free an arena, not individual objects. Passing an arena *by value*
-  hands the callee scratch memory that is reclaimed for free on return.
-- **Objects are context-free**. An object should only contain the information
-  intrinsic to itself. A string shouldn't know how it was allocated. An array
-  shouldn't know where to grow itself. The caller will always pass this context.
-- **Views and spans, not pointer-and-length pairs.** `rc_view` is a read-only
-  `{data, num}`, `rc_span` its mutable counterpart, and `rc_array` a growable
-  arena-backed array. They share an anonymous union, so converting an array to
-  a span, or a span to a view, is a typesafe field access.
-- **Indices, not pointers.** Indices are always `uint32_t`, with
-  `RC_INDEX_NONE` as the "not found" / "invalid" sentinel. An index stays valid
-  across container growth where a pointer may not, so APIs return and accept
-  indices wherever that makes sense. This is both safer and uses less memory
-  for storage.
-- **Value semantics where possible.** Small objects are generally passed by
-  value, and functions return their result - often bundled into a
-  small struct - rather than writing through an out-parameter. Out-parameters
-  are reserved for when the alternative is genuinely worse: filling a
-  caller-owned buffer, or a large object that should not be copied.
-- **Containers and algorithms are preprocessor templates.** Define a control
-  macro, include a `richc/template/` header, and it generates type-specific
-  code, then `#undef`s its macros so it can be included again for another type.
-  No runtime polymorphism, no `void *`.
-
-  ```c
-  #define RC_ARRAY_TYPE int
-  #include "richc/template/array.h"
-  // now: rc_view_int, rc_span_int, rc_array_int and their operations
-  ```
-- **Preconditions trap; errors are for what a caller can handle.** Programmer
-  errors - a NULL pointer, an out-of-range index - are guarded by asserts and
-  trap in debug builds. A returned error result is reserved for conditions a
-  caller is genuinely expected to handle, like a file that fails to open or
-  malformed data read from disk.
+```c
+#define RC_ARRAY_TYPE int
+#include "richc/template/array.h"
+// now: rc_view_int, rc_span_int, rc_array_int and their operations
+```
 
 ## Conventions
 
 - Everything is `snake_case`. Public types and functions are prefixed `rc_`,
   public macros `RC_`.
+- Functions that may allocate take an `rc_arena *`, named `arena`, as their
+  *last* parameter; it may be NULL when the call provably needs no allocation.
+  An `rc_arena` passed *by value* is private scratch, reclaimed for free on
+  return.
+- Indices are always `uint32_t`, with `RC_INDEX_NONE` as the "not found" /
+  "invalid" sentinel.
+- Results are returned by value - often bundled into a small struct - rather
+  than written through out-parameters, which are reserved for when the
+  alternative is genuinely worse (filling a caller-owned buffer, or a large
+  object that should not be copied).
+- Preconditions trap; errors are for what a caller can handle. Programmer
+  errors (a NULL pointer, an out-of-range index) are guarded by asserts;
+  returned error results are reserved for conditions a caller genuinely
+  handles, like a missing file or malformed external data.
 - Functions are named by role:
   - `rc_<type>_make(...)` / `rc_<type>_make_<thing>(...)` - constructor,
     returning a fresh `rc_<type>` by value.
