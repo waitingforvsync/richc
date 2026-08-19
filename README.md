@@ -1,36 +1,40 @@
 # richc
 
-richc is a C17 helper library designed to replace the C standard library, and
-offering an assortment of additional functionality. It favours high performance:
-cache-friendly data layouts, arena allocation, and compile-time code generation
-through the C preprocessor.
+richc is a C17 helper library for making console and windowed apps easier and
+more fun to write in plain C17. It favours high performance: cache-friendly data
+layouts, arena allocation, and compile-time code generation through the C
+preprocessor.
 
 The library is organised in two layers within this one repository:
 
 - **core** - generic data structures, algorithms, math types, string handling,
   file I/O, and a built-in unit-test framework. Pure C, no external
   dependencies.
-- **app** - windowing, input handling, and CPU-side image loading, built on top
-  of core. Uses GLFW and glad as private implementation details that never appear
-  in the public API.
+- **app** - windowing, graphics API abstraction, input handling, font management, and CPU-side
+  image loading, built on top of core. Uses GLFW and glad as private implementation
+  details that never appear in the public API.
 
 ## Building
 
-Requires clang and CMake with Ninja. The library compiles as C17.
+It's written in C17 and tested with clang, CMake and Ninja, but should build with
+any major compiler on Windows, Linux or MacOS.
 
 ```sh
 cmake -B build -G Ninja -DCMAKE_C_COMPILER=clang
 cmake --build build
 ```
 
-Use a separate build directory per compiler; do not mix compilers in one build
-tree. The core test executable runs automatically as a post-build step, so a
-failing test makes the build report an error.
-
 ## Using the library
 
-Add `src/core/include` to your include path and link against the `richc` target.
-All headers are included under the `richc/` namespace.
+If you build with CMake, the easiest way is to add richc as a git submodule or just
+vendor it into your own tree, and link the target directly:
+
+```cmake
+add_subdirectory(richc)
+target_link_libraries(your_app PRIVATE richc)
+# A windowed app links with richc_app; internal deps like richc and GLFW are pulled in for you
+# target_link_libraries(your_app PRIVATE richc_app)
+```
 
 ```c
 #include "richc/str.h"
@@ -43,175 +47,91 @@ void example(void)
 }
 ```
 
-If you build with CMake, link the target directly:
+## Philosophy
 
-```cmake
-add_subdirectory(richc)
-target_link_libraries(your_app PRIVATE richc)
-```
+A handful of principles run through the whole library; once they are clear,
+most of the API follows from them.
 
-To use the app layer, add `src/app/include` to your include path and link the
-`richc_app` target instead; it pulls in core, GLFW, and glad for you.
+- **Arenas are the only allocation.** The library never calls `malloc` or
+  `free`. Every allocating function takes an `rc_arena *` - a
+  virtual-memory-backed bump allocator - as its last parameter. Allocation
+  never returns NULL (running out of space is a panic, not an error to handle),
+  and you free an arena, not individual objects. Passing an arena *by value*
+  hands the callee scratch memory that is reclaimed for free on return.
+- **Objects are context-free**. An object should only contain the information
+  intrinsic to itself. A string shouldn't know how it was allocated. An array
+  shouldn't know where to grow itself. The caller will always pass this context.
+- **Views and spans, not pointer-and-length pairs.** `rc_view` is a read-only
+  `{data, num}`, `rc_span` its mutable counterpart, and `rc_array` a growable
+  arena-backed array. They share an anonymous union, so converting an array to
+  a span, or a span to a view, is a typesafe field access.
+- **Indices, not pointers.** Indices are always `uint32_t`, with
+  `RC_INDEX_NONE` as the "not found" / "invalid" sentinel. An index stays valid
+  across container growth where a pointer may not, so APIs return and accept
+  indices wherever that makes sense. This is both safer and uses less memory
+  for storage.
+- **Value semantics where possible.** Small objects are generally passed by
+  value, and functions return their result - often bundled into a
+  small struct - rather than writing through an out-parameter. Out-parameters
+  are reserved for when the alternative is genuinely worse: filling a
+  caller-owned buffer, or a large object that should not be copied.
+- **Containers and algorithms are preprocessor templates.** Define a control
+  macro, include a `richc/template/` header, and it generates type-specific
+  code, then `#undef`s its macros so it can be included again for another type.
+  No runtime polymorphism, no `void *`.
 
-## Template headers
+  ```c
+  #define RC_ARRAY_TYPE int
+  #include "richc/template/array.h"
+  // now: rc_view_int, rc_span_int, rc_array_int and their operations
+  ```
+- **Preconditions trap; errors are for what a caller can handle.** Programmer
+  errors - a NULL pointer, an out-of-range index - are guarded by asserts and
+  trap in debug builds. A returned error result is reserved for conditions a
+  caller is genuinely expected to handle, like a file that fails to open or
+  malformed data read from disk.
 
-Generic containers are preprocessor templates. A header under `richc/template/`
-generates type-specific code for an element type you choose: define the control
-macro(s), then include the header. The header `#undef`s its macros at the end,
-so you can include it again for another type.
+## Conventions
 
-```c
-#define RC_ARRAY_TYPE int
-#include "richc/template/array.h"
-// now: rc_view_int, rc_span_int, rc_array_int and their operations
+- Everything is `snake_case`. Public types and functions are prefixed `rc_`,
+  public macros `RC_`.
+- Functions are named by role:
+  - `rc_<type>_make(...)` / `rc_<type>_make_<thing>(...)` - constructor,
+    returning a fresh `rc_<type>` by value.
+  - `rc_<type>_from_<other>(...)` - construct from a value of a different type.
+  - `rc_<type>_as_<other>(...)` - reinterpret as another type without
+    allocating or copying; the source stays usable.
+  - `rc_<type>_to_<other>(...)` - convert into another type by *moving*,
+    consuming the source so only the result owns the resource.
+  - `rc_<type>_is_<predicate>(...)` - returns a `bool` (e.g. `is_valid`,
+    `is_empty`).
+- A trailing underscore (e.g. `RC_CHECK_IMPL_`) marks an internal symbol that
+  happens to be visible in a public header; it is not part of the API.
 
-#define RC_ARRAY_TYPE float
-#define RC_ARRAY_NAME float
-#include "richc/template/array.h"
-// now: rc_view_float, rc_span_float, rc_array_float
-```
+## Reference
 
-The generated types are always named `rc_array_<suffix>`, `rc_span_<suffix>`,
-and `rc_view_<suffix>`. The optional `RC_ARRAY_NAME` gives the `<suffix>`
-(defaulting to the element type's spelling, so it must be a single identifier -
-supply a name for multi-token types such as `unsigned char`).
+Detailed reference documentation of every public type, macro, and function
+lives in [docs/](docs/), organised by header:
 
-## What it contains
+- **[Core reference](docs/core.md)** - data structures, algorithms, math,
+  strings, I/O.
+- **[App reference](docs/app.md)** - windowing, input, image loading, packing,
+  atlasing, and the gfx GPU abstraction.
 
-Available now in core:
+For learning the gfx layer from scratch, start with the tutorial,
+**[An introduction to richc gfx](docs/gfx_intro.md)** - it builds from a window
+and a triangle up to offscreen rendering, MSAA, instancing, and storage
+buffers, then hands over to the reference.
 
-- **Arena allocator** (`richc/arena.h`) - `rc_arena`, a virtual-memory-backed
-  bump allocator that reserves a large address range up front and commits pages
-  on demand. It is the library's only allocation primitive; every allocating
-  operation takes an `rc_arena *`. Allocation never returns NULL (running out of
-  space panics), and the latest allocation grows in place. Passing an arena by
-  value gives a scratch snapshot whose allocations are discarded on return.
-- **String view** (`richc/str.h`) - `rc_str`, a non-owning pointer-and-length
-  view with comparison, slicing, searching, trimming, splitting, and conversion
-  to a C string. Never allocates.
-- **Mutable string** (`richc/mstr.h`) - `rc_mstr`, an arena-backed growable
-  string that shares its layout with `rc_str` (its current contents are always a
-  valid `rc_str` view) and keeps a trailing null terminator. Append, append-char,
-  replace, reserve, reset, and deinit.
-- **View / span / array** (`richc/template/array.h`) - the template above. A
-  read-only `rc_view`, a mutable `rc_span`, and a growable arena-backed
-  `rc_array`, sharing an anonymous union so conversions between them are
-  typesafe field accesses. Arrays grow geometrically; spans and views are
-  non-owning windows. Spans also include in-place `reverse` and `rotate`
-  (Gries-Mills block swap).
-- **Byte buffers** (`richc/bytes.h`) - `rc_view_bytes` / `rc_span_bytes` /
-  `rc_array_bytes`, the array template instantiated for `uint8_t`.
-- **Bit array** (`richc/bitset.h`) - `rc_bitset`, a growable arena-backed array
-  of bits packed into `uint32_t` words, with set/clear/test, geometric `push`,
-  and whole-word set-bit iteration. `bitset_foreach.h` adds an iterator template
-  that calls a macro on each set bit, with an optional context.
-- **Hashing** (`richc/hash.h`) - `static inline` 32-bit hash functions for the
-  fixed-width integers, floats, pointers, byte ranges, `rc_str`, and the vector
-  and rational types, plus `hash_combine`. Usable directly as the hash expression
-  for the hash-table templates.
-- **Hash trie** (`richc/template/hash_trie.h`) - a template for a 16-way
-  arena-backed map or set keyed by a 64-bit hash; nodes are pooled 16 to a block
-  in an internal `rc_pool` (so blocks emptied by delete are recycled), and one
-  pool can back many independent tries.
-- **Object pool** (`richc/template/pool.h`) - a template for an index-stable
-  free-list pool over an `rc_array`: `alloc` returns a stable index, `free`
-  recycles it, and freed slots are reused. `pool_foreach.h` adds an iterator
-  template that visits the live entries (via a scratch-arena bitset of the dead
-  slots), calling a macro on each with an optional context.
-- **Sort** (`richc/template/algorithm/sort.h`) - a template generating an in-place
-  introsort over a mutable `rc_span` (quicksort with a heapsort fallback and
-  insertion sort for small spans), with an optional custom comparator and
-  context pointer.
-- **Binary search** (`richc/template/algorithm/lower_bound.h`,
-  `richc/template/algorithm/upper_bound.h`) - templates generating `lower_bound` and
-  `upper_bound` over a sorted `rc_view`: the first index whose element is
-  `>= value` and the first whose element is `> value`, with an optional custom
-  comparator and context pointer.
-- **Min / max element** (`richc/template/algorithm/min_element.h`,
-  `richc/template/algorithm/max_element.h`) - templates returning the index of the leftmost
-  minimum or maximum of an `rc_view` (`RC_INDEX_NONE` if empty), with an optional
-  custom comparator and context pointer.
-- **File I/O** (`richc/file.h`) - whole-file load and save with `rc_str`
-  filenames; loads return a mutable, growable `rc_mstr` (text) or `rc_array_bytes`
-  (binary) - mutable because loaded data is commonly modified after reading, while
-  the arena owns the allocation - from which a read-only view is available via
-  `.view`.
-- **Inflate / decompression** (`richc/zip/inflate.h`) - `rc_zip_inflate`
-  decompresses a raw DEFLATE stream (RFC 1951) and `rc_zip_inflate_zlib`
-  a zlib-wrapped one (RFC 1950: a 2-byte header and a trailing Adler-32, which it
-  verifies). Both decode into an arena-backed `rc_array_bytes` and return an
-  `rc_zip_inflate_result` carrying that data and an `rc_zip_error`; malformed
-  input yields an error rather than trapping. An optional `minimum_capacity`
-  pre-sizes the output when the decompressed size is known in advance.
-- **Scalar ops** (`richc/ops.h`) - bit reinterpretation, integer min/max/sign,
-  GCD, count-leading-zeros, count-trailing-zeros, and overflow checks.
-- **Math** (`richc/math/`) - integer vectors `rc_vec2i` / `rc_vec3i` (arithmetic,
-  dot/wedge/cross, etc.), float vectors `rc_vec2f` / `rc_vec3f` / `rc_vec4f`
-  (the same plus length/normalize/lerp), axis-aligned boxes `rc_box2i` /
-  `rc_box2f`, and column-major float matrices `rc_mat22f` / `rc_mat33f` /
-  `rc_mat44f` with the 2D/3D affine transforms `rc_mat23f` / `rc_mat34f`
-  (multiply, determinant, inverse, rotation/projection/look-at builders), and
-  the quaternion `rc_quatf` (compose/transform, slerp, exp/log/pow, and
-  matrix conversion both ways), exact rationals `rc_rational` (canonical form,
-  overflow-checked arithmetic, overflow-safe comparison), plus analytic
-  quadratic and cubic root solvers.
-- **Rectangle packing** (`richc/rect_pack.h`) - `rc_rect_pack`, a Maximal
-  Rectangles / Best Short Side Fit packer over plain sizes and positions, with no
-  image dependency. Pack a whole batch at once with `rc_rect_pack_all` (sorted for
-  density, returning positions allocated from the arena), or build a packing up
-  incrementally with `rc_rect_pack_make` / `rc_rect_pack_add` so earlier
-  placements stay put. Maintains a spacing gap and captures no arena.
-- **Unit-test framework** (`richc/test.h`) - a small assertion-based test runner
-  (`RC_TEST`, `RC_TEST_STEP`, group fixtures, and `RC_CHECK` with type-aware
-  comparison) used by the core test suite and available for your own tests.
-- **Macros and assertions** (`richc/macros.h`) - `RC_ASSERT` (debug-only, traps
-  on failure), `RC_PANIC` (always active), and `RC_UNREACHABLE` (provably-dead
-  paths: debug trap, release optimiser hint), plus `RC_CONCAT`, `RC_STRINGIFY`,
-  and the `RC_INDEX_NONE` sentinel.
+## Authorship / AI disclosure ##
 
-Available now in app (the `richc_app` library, built on core; GLFW and glad are
-private):
+richc was designed and mostly implemented by me, Rich Talbot-Watkins, and
+grew over many years of needing C helpers and abstractions for personal projects.
+This repo is the result of trying to bring everything to a single place.
 
-- **Windowing and input** (`richc/app/app.h`, `richc/app/keys.h`) - `rc_app`
-  opens a window with an OpenGL context and drives the main loop: `rc_app_init`,
-  `rc_app_poll`, `rc_app_is_running`, update/render frame callbacks, `rc_app_size`,
-  `rc_app_time`, and buffer swap. Scancodes, modifier flags, and mouse buttons
-  live in `keys.h`.
-- **CPU image** (`richc/image/image.h`) - `rc_image`, a non-owning window over
-  arena-backed pixel bytes with a top-left origin and an `R8` / `RGB8` / `RGBA8`
-  format. Create it cleared (`rc_image_make`) or filled (`rc_image_make_filled`),
-  take a borrowed sub-image of a region (`rc_image_make_subimage`), and `blit`
-  one image into another with automatic format widening. Pixels are read and
-  written as a packed `uint32_t` colour (`get_pixel` / `set_pixel`, with per-format
-  fast variants).
-- **PNG decoding** (`richc/image/image_png.h`) - `rc_image_from_png` decodes an
-  in-memory PNG into an `rc_image` using core's inflate, returning an
-  `rc_image_png_result` (image plus an `rc_image_png_error`). It handles
-  grayscale, truecolour, palette, and the alpha variants at 8 bits per channel,
-  plus 1/2/4-bit grayscale and palette indices; all scanline filters; and
-  multiple IDAT chunks. A pixel-format hint widens the result toward a target
-  format without ever narrowing it (pass `RC_PIXEL_FORMAT_NONE` to keep the PNG's
-  natural format). 16-bit channels and Adam7 interlacing are reported as
-  unsupported. `rc_image_load_png` is a convenience that reads a file and decodes
-  it in one call.
-- **Image atlas** (`richc/image/image_pack.h`) - `rc_image_pack` packs a set of
-  images into one atlas image (for upload as a single texture) via the rectangle
-  packer, taking the widest input format and widening sources in. It returns the
-  atlas and each image's position; pass a zero size to have it choose and grow the
-  atlas size automatically.
-- **Incremental image atlas** (`richc/image/image_atlas.h`) - `rc_image_atlas`
-  adds images to an atlas one at a time, over a session, with earlier placements
-  staying put (e.g. font glyphs). `rc_image_atlas_make` then `rc_image_atlas_add`,
-  using one arena and no scratch since the atlas pixels are fixed and only the
-  packer's free list grows.
-
-## Documentation
-
-Detailed reference documentation of every public type, macro, and function lives
-in [docs/](docs/), organised by header and split into
-[overview.md](docs/overview.md) (philosophy and conventions),
-[core.md](docs/core.md) (the core layer), and [app.md](docs/app.md) (the app
-layer).
+AI was used increasingly over the last months to write documentation, tests, and
+help implement some of the new features. Design was all mine, always guided by
+the library philosophies described above.
 
 ## License
 

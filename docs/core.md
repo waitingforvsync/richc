@@ -1,809 +1,1385 @@
 # richc core reference
 
-Per-header reference for the **core** layer: generic data structures, algorithms,
-math types, string handling, and file I/O, with no external dependencies. See
-[overview.md](overview.md) for the shared philosophy and conventions, and
-[app.md](app.md) for the app layer.
+Reference for the **core** layer: generic data structures, algorithms, math
+types, string handling, concurrency, and file I/O, with no external
+dependencies. See the [README](../README.md) for the shared philosophy and
+conventions, and [app.md](app.md) for the app layer. The documentation is
+grouped by category; every public type, function, and macro is covered.
 
-## richc/arena.h - arena allocator
+## Contents
 
-`rc_arena` is a virtual-memory-backed stack (bump) allocator. It reserves a
-large region of address space up front and commits physical pages on demand.
-Because the reserved range never moves, pointers into the arena stay valid for
-its entire lifetime. Every allocation is aligned to `RC_MAX_ALIGN` (the
-alignment of `max_align_t`), so it suits any standard C type.
+- [Arena allocator](#arena-allocator) - `richc/arena.h`
+- [String view](#string-view) - `richc/str.h`
+- [Mutable string](#mutable-string) - `richc/mstr.h`
+- [Container templates](#container-templates) - `richc/template/`
+  - [array.h - view, span, array](#richctemplatearrayh---view-span-array)
+  - [hash_trie.h - 16-way hash trie](#richctemplatehash_trieh---16-way-hash-trie)
+  - [pool.h - free-list object pool](#richctemplatepoolh---free-list-object-pool)
+  - [genpool.h - generational object pool](#richctemplategenpoolh---generational-object-pool)
+- [Generational pool handle](#generational-pool-handle) - `richc/genpool_handle.h`
+- [Ready-made arrays](#ready-made-arrays) - `richc/array/`, `richc/math/array/`
+- [Byte buffers](#byte-buffers) - `richc/bytes.h`
+- [Bit array](#bit-array) - `richc/bitset.h`
+- [Algorithm templates](#algorithm-templates) - `richc/template/algorithm/`
+  - [sort.h - introsort](#richctemplatealgorithmsorth---introsort)
+  - [lower_bound.h / upper_bound.h - binary search](#richctemplatealgorithmlower_boundh--upper_boundh---binary-search)
+  - [min_element.h / max_element.h - extremes](#richctemplatealgorithmmin_elementh--max_elementh---extremes)
+  - [bitset_foreach.h - iterate set bits](#richctemplatealgorithmbitset_foreachh---iterate-set-bits)
+  - [pool_foreach.h - iterate live pool entries](#richctemplatealgorithmpool_foreachh---iterate-live-pool-entries)
+  - [genpool_foreach.h - iterate live genpool entries](#richctemplatealgorithmgenpool_foreachh---iterate-live-genpool-entries)
+  - [hash_trie_foreach.h - iterate every trie entry](#richctemplatealgorithmhash_trie_foreachh---iterate-every-trie-entry)
+- [Hashing](#hashing) - `richc/hash.h`
+- [Math](#math) - `richc/math/`
+  - [vec2i.h](#richcmathvec2ih---2d-integer-vector) /
+    [vec3i.h](#richcmathvec3ih---3d-integer-vector) - integer vectors
+  - [vec2f.h](#richcmathvec2fh---2d-float-vector) /
+    [vec3f.h](#richcmathvec3fh---3d-float-vector) /
+    [vec4f.h](#richcmathvec4fh---4d-float-vector) - float vectors
+  - [box2i.h](#richcmathbox2ih---2d-integer-box) /
+    [box2f.h](#richcmathbox2fh---2d-float-box) - axis-aligned boxes
+  - [mat22f.h](#richcmathmat22fh---2x2-float-matrix) /
+    [mat23f.h](#richcmathmat23fh---2d-affine-transform) /
+    [mat33f.h](#richcmathmat33fh---3x3-float-matrix) /
+    [mat34f.h](#richcmathmat34fh---3d-affine-transform) /
+    [mat44f.h](#richcmathmat44fh---4x4-float-matrix) - matrices
+  - [quatf.h](#richcmathquatfh---quaternion) - quaternion
+  - [rational.h](#richcmathrationalh---rational-arithmetic) - exact rationals
+  - [solve.h](#richcmathsolveh---polynomial-root-solvers) - root solvers
+- [Rectangle packing](#rectangle-packing) - `richc/rect_pack.h`
+- [Random numbers](#random-numbers) - `richc/random.h`
+- [Scalar operations](#scalar-operations) - `richc/ops.h`
+- [File I/O](#file-io) - `richc/file.h`
+- [Decompression](#decompression) - `richc/zip/inflate.h`
+- [Time](#time) - `richc/time.h`
+- [Concurrency](#concurrency) - `richc/thread/`
+  - [atomic.h - atomics](#richcthreadatomich---atomics)
+  - [spinlock.h - spinlock](#richcthreadspinlockh---spinlock)
+  - [mutex.h - mutexes](#richcthreadmutexh---mutexes)
+  - [rwlock.h - reader/writer lock](#richcthreadrwlockh---readerwriter-lock)
+  - [cond.h - condition variable](#richcthreadcondh---condition-variable)
+  - [semaphore.h - counting semaphore](#richcthreadsemaphoreh---counting-semaphore)
+  - [thread.h - threads and utilities](#richcthreadthreadh---threads-and-utilities)
+  - [tls.h - thread-local keys](#richcthreadtlsh---thread-local-keys)
+  - [scheduler.h - task scheduler](#richcthreadschedulerh---task-scheduler)
+  - [future.h - typed futures](#richctemplatefutureh---typed-futures)
+- [Unit testing](#unit-testing) - `richc/test.h`
+- [Macros and assertions](#macros-and-assertions) - `richc/macros.h`
 
-### Type and constants
+---
 
-```c
-typedef struct rc_arena {
-    char     *base;       // base of the reserved region; first allocation address
-    uint32_t  top;        // offset of the next free byte (always RC_MAX_ALIGN-aligned)
-    uint32_t  committed;  // offset one past the last committed byte
-    uint32_t  reserved;   // total reserved bytes
-} rc_arena;
+## Arena allocator
 
-#define RC_MAX_ALIGN              // alignment applied to every allocation
-#define RC_ARENA_DEFAULT_RESERVE  // 256 MB; the default reservation size
-```
-
-Offsets are `uint32_t`, so a single arena spans at most 4 GB. A zeroed
-`rc_arena` (all fields 0) is the failure/empty value; check `base` after
-creation.
-
-### Lifetime
-
-```c
-rc_arena rc_arena_make(uint32_t reserve_size);
-rc_arena rc_arena_make_default(void);   // inline; rc_arena_make(RC_ARENA_DEFAULT_RESERVE)
-void     rc_arena_deinit(rc_arena *a);
-```
-
-`rc_arena_make` reserves `reserve_size` bytes (rounded up to a page) and commits
-the first page. On failure it returns a zeroed arena, so test `a.base` - this is
-the one place arena setup may fail and be handled. `rc_arena_deinit` releases
-all virtual memory and zeroes the struct.
-
-### Allocation
-
-```c
-void *rc_arena_alloc(rc_arena *a, uint32_t size);
-void *rc_arena_alloc_zero(rc_arena *a, uint32_t size);
-```
-
-Both bump-allocate `size` bytes. They **never return NULL** - running out of
-space is a fatal `RC_PANIC`, not a NULL return, so callers must not NULL-check
-the result (unlike idiomatic `malloc`/`realloc` code). `size` must be non-zero
-and `a` must be a created arena; both are asserted. `rc_arena_alloc` does NOT
-zero its memory; `rc_arena_alloc_zero` does. Freshly committed pages are
-OS-zeroed, but space reclaimed by a free retains its old contents, so use the
-zeroing variant whenever a clean buffer is required.
-
-Convenience macros allocate `n` elements of a type:
-
-```c
-#define rc_arena_alloc_type(arena, T, n)       // ((T *)rc_arena_alloc(...))
-#define rc_arena_alloc_zero_type(arena, T, n)  // zeroed variant
-```
-
-### Freeing
-
-```c
-bool rc_arena_free(rc_arena *a, void *ptr, uint32_t size);
-void rc_arena_free_to(rc_arena *a, uint32_t offset);   // inline
-```
-
-`rc_arena_free` only succeeds (returns true) when `ptr` is the most recent
-allocation, in which case it moves `top` back; otherwise it is a no-op returning
-false (interior space cannot be reclaimed). `rc_arena_free_to` resets `top` to
-an earlier `offset`, freeing everything allocated after that point in O(1):
-
-```c
-uint32_t mark = a.top;
-// ... allocate temporaries ...
-rc_arena_free_to(&a, mark);   // discard them all at once
-```
-
-### Reallocation
+`richc/arena.h`. `rc_arena` is the library's only allocation primitive: a
+virtual-memory-backed bump allocator that reserves a large address range up
+front (so the base never moves and pointers stay valid for the arena's
+lifetime) and commits physical pages on demand. Allocation is a pointer bump,
+aligned to `RC_MAX_ALIGN`, and never returns NULL - running out of space is an
+`RC_PANIC`, so results are never NULL-checked. Lifetimes are wholesale: free an
+arena, not individual objects. Passing an arena *by value* hands the callee a
+snapshot of the bump pointer, so its allocations are reclaimed for free on
+return - the standard scratch pattern:
 
 ```c
-void *rc_arena_realloc(rc_arena *a, void *ptr, uint32_t old_size, uint32_t new_size);
-void *rc_arena_realloc_zero(rc_arena *a, void *ptr, uint32_t old_size, uint32_t new_size);
-```
-
-Resize the allocation at `ptr`. A NULL `ptr` behaves like `alloc`. When `ptr` is
-the last allocation it grows or shrinks in place; otherwise growing copies the
-data to a fresh allocation and shrinking is a no-op. `rc_arena_realloc` does not
-zero new bytes when growing; `rc_arena_realloc_zero` does. Like the allocation
-functions, these never return NULL (out of space is an `RC_PANIC`) and assert
-that `new_size` is non-zero.
-
-### Reset
-
-```c
-void rc_arena_reset(rc_arena *a);
-```
-
-Return `top` to 0 and decommit every page except the first, handing physical
-memory back to the OS. The arena stays valid and ready for reuse.
-
-### Scratch pattern
-
-Passing an `rc_arena` by value gives the callee a snapshot of the bump pointer.
-Allocations inside the callee advance only the local copy, so the caller's arena
-is unchanged on return:
-
-```c
-void build_temp(rc_arena scratch, rc_arena *out) {
-    int *tmp    = rc_arena_alloc_type(&scratch, int, 1024);  // local only
-    int *result = rc_arena_alloc_type(out, int, n);          // survives
+rc_view_myobj build_temp(rc_arena *a, rc_arena scratch) {
+    rc_array_i32 tmp = rc_array_i32_make(256, scratch);  // local array backed by scratch arena
+    rc_array_myobj result = {};                          // survives
+      ...
+    return result.view;                                  // view in permanent arena passed by caller
 }
 ```
 
----
+The struct is public: `rc_arena { char *base; uint32_t top, committed,
+reserved; }`. Offsets are `uint32_t`, so one arena spans at most 4 GB. A zeroed
+arena is the failure/empty state - check `base` after creation.
 
-## richc/bitset.h - growable bit array
+| API | Description |
+|-----|-------------|
+| `RC_MAX_ALIGN` | alignment of every allocation (alignment of `max_align_t`) |
+| `RC_ARENA_DEFAULT_RESERVE` | default reservation size (256 MB) |
+| `rc_arena_make(reserve_size) -> rc_arena` | reserve `reserve_size` bytes (page-rounded), commit the first page; a zeroed arena on failure - the one arena failure a caller checks |
+| `rc_arena_make_default() -> rc_arena` | `rc_arena_make(RC_ARENA_DEFAULT_RESERVE)` |
+| `rc_arena_deinit(a)` | release all virtual memory and zero the struct |
+| `rc_arena_alloc(a, size) -> void *` | bump-allocate `size` bytes, uninitialised (freshly committed pages are OS-zeroed, but reclaimed space is not) |
+| `rc_arena_alloc_zero(a, size) -> void *` | as `alloc`, but zeroed |
+| `rc_arena_alloc_type(a, T, n)`<br>`rc_arena_alloc_zero_type(a, T, n)` | macros: allocate `n` elements of type `T`, cast to `T *` |
+| `rc_arena_realloc(a, ptr, old_size, new_size) -> void *` | resize; the latest allocation grows in place (same address), older ones relocate by copy; NULL `ptr` acts like `alloc` |
+| `rc_arena_realloc_zero(a, ptr, old_size, new_size) -> void *` | as `realloc`, zeroing the new bytes when growing |
+| `rc_arena_free(a, ptr, size) -> bool` | reclaim `ptr` if it is the latest allocation (true); otherwise a no-op (false) |
+| `rc_arena_free_to(a, offset)` | rewind `top` to an earlier mark, freeing everything after it in O(1) |
+| `rc_arena_reset(a)` | rewind `top` to 0 and decommit every page but the first, returning physical memory to the OS |
 
-A dense, arena-backed array of bits packed into `uint32_t` words. Bit `i` lives
-in word `i / 32` at bit position `i % 32`.
-
-```c
-typedef struct rc_bitset {
-    uint32_t *data;
-    uint32_t  num;   // number of addressable bits
-    uint32_t  cap;   // capacity in bits; always a multiple of 32
-} rc_bitset;
-```
-
-A zero-initialised `rc_bitset` is a valid empty bitset:
-
-```c
-rc_bitset bs = {0};
-```
-
-**Invariant:** every bit at a position `>= num` is zero. This lets
-`get_next_set` scan whole words without a per-bit bounds check, and every
-mutator preserves it.
-
-### Allocating operations
-
-```c
-void     rc_bitset_reserve(rc_bitset *bs, uint32_t min_bits, rc_arena *arena);
-void     rc_bitset_resize(rc_bitset *bs, uint32_t new_num, rc_arena *arena);
-uint32_t rc_bitset_push(rc_bitset *bs, bool val, rc_arena *arena);
-uint32_t rc_bitset_push_n_zero(rc_bitset *bs, uint32_t n, rc_arena *arena);
-rc_bitset rc_bitset_make_copy(const rc_bitset *src, rc_arena *arena);
-```
-
-- `reserve` ensures capacity for at least `min_bits`, allocated exactly (rounded
-  up to a whole word). No-op when `cap >= min_bits`.
-- `resize` sets `num` to `new_num`. Growing reserves exactly and leaves the new
-  bits 0; shrinking zeroes the vacated bits to keep the invariant.
-- `push` appends one bit set to `val` and returns its index (the old `num`).
-- `push_n_zero` appends `n` zero bits and returns the first index.
-- `make_copy` returns a freshly allocated duplicate of `src` (same `num`).
-
-`push` and `push_n_zero` grow geometrically - the larger of `2 * cap`, the
-request, or 64 bits (8 bytes) - matching the array growth policy. `arena` may be
-NULL whenever no growth is needed (a fitting `reserve`/`resize`, or any shrink).
-
-### Non-allocating operations
-
-```c
-void     rc_bitset_reset(rc_bitset *bs);                       // clear all bits; num/cap unchanged
-uint32_t rc_bitset_get_next_set(const rc_bitset *bs, uint32_t pos);  // first set bit at >= pos, or RC_INDEX_NONE
-void     rc_bitset_copy(rc_bitset *dst, const rc_bitset *src);       // assign; asserts dst->num == src->num
-void     rc_bitset_union(rc_bitset *dst, const rc_bitset *src);      // dst |= src, capped to dst->num
-void     rc_bitset_intersection(rc_bitset *dst, const rc_bitset *src); // dst &= src, capped to dst->num
-bool     rc_bitset_intersects(const rc_bitset *a, const rc_bitset *b); // share a bit within min(num)?
-bool     rc_bitset_is_equal(const rc_bitset *a, const rc_bitset *b);   // identical? differing num -> false
-uint32_t rc_bitset_num_set_bits(const rc_bitset *bs);               // population count (computed, not cached)
-```
-
-- `copy` assigns `src` into `dst` in place. It is the one op that **requires equal
-  width** (`dst->num == src->num`) - a bare buffer copy with no arena to grow into.
-- `union` (`dst |= src`) and `intersection` (`dst &= src`) mutate `dst` in place and
-  are **capped to `dst->num`**: `union` drops any `src` bits at or above `dst->num`
-  (nowhere to store them); `intersection` clears any `dst` bit at or above `src->num`
-  (`src` has no bit there, so it counts as 0). Both are therefore **not commutative** -
-  the result takes the first argument's width. They accept any two widths.
-- `intersects` asks whether the two share a set bit within the overlapping
-  `min(a->num, b->num)` bits (commutative); `is_equal` treats a differing `num` as
-  immediately not-equal, else compares whole words.
-- `num_set_bits` is a population count, computed on demand - the count is **not**
-  cached anywhere. (A pure, commutative `make_union` / `make_intersection` returning a
-  fresh result is not provided yet; add one if a caller needs the non-capping form.)
-
-All of these lean on the zero-tail invariant (bits `>= num` are 0), so they operate a
-whole word at a time with no per-bit masking.
-
-### Inline operations
-
-```c
-void     rc_bitset_set(rc_bitset *bs, uint32_t i);        // set bit i        (asserts i < num)
-void     rc_bitset_clear(rc_bitset *bs, uint32_t i);      // clear bit i      (asserts i < num)
-bool     rc_bitset_is_set(const rc_bitset *bs, uint32_t i);  // true if set    (asserts i < num)
-uint32_t rc_bitset_get_first_set(const rc_bitset *bs);    // first set bit, or RC_INDEX_NONE
-```
-
-### Iterating set bits
-
-```c
-for (uint32_t i = rc_bitset_get_first_set(&bs);
-     i != RC_INDEX_NONE;
-     i = rc_bitset_get_next_set(&bs, i + 1)) {
-    // use i
-}
-```
-
-The [`bitset_foreach`](#richctemplatealgorithmbitset_foreachh---iterate-set-bits) template
-wraps this idiom to call a macro on each set bit, with an optional context.
+The in-place growth of the latest allocation is what makes **one growable
+container per arena** the optimal usage: when an array is its arena's sole
+or final growable, growth never moves the buffer and raw pointers into it
+survive. Although, as per the richc philosophy, we prefer indices to pointers.
 
 ---
 
-## richc/bytes.h - byte buffers
+## String view
 
-`bytes.h` instantiates the [array template](#richctemplatearrayh---view-span-array)
-for `uint8_t`, giving the byte container family:
+`richc/str.h`. `rc_str` is a non-owning view over character data - a `const
+char *` and a `uint32_t` length - passed and held by value, never allocating.
+It is in one of three states: **invalid** `{NULL, 0}` (the "not found" /
+"absent" sentinel), **empty** `{ptr, 0}`, or valid. Functions that operate on
+the string assert their `rc_str` arguments are valid; the empty view is fully
+supported. `rc_str_pair { rc_str first, second; }` is returned by the splits.
 
-```c
-rc_view_bytes    // { const uint8_t *data; uint32_t num; }
-rc_span_bytes    // {       uint8_t *data; uint32_t num; }
-rc_array_bytes   // {       uint8_t *data; uint32_t num; uint32_t cap; }
-```
+| API | Description |
+|-----|-------------|
+| `RC_STR(literal)` | compile-time view of a string literal (or `char[]`; not a `char *` - the length comes from `sizeof`) |
+| `rc_str_make(data, len) -> rc_str` | view over an explicit pointer and length; need not be null-terminated |
+| `rc_str_from_cstr(s) -> rc_str` | view over a null-terminated C string; invalid view when `s` is NULL |
+| `rc_str_is_valid(s) -> bool` | `data` is non-NULL |
+| `rc_str_is_empty(s) -> bool` | `len` is 0 (also true for the invalid view) |
+| `rc_str_is_equal(a, b) -> bool` | same length and bytes; any two zero-length views are equal |
+| `rc_str_is_equal_insensitive(a, b) -> bool` | as `is_equal`, folding ASCII case |
+| `rc_str_compare(a, b) -> int` | byte-wise three-way compare; a prefix sorts first |
+| `rc_str_compare_insensitive(a, b) -> int` | as `compare`, folding ASCII case |
+| `rc_str_left(s, count)`<br>`rc_str_right(s, count) -> rc_str` | first / last `count` chars, clamped |
+| `rc_str_substr(s, start, count) -> rc_str` | `count` chars from `start`, both clamped |
+| `rc_str_skip(s, start) -> rc_str` | suffix from `start`, clamped |
+| `rc_str_starts_with(s, prefix)`<br>`rc_str_ends_with(s, suffix) -> bool` | true for an empty prefix/suffix; false when longer than `s` |
+| `rc_str_find_first(hay, needle)`<br>`rc_str_find_last(hay, needle) -> uint32_t` | match index or `RC_INDEX_NONE`; an empty needle is found at 0 / `hay.len` |
+| `rc_str_contains(hay, needle) -> bool` | `find_first` succeeds |
+| `rc_str_remove_prefix(s, prefix)`<br>`rc_str_remove_suffix(s, suffix) -> rc_str` | `s` with the affix removed when present, else unchanged |
+| `rc_str_first_split(s, by)`<br>`rc_str_last_split(s, by) -> rc_str_pair` | split at the first/last delimiter, which neither half includes; delimiter absent -> `{s, invalid}` |
+| `rc_str_as_cstr(s, buf, buf_size) -> const char *` | null-terminated C string: `s.data` directly when already followed by `'\0'` (no copy), else a truncated copy into `buf`; NULL when neither applies |
 
-Every view/span/array operation applies, named `rc_array_bytes_*`,
-`rc_span_bytes_*`, and `rc_view_bytes_*` (e.g. `rc_array_bytes_push`,
-`rc_view_bytes_get_subview`). Include the header once.
-
-It also defines bridges to the string types:
-
-```c
-rc_str  rc_view_bytes_as_str(rc_view_bytes bytes);
-rc_str  rc_span_bytes_as_str(rc_span_bytes bytes);
-rc_mstr rc_array_bytes_to_mstr(rc_array_bytes *bytes, rc_arena *a);
-```
-
-- `rc_view_bytes_as_str` / `rc_span_bytes_as_str` reinterpret the bytes as a
-  read-only `rc_str` with no copy and no allocation (the bytes need not be
-  null-terminated, since `rc_str` carries its own length). The source stays usable
-  - it is a non-destructive cast.
-- `rc_array_bytes_to_mstr` *moves* a byte buffer into an `rc_mstr`: it appends a
-  `'\0'` terminator (growing by one byte only if the buffer was exactly full),
-  reinterprets the preceding bytes as the string, and resets `*bytes` to the empty
-  `{ 0 }` (`len` excludes the terminator, `cap` is the array's real capacity). The
-  reset is what makes this a move rather than a cast, and the reason is ownership
-  - but ownership of *mutation*, not of the underlying memory (the arena owns
-  that and never needs freeing here). Two mutable containers must not both refer
-  to one buffer: either could grow or rewrite it independently, corrupting the
-  other. So the source `rc_array_bytes` is cleared, leaving the returned
-  `rc_mstr` as the single writer. The read-only `as_str` casts above have no such
-  hazard and leave their source usable.
+All slicing clamps out-of-range arguments rather than asserting.
 
 ---
 
-## richc/file.h - file I/O
+## Mutable string
 
-Whole-file load and save. Filenames are `rc_str`; all I/O is binary mode (no
-line-ending translation), and loaded data is allocated from the supplied arena.
-Every function reports `rc_file_error`: `RC_FILE_OK` (0) on success, otherwise
+`richc/mstr.h`. `rc_mstr` is an arena-backed growable string, implemented like
+`rc_array` but keeping a `'\0'` terminator at `data[len]`, so `rc_str_as_cstr`
+on its view takes the no-copy fast path. Its `{data, len}` fields share layout
+with `rc_str` through an anonymous union exposed as `s.view`, so a non-owning
+view of the contents is always one field access away. `cap` is the real byte
+capacity, holding up to `cap - 1` characters; growth is geometric (the larger
+of `2*cap`, the request, or 8). `data == NULL` is the invalid zero-initialised
+state; the mutators accept it and allocate on first use.
+
+| API | Description |
+|-----|-------------|
+| `rc_mstr_make(capacity, arena) -> rc_mstr` | empty string in a `capacity`-byte buffer; 0 yields the invalid `{0}` (no allocation) |
+| `rc_mstr_from_cstr(s, min_cap, arena)`<br>`rc_mstr_from_str(s, min_cap, arena) -> rc_mstr` | copy the source into a buffer of `max(len + 1, min_cap)` bytes; invalid input -> invalid result |
+| `rc_mstr_is_valid(s) -> bool` | `data` is non-NULL |
+| `rc_mstr_is_empty(s) -> bool` | `len` is 0 (also true when invalid) |
+| `rc_mstr_reset(s)` | set `len` to 0, keeping the buffer |
+| `rc_mstr_reserve(s, capacity, arena)` | ensure at least `capacity` bytes (exact); may move the buffer |
+| `rc_mstr_append(s, str, arena)` | append an `rc_str`; empty is a no-op |
+| `rc_mstr_append_char(s, c, arena)` | append one character |
+| `rc_mstr_append_n(s, c, n, arena)` | append `n` copies of `c` (padding, rules); `n == 0` is a no-op |
+| `rc_mstr_append_i32/i64/u32/u64(s, value, arena)` | append the integer in decimal (minus sign for negatives; no locale, no printf) |
+| `rc_mstr_append_f32/f64(s, value, arena)` | append the float in `%g` form |
+| `rc_mstr_append_hex8/16/32/64(s, value, arena)` | append as uppercase hex, zero-padded to the type's full width (2/4/8/16 digits); no prefix |
+| `rc_mstr_replace(s, find, replacement, arena)` | replace every non-overlapping `find`, rewriting in place; empty `find` is a no-op |
+| `rc_mstr_deinit(s, arena)` | free the backing (best-effort, see `rc_arena_free`) and zero to the invalid state; safe on an already invalid string |
+
+---
+
+## Container templates
+
+`richc/template/`. Generic containers are preprocessor templates: define the
+control macros, include the header, and it generates type-specific code, then
+`#undef`s all its macros so it can be included again for another type. There is
+no runtime polymorphism and no `void *` - the generated code is as specific and
+optimisable as hand-written code.
+
+```c
+#define RC_ARRAY_TYPE int
+#include "richc/template/array.h"
+// now: rc_view_int, rc_span_int, rc_array_int and their operations
+```
+
+For the common element types the instantiation has already been done once in a
+guarded header - see [Ready-made arrays](#ready-made-arrays) - so only
+instantiate a template directly for your own types.
+
+### richc/template/array.h - view, span, array
+
+For one element type, generates a read-only view, a mutable span, and a
+growable arena-backed array:
+
+```c
+rc_view_<s>   { const T *data; uint32_t num; }
+rc_span_<s>   {       T *data; uint32_t num; }
+rc_array_<s>  {       T *data; uint32_t num; uint32_t cap; }
+```
+
+The span and array embed an anonymous union, so narrowing conversions are
+typesafe field accesses with no function call: `arr.view`, `arr.span`,
+`span.view`. There is no allocating span/view constructor - allocation is the
+array's job (resize an array and use the returned span, or `make_copy` a view).
+
+| Control macro | Description |
+|---------------|-------------|
+| `RC_ARRAY_TYPE` | element type (required) |
+| `RC_ARRAY_NAME` | name suffix `<s>` (optional; defaults to the type's own spelling, so give one for multi-token types) |
+| `RC_ARRAY_DECLARE_ONLY` | emit only the typedefs (optional; for recursive element types that contain a view of themselves - declare, define the struct, then include again with `IMPL_ONLY`) |
+| `RC_ARRAY_IMPL_ONLY` | emit only the functions, assuming a prior declare-only pass (optional) |
+
+Shared macros, defined once and usable with any instantiation:
+
+| API | Description |
+|-----|-------------|
+| `RC_AT(c, i)` | bounds-checked element access for any view/span/array; an lvalue; asserts `i < c.num` |
+| `RC_VIEW(arr)`<br>`RC_SPAN(arr)` | brace initializers from a C array expression (declaration context only; `arr` must be a real array, not a pointer) |
+
+Array operations (`rc_array_<s>_` prefix). Growing operations grow
+geometrically - to the larger of double the capacity, the request, or 8 - so
+they stay amortised O(1); `reserve` is exact. `arena` comes last and may be
+NULL when no growth is needed.
+
+| API | Description |
+|-----|-------------|
+| `_make(initial_capacity, arena) -> rc_array_<s>` | fresh array with exactly that capacity |
+| `_make_copy(view, min_cap, arena) -> rc_array_<s>` | freshly allocated copy of a view |
+| `_is_valid(a)`<br>`_is_empty(a) -> bool` | owns a buffer / `num == 0` |
+| `_get(a, i) -> T`<br>`_set(a, i, v)`<br>`_at(a, i) -> T *` | element access; index asserted in range |
+| `_reserve(a, capacity, arena)` | ensure exact capacity |
+| `_resize(a, num, arena) -> rc_span_<s>` | set the element count; returns a span over the whole array |
+| `_reset(a)` | `num = 0`, keep the buffer |
+| `_deinit(a, arena)` | free the backing (best-effort) and zero the struct |
+| `_push(a, v, arena) -> uint32_t` | append; returns the new element's index |
+| `_push_n(a, n, arena)`<br>`_push_n_zero(a, n, arena) -> uint32_t` | append `n` uninitialised / zeroed elements; returns the first index |
+| `_pop(a) -> T` | remove and return the last element; asserts non-empty |
+| `_pop_n(a, n)` | drop the last `n` elements |
+| `_append(a, view, arena) -> uint32_t` | append a whole view; returns the new element count |
+| `_insert(a, i, v, arena)` | insert one element, shifting the tail |
+| `_insert_n(a, i, n, arena)`<br>`_insert_n_zero(a, i, n, arena)` | insert `n` uninitialised / zeroed elements |
+| `_remove(a, i)`<br>`_remove_n(a, i, n)` | remove, shifting the tail left |
+
+Span operations (`rc_span_<s>_` prefix; the span is passed by value, writes go
+through to the underlying memory):
+
+| API | Description |
+|-----|-------------|
+| `_make(data, num) -> rc_span_<s>` | wrap a pointer and count; no allocation |
+| `_is_valid(s)`<br>`_is_empty(s) -> bool` | `data != NULL` / `num == 0` |
+| `_get_subspan(s, start, end)`<br>`_get_head(s, n)`<br>`_get_tail(s, n) -> rc_span_<s>` | sub-ranges, clamped |
+| `_get(s, i) -> T`<br>`_set(s, i, v)`<br>`_at(s, i) -> T *` | element access |
+| `_last_at(s) -> T *` | last element; asserts non-empty |
+| `_reverse(s)` | reverse in place |
+| `_rotate(s, k)` | left-rotate by `k` in place (Gries-Mills block swap: `num - gcd(num, k)` swaps, O(1) space); no-op when `k == 0` or `k >= num` |
+
+View operations (`rc_view_<s>_` prefix): the same as span minus `set`,
+`reverse`, and `rotate`; `_at` / `_last_at` return `const T *` and the slicing
+helpers take and return views.
+
+### richc/template/hash_trie.h - 16-way hash trie
+
+An arena-backed map or set keyed by a 64-bit hash: each node has 16 children
+selected by successive 4-bit groups of the hash. Nodes are stored 16 to a block
+in an `rc_pool`, so a block emptied by `delete` is recycled, and one pool can
+back many independent tries. A trie is a **value** - just a root block
+reference - so `{0}` is a valid empty trie (no `make`), tries copy freely, and
+the pool is passed to every operation rather than stored. Keys with identical
+hashes chain correctly (access degrades to O(n) for n identical hashes).
+
+| Control macro | Description |
+|---------------|-------------|
+| `RC_TRIE_KEY_TYPE` | key type (required) |
+| `RC_TRIE_HASH(k)` | hash expression yielding a `uint64_t` (required) |
+| `RC_TRIE_VALUE_TYPE` | define for a map; omit for a set (no `val` parameter, and `find` / `find_ptr` / `value_*` are not generated) |
+| `RC_TRIE_EQUAL(a, b)` | key equality (optional; default `(a) == (b)`) |
+| `RC_TRIE_NAME` | type name (optional; default `rc_trie_<KEY_TYPE>`, requiring a single-identifier key) |
+
+Generated (`<t>` = the trie name): the pool type `<t>_pool` with
+`<t>_pool_make(min_blocks, arena)`, `_pool_reserve`, `_pool_deinit` (from the
+pool template; do not call the pool's low-level block ops on a pool that backs
+tries), and:
+
+| API | Description |
+|-----|-------------|
+| `<t> t = {0};` | construction: zero-initialise; the root block is allocated lazily by the first `add` |
+| `<t>_contains(t, pool, key) -> bool` | membership (set and map) |
+| `<t>_add(&t, pool, key[, val], arena) -> bool` | insert; true when the key was new (a map then replaces the value when false). The one op taking the trie by pointer |
+| `<t>_delete(t, pool, key) -> bool` | remove; true when the key was present |
+| `<t>_find(t, pool, key) -> uint32_t` | map only: node index or `RC_INDEX_NONE`; stable across pool growth, valid until the next add/delete |
+| `<t>_find_ptr(t, pool, key) -> V *` | map only: value pointer or NULL; faster one-shot access, but subject to pool relocation |
+| `<t>_value_get(pool, i) -> V`<br>`<t>_value_set(pool, i, v)`<br>`<t>_value_at(pool, i) -> V *` | map only: value access by node index |
+| `<t>_key_get(pool, i) -> K`<br>`<t>_key_at(pool, i) -> const K *` | key read-back by node index (keys are immutable once placed) |
+
+Read-only ops (`contains`, `find`, `value_get`, `key_get`, `key_at`) take a
+`const` pool; only the mutators and the writable accessors take a mutable one.
+Iteration is by the
+[`hash_trie_foreach`](#richctemplatealgorithmhash_trie_foreachh---iterate-every-trie-entry)
+template.
+
+Several tries sharing one pool:
+
+```c
+#define RC_TRIE_KEY_TYPE   uint64_t
+#define RC_TRIE_VALUE_TYPE uint32_t
+#define RC_TRIE_HASH(k)    rc_hash_u64(k)
+#define RC_TRIE_NAME       rc_trie_id
+#include "richc/template/hash_trie.h"
+
+rc_trie_id_pool pool = {0};     // one block store...
+rc_trie_id materials = {0};     // ...backing any number of tries
+rc_trie_id meshes    = {0};
+
+rc_trie_id_add(&materials, &pool, material_id, mat_slot, &arena);
+rc_trie_id_add(&meshes,    &pool, mesh_id,     mesh_slot, &arena);
+
+uint32_t *slot = rc_trie_id_find_ptr(meshes, &pool, mesh_id);
+```
+
+Sharing the pool is what makes tries cheap in quantity. A trie is only a
+4-byte root and an empty one touches no memory, so a map per material, per
+entity, per whatever costs nothing until it holds something - where a
+table-per-map design pays a header and an initial capacity for every map. All
+the tries' nodes live in one backing array, so it takes one reserve and one
+deinit for the lot, the pool can be its arena's sole growable (growing in
+place, never moving), and lookups across many small maps stay inside one
+contiguous, cache-friendly allocation instead of chasing per-map allocations.
+And recycling crosses trie boundaries: blocks freed when one trie shrinks are
+reused by whichever trie grows next, so total memory tracks the live node
+count rather than the sum of per-map high-water marks.
+
+### richc/template/pool.h - free-list object pool
+
+An index-stable object pool backed by an `rc_array`: `alloc` hands out a stable
+`uint32_t` index, and freed indices are recycled through an in-band free list
+(each slot is a `union { uint32_t next_free_; T value; }`). References are
+stored as `index + 1` with 0 meaning none, so a **zero-initialised pool is a
+valid empty pool**. `free` always pushes the slot onto the free list, so
+`alloc(); free(i);` restores the pool byte-for-byte; the backing holds its
+high-water mark until `reset` / `deinit` reclaim it wholesale.
+
+| Control macro | Description |
+|---------------|-------------|
+| `RC_POOL_TYPE` | element type (required) |
+| `RC_POOL_NAME` | type name (optional; default `rc_pool_<TYPE>`) |
+
+Generated (`<p>` = the pool name):
+
+| API | Description |
+|-----|-------------|
+| `<p>_make(capacity, arena) -> <p>` | optional; only to pre-reserve (zero-init works) |
+| `<p>_reserve(pool, min_capacity, arena)` | ensure backing capacity |
+| `<p>_reset(pool)` | drop all elements, keep the backing |
+| `<p>_deinit(pool, arena)` | free the backing and zero the struct |
+| `<p>_alloc(pool, arena) -> uint32_t` | index of a zeroed slot; reuses a freed slot, else appends |
+| `<p>_free(pool, index)` | recycle the slot (double-free is a caller error - use a genpool where that must trap) |
+| `<p>_get(pool, i) -> T`<br>`<p>_set(pool, i, v)` | value access |
+| `<p>_at(pool, i) -> T *`<br>`<p>_at_const(pool, i) -> const T *` | pointer access; survives in-place growth, invalidated by a relocating grow |
+| `<p>_free_bitset(pool, arena) -> rc_bitset` | the liveness information: set bits are the dead (free-listed) slots |
+
+The pool has no built-in iteration (a freed slot is byte-indistinguishable from
+a live one) - use
+[`pool_foreach`](#richctemplatealgorithmpool_foreachh---iterate-live-pool-entries).
+
+### richc/template/genpool.h - generational object pool
+
+Like `pool.h`, but each slot carries a generation counter outside the value
+union, and `alloc` returns an
+[`rc_genpool_handle`](#generational-pool-handle) instead of a bare index.
+`free` bumps the slot's generation, invalidating every handle from the slot's
+previous lifetime: a stale handle is *detected* (`is_valid` false, `at` NULL,
+`get`/`set`/`free` assert) rather than silently aliasing the next occupant, and
+double-free traps. Use a genpool where handles outlive their elements (resource
+tables, scene objects); a plain pool where indices are managed strictly.
+Zero-init is a valid empty pool.
+
+| Control macro | Description |
+|---------------|-------------|
+| `RC_GENPOOL_TYPE` | element type (required) |
+| `RC_GENPOOL_NAME` | type name (optional; default `rc_genpool_<TYPE>`) |
+
+Generated (`<g>` = the genpool name):
+
+| API | Description |
+|-----|-------------|
+| `<g>_make(capacity, arena) -> <g>` | optional; only to pre-reserve |
+| `<g>_reserve(pool, min_capacity, arena)` | ensure backing capacity |
+| `<g>_reset(pool)` | drop all elements, keep the backing (recreated slots restart at generation 0, so pre-reset handles can alias) |
+| `<g>_deinit(pool, arena)` | free the backing and zero the struct |
+| `<g>_alloc(pool, arena) -> rc_genpool_handle` | handle to a zeroed slot, carrying the slot's current generation |
+| `<g>_free(pool, h)` | asserts `is_valid` (traps stale handles and double-free), bumps the generation, recycles the slot |
+| `<g>_is_valid(pool, h) -> bool` | handle non-null, in range, and generation matches - the element is still live |
+| `<g>_get(pool, h) -> T`<br>`<g>_set(pool, h, v)` | value access; assert `is_valid` |
+| `<g>_at(pool, h) -> T *`<br>`<g>_at_const(pool, h) -> const T *` | non-trapping access; NULL for a null, out-of-range, or stale handle |
+| `<g>_handle_at(pool, index) -> rc_genpool_handle` | the handle a slot currently validates against; call only for slots known live (on a free slot it forges the next-issue handle) |
+| `<g>_free_bitset(pool, arena) -> rc_bitset` | set bits are the dead slots |
+
+A slot's generation wraps after 2^32 frees, momentarily revalidating an ancient
+handle - noted, not defended. Iteration is by
+[`genpool_foreach`](#richctemplatealgorithmgenpool_foreachh---iterate-live-genpool-entries).
+
+---
+
+## Generational pool handle
+
+`richc/genpool_handle.h`. The handle type handed out by the genpool template: a
+slot index paired with the slot's generation at issue time. It lives in its own
+small guarded header so a public header can declare handle-carrying types
+without instantiating a pool. The fields are internal; `index_` stores the slot
+index plus one with 0 meaning "no slot", so a **zero-initialised handle is the
+null handle**. One handle type serves every genpool (not typesafe per pool);
+where mixing pools must be a compile error, wrap the handle in a one-member
+struct per pool (the app layer's gfx handles do this).
+
+| API | Description |
+|-----|-------------|
+| `rc_genpool_handle` | `{ uint32_t index_; uint32_t gen_; }`; `{0}` is the null handle |
+| `rc_genpool_handle_make(index, gen) -> rc_genpool_handle` | build a handle from a slot index and generation |
+| `rc_genpool_handle_is_null(h) -> bool` | refers to no slot at all - NOT a liveness check (only the owning pool's `is_valid` is) |
+| `rc_genpool_handle_index(h) -> uint32_t` | the slot index; asserts `h` is not null |
+| `rc_genpool_handle_gen(h) -> uint32_t` | the generation at issue time |
+| `rc_genpool_handle_equal(a, b) -> bool` | same slot and generation |
+
+---
+
+## Ready-made arrays
+
+`richc/array/` and `richc/math/array/`. Rather than each translation unit
+re-instantiating `template/array.h`, the view/span/array family for a common
+element type is defined once in a guarded convenience header, so every includer
+shares the same generated types. Include the header and use the family; the
+API is exactly the [array template's](#richctemplatearrayh---view-span-array).
+
+| Header | Types |
+|--------|-------|
+| `richc/array/u8.h` .. `u64.h`, `i8.h` .. `i64.h` | `rc_array_u8` .. `rc_array_u64`, `rc_array_i8` .. `rc_array_i64` (all four widths of each) |
+| `richc/array/f32.h`, `richc/array/f64.h` | `rc_array_f32`, `rc_array_f64` |
+| `richc/array/str.h`, `richc/array/mstr.h` | `rc_array_str`, `rc_array_mstr` |
+| `richc/math/array/vec2i.h`, `vec3i.h`, `vec2f.h`, `vec3f.h`, `vec4f.h` | `rc_array_vec2i` etc. |
+| `richc/math/array/box2i.h`, `box2f.h` | `rc_array_box2i`, `rc_array_box2f` |
+| `richc/math/array/mat22f.h`, `mat23f.h`, `mat33f.h`, `mat34f.h`, `mat44f.h` | `rc_array_mat22f` etc. |
+| `richc/math/array/quatf.h`, `rational.h` | `rc_array_quatf`, `rc_array_rational` |
+
+(Each also provides the matching `rc_view_*` and `rc_span_*`.) The `uint8_t`
+family is special-cased as [`bytes.h`](#byte-buffers), which adds the string
+bridges.
+
+---
+
+## Byte buffers
+
+`richc/bytes.h`. The array family instantiated for `uint8_t` under the name
+`bytes` - `rc_view_bytes`, `rc_span_bytes`, `rc_array_bytes` with the full
+[array template API](#richctemplatearrayh---view-span-array) - plus bridges to
+the string types:
+
+| API | Description |
+|-----|-------------|
+| `rc_view_bytes_as_str(bytes) -> rc_str` | reinterpret read-only bytes as an `rc_str`; no copy, no allocation, source stays usable |
+| `rc_span_bytes_as_str(bytes) -> rc_str` | the same for a span |
+| `rc_array_bytes_to_mstr(bytes, arena) -> rc_mstr` | **move** a byte buffer into an `rc_mstr`: appends a `'\0'` (growing only if exactly full) and resets `*bytes` to `{0}`, so only one mutable handle ever owns the buffer |
+
+The `to_` reset is about ownership of *mutation*, not memory (the arena owns
+that): two growable containers must never refer to one buffer, since either
+could grow or rewrite it and corrupt the other. The read-only `as_` casts have
+no such hazard.
+
+---
+
+## Bit array
+
+`richc/bitset.h`. `rc_bitset { uint32_t *data; uint32_t num, cap; }` - a dense,
+growable, arena-backed array of bits packed into `uint32_t` words (bit `i` is
+word `i / 32`, position `i % 32`; `cap` is always a multiple of 32).
+Zero-initialisation is a valid empty bitset. **Invariant:** every bit at a
+position `>= num` is zero - every mutator preserves it, which lets the whole-word
+operations below run with no per-bit masking. Growth is geometric, matching the
+array policy; `arena` may be NULL whenever no growth is needed.
+
+| API | Description |
+|-----|-------------|
+| `rc_bitset_reserve(bs, min_bits, arena)` | ensure capacity for `min_bits`, allocated exactly (word-rounded) |
+| `rc_bitset_resize(bs, new_num, arena)` | set `num`; growing leaves new bits 0, shrinking zeroes the vacated bits |
+| `rc_bitset_push(bs, val, arena) -> uint32_t` | append one bit; returns its index |
+| `rc_bitset_push_n_zero(bs, n, arena) -> uint32_t` | append `n` zero bits; returns the first index |
+| `rc_bitset_make_copy(src, arena) -> rc_bitset` | freshly allocated duplicate |
+| `rc_bitset_set(bs, i)`<br>`rc_bitset_clear(bs, i)`<br>`rc_bitset_is_set(bs, i) -> bool` | single-bit access; assert `i < num` |
+| `rc_bitset_reset(bs)` | clear all bits; `num`/`cap` unchanged |
+| `rc_bitset_get_first_set(bs) -> uint32_t` | first set bit, or `RC_INDEX_NONE` |
+| `rc_bitset_get_next_set(bs, pos) -> uint32_t` | first set bit at `>= pos`, or `RC_INDEX_NONE` |
+| `rc_bitset_copy(dst, src)` | assign in place; the one op requiring equal widths (asserts `dst->num == src->num`) |
+| `rc_bitset_union(dst, src)` | `dst \|= src`, capped to `dst->num` (src bits beyond it are dropped); not commutative |
+| `rc_bitset_intersection(dst, src)` | `dst &= src`, capped to `dst->num` (dst bits beyond `src->num` clear); not commutative |
+| `rc_bitset_intersects(a, b) -> bool` | share a set bit within `min(a->num, b->num)`; commutative |
+| `rc_bitset_is_equal(a, b) -> bool` | identical; differing `num` -> false |
+| `rc_bitset_num_set_bits(bs) -> uint32_t` | population count, computed on demand (not cached) |
+
+Iterate set bits with the `get_first_set` / `get_next_set(i + 1)` idiom, or the
+[`bitset_foreach`](#richctemplatealgorithmbitset_foreachh---iterate-set-bits)
+template.
+
+---
+
+## Algorithm templates
+
+`richc/template/algorithm/`. Each header is a preprocessor template generating
+one function, following shared conventions. The comparator-based templates take
+`RC_<X>_TYPE` (required), an optional `RC_<X>_CMP(a, b)` comparator expression
+- always "less than", default `(a) < (b)` - an optional `RC_<X>_CTX` context
+type (defining it adds a `CTX *` as the comparator's first argument and as a
+function parameter), and optional `RC_<X>_VIEW`/`RC_<X>_SPAN` and `RC_<X>_NAME`
+overrides (the defaults paste `<TYPE>`, so they require a single-identifier
+type). The foreach templates instead name their container type and take a
+required `RC_<X>_FUNC` callback macro plus the optional `RC_<X>_CTX` and
+`RC_<X>_NAME`. All macros defined before inclusion are undefined again by the
+header, so it can be included again for another instantiation.
+
+```c
+#define RC_SORT_TYPE int
+#include "richc/template/algorithm/sort.h"
+// void rc_sort_int(rc_span_int span);
+
+typedef struct { int sign; } sign_ctx;
+#define RC_SORT_TYPE          int
+#define RC_SORT_CTX           sign_ctx
+#define RC_SORT_CMP(c, a, b)  ((c)->sign * (a) < (c)->sign * (b))
+#define RC_SORT_NAME          rc_sort_signed
+#include "richc/template/algorithm/sort.h"
+// void rc_sort_signed(rc_span_int span, sign_ctx *ctx);
+```
+
+### richc/template/algorithm/sort.h - introsort
+
+In-place, not stable, over a mutable span: quicksort with a median-of-three
+pivot, a heapsort fallback past depth `2*floor(log2(n))` (guaranteeing
+`O(n log n)` worst case), and insertion sort for 16 elements or fewer - the
+same strategy as libstdc++ and libc++.
+
+| API | Description |
+|-----|-------------|
+| `rc_sort_<s>(span[, ctx])` | sort ascending under the comparator (pass a `>` comparator to sort descending) |
+| `RC_SORT_TYPE`, `RC_SORT_CMP`, `RC_SORT_CTX`, `RC_SORT_SPAN`, `RC_SORT_NAME` | control macros, as above |
+
+### richc/template/algorithm/lower_bound.h / upper_bound.h - binary search
+
+Binary searches over a sorted `rc_view`. `lower_bound` returns the index of the
+first element `>= value`; `upper_bound` the first strictly `> value` (reusing
+the `<` comparator as `!(value < element)` - no second comparator needed); both
+return `view.num` when no such element exists. With duplicates, `[lower,
+upper)` is the equal range.
+
+| API | Description |
+|-----|-------------|
+| `rc_lower_bound_<s>(view[, ctx], value) -> uint32_t` | first index whose element is `>= value` |
+| `rc_upper_bound_<s>(view[, ctx], value) -> uint32_t` | first index whose element is `> value` |
+| `RC_LOWER_BOUND_*`<br>`RC_UPPER_BOUND_*` (`TYPE`, `CMP`, `CTX`, `VIEW`, `NAME`) | control macros, as above |
+
+### richc/template/algorithm/min_element.h / max_element.h - extremes
+
+Scan an `rc_view` for the leftmost minimum or maximum under the comparison
+(still a "less than" comparator; `max_element` applies it the other way round).
+
+| API | Description |
+|-----|-------------|
+| `rc_min_element_<s>(view[, ctx]) -> uint32_t` | index of the first minimum, or `RC_INDEX_NONE` if empty |
+| `rc_max_element_<s>(view[, ctx]) -> uint32_t` | index of the first maximum, or `RC_INDEX_NONE` if empty |
+| `RC_MIN_ELEMENT_*`<br>`RC_MAX_ELEMENT_*` (`TYPE`, `CMP`, `CTX`, `VIEW`, `NAME`) | control macros, as above |
+
+### richc/template/algorithm/bitset_foreach.h - iterate set bits
+
+Visits the set bits of an [`rc_bitset`](#bit-array) in ascending order, calling
+the callback macro on each index. Read-only; allocates nothing. There is no
+`TYPE`, so the default name is fixed - give `RC_BITSET_FOREACH_NAME` to
+generate more than one iterator in a translation unit.
+
+| API | Description |
+|-----|-------------|
+| `NAME(bs[, ctx])` | call `RC_BITSET_FOREACH_FUNC([ctx,] index)` on each set bit |
+| `RC_BITSET_FOREACH_FUNC` | per-bit callback macro (required) |
+| `RC_BITSET_FOREACH_CTX` | optional context type; adds `CTX *` as the callback's first argument and a function parameter |
+| `RC_BITSET_FOREACH_NAME` | function name (default `rc_bitset_foreach`) |
+
+### richc/template/algorithm/pool_foreach.h - iterate live pool entries
+
+Visits the *live* entries of an `rc_pool` (which cannot iterate itself): it
+builds the dead-slot bitset via the pool's `free_bitset` in a by-value scratch
+arena - discarded on return - then calls the callback with the pool and each
+live slot's index. The callback reaches the object through the pool's
+`get`/`set`/`at` and may mutate in place.
+
+| API | Description |
+|-----|-------------|
+| `NAME(pool[, ctx], scratch)` | call `RC_POOL_FOREACH_FUNC([ctx,] pool, index)` on each live slot; `scratch` is an `rc_arena` by value |
+| `RC_POOL_FOREACH_POOL` | pool type name (required; drives the defaults) |
+| `RC_POOL_FOREACH_FUNC` | per-element callback macro (required) |
+| `RC_POOL_FOREACH_CTX`, `RC_POOL_FOREACH_NAME` | optional context type / name (default `<POOL>_foreach`) |
+
+### richc/template/algorithm/genpool_foreach.h - iterate live genpool entries
+
+The genpool counterpart of `pool_foreach`: the same dead-slot-bitset walk, but
+the callback receives each live element's `rc_genpool_handle` (reconstructed
+via the pool's `handle_at`, so it satisfies `is_valid`) rather than a bare
+index.
+
+| API | Description |
+|-----|-------------|
+| `NAME(pool[, ctx], scratch)` | call `RC_GENPOOL_FOREACH_FUNC([ctx,] pool, handle)` on each live element |
+| `RC_GENPOOL_FOREACH_POOL` | genpool type name (required; drives the defaults) |
+| `RC_GENPOOL_FOREACH_FUNC` | per-element callback macro (required) |
+| `RC_GENPOOL_FOREACH_CTX`, `RC_GENPOOL_FOREACH_NAME` | optional context type / name (default `<POOL>_foreach`) |
+
+### richc/template/algorithm/hash_trie_foreach.h - iterate every trie entry
+
+Visits every entry of an `rc_trie` by walking from the root (one pool can back
+many tries, so a flat pool scan could not tell them apart), calling the
+callback with the pool and each entry's node index; reach the key and value
+through the trie's `key_get` / `value_get`. Order is unspecified; iteration
+allocates nothing (no scratch arena); do not add or delete keys during it. By
+default the pool is mutable, so the callback may `value_set` in place; define
+`RC_TRIE_FOREACH_CONST` for a read-only walk with a `const` pool.
+
+| API | Description |
+|-----|-------------|
+| `NAME(t, pool[, ctx])` | call `RC_TRIE_FOREACH_FUNC([ctx,] pool, index)` on each entry; the trie goes by value (an empty trie visits nothing) |
+| `RC_TRIE_FOREACH_TRIE` | trie type name (required; drives the defaults) |
+| `RC_TRIE_FOREACH_FUNC` | per-entry callback macro (required) |
+| `RC_TRIE_FOREACH_CONST` | define for a read-only walk (const pool) |
+| `RC_TRIE_FOREACH_CTX`, `RC_TRIE_FOREACH_NAME` | optional context type / name (default `<TRIE>_foreach`) |
+
+---
+
+## Hashing
+
+`richc/hash.h`. `static inline` 32-bit hash functions for richc types, usable
+directly as the hash expression for the hash-trie template. Float values `-0.0`
+and `+0.0` are equal under `==`, so they are normalised to hash the same. The
+vector hashes fold each component's scalar hash left-to-right with
+`rc_hash_combine`, so component order matters.
+
+| API | Description |
+|-----|-------------|
+| `rc_hash_u32(x)`<br>`rc_hash_i32(x) -> uint32_t` | Murmur3 32-bit finalizer |
+| `rc_hash_u64(x)`<br>`rc_hash_i64(x) -> uint32_t` | splitmix64 finalizer, folded to 32 bits |
+| `rc_hash_f32(x)`<br>`rc_hash_f64(x) -> uint32_t` | by bit pattern, zeros normalised |
+| `rc_hash_ptr(p) -> uint32_t` | hashes the pointer value, not the pointee |
+| `rc_hash_bytes(data, len) -> uint32_t` | FNV-1a over a byte range |
+| `rc_hash_str(s) -> uint32_t` | hashes the string's bytes |
+| `rc_hash_vec2i/vec3i/vec2f/vec3f/vec4f(v) -> uint32_t` | per-component fold |
+| `rc_hash_combine(seed, hash) -> uint32_t` | mix one hash into a running seed (Boost formula), for hashing a struct field by field |
+
+---
+
+## Math
+
+`richc/math/`. Vector, box, matrix, quaternion, and rational types plus
+analytic root solvers. Everything is a small value type with `static inline`
+operations (only `mat44f`'s determinant/inverse, `quatf`'s heavier functions,
+`rational`, and `solve` have a `.c`); nothing allocates. Matrices are
+**column-major** (`cx` is the first column; `m * v = cx*v.x + cy*v.y + ...`),
+and `make_transpose` constructors take row vectors and transpose on store.
+
+There is **one coordinate convention, never configurable** (the authoritative
+statement is under the gfx section of [app.md](app.md)): 3D is right-handed
+(+X right, +Y up, -Z forward), positive rotations follow the right-hand rule,
+NDC is x right / y up in [-1, 1] with depth reversed into [0, 1] (near = 1),
+and screen/image space is top-left origin, y down. No function takes a
+handedness, depth-range, or winding parameter.
+
+### richc/math/vec2i.h - 2D integer vector
+
+`rc_vec2i { int32_t x, y; }`.
+
+| API | Description |
+|-----|-------------|
+| `rc_vec2i_make(x, y)`, `_make_zero`, `_make_unitx`, `_make_unity` | constructors |
+| `_from_i32s(p)`<br>`_as_i32s(a) -> const int32_t *` | from / as an `int32_t[2]` |
+| `_add`, `_add3`, `_add4`, `_sub`, `_negate` | component sums and differences |
+| `_scalar_mul(a, s)`, `_scalar_div(a, s)` | scalar scale (`div` asserts a non-zero divisor) |
+| `_component_mul`, `_component_min`, `_component_max` | component-wise product / extremes |
+| `_perp(a)` | the CCW perpendicular `(-y, x)` |
+| `_dot`, `_wedge`, `_lengthsqr -> int64_t` | widened to `int64_t`, asserting no overflow; `wedge` is the 2D cross product. No `length` - the exact integer result is not representable |
+| `_is_equal(a, b) -> bool` | exact |
+
+### richc/math/vec3i.h - 3D integer vector
+
+`rc_vec3i { int32_t x, y, z; }`.
+
+| API | Description |
+|-----|-------------|
+| `rc_vec3i_make(x, y, z)`, `_make_zero`, `_make_unitx/y/z` | constructors |
+| `_from_i32s(p)`<br>`_as_i32s(a)` | from / as an `int32_t[3]` |
+| `_from_vec2i(v, z)` | extend a `rc_vec2i` |
+| `_add`, `_add3`, `_add4`, `_sub`, `_negate`, `_scalar_mul`, `_scalar_div`, `_component_mul`, `_component_min`, `_component_max` | as `vec2i` |
+| `_dot`, `_lengthsqr -> int64_t` | widened, overflow-asserted |
+| `_cross(a, b) -> rc_vec3i` | each component computed in `int64_t` and asserted to fit `int32_t` |
+| `_is_equal(a, b) -> bool` | exact |
+
+### richc/math/vec2f.h - 2D float vector
+
+`rc_vec2f { float x, y; }`.
+
+| API | Description |
+|-----|-------------|
+| `rc_vec2f_make(x, y)`, `_make_zero`, `_make_unitx`, `_make_unity` | constructors |
+| `_make_sincos(angle)`<br>`_make_cossin(angle)` | `(sin, cos)` / `(cos, sin)` of an angle in radians |
+| `_from_floats(p)`<br>`_as_floats(a) -> const float *` | from / as a `float[2]` |
+| `_from_vec2i(v)` | cast from `rc_vec2i` |
+| `_add`, `_add3`, `_add4`, `_sub`, `_negate`, `_scalar_mul`, `_scalar_div`, `_component_mul`, `_component_min`, `_component_max` | component arithmetic |
+| `_component_floor`, `_component_ceil`, `_component_abs` | per-component rounding / magnitude |
+| `_lerp(a, b, t)` | `a + (b - a) * t` |
+| `_perp(a)` | the CCW perpendicular `(-y, x)` |
+| `_dot`, `_wedge`, `_lengthsqr`, `_length -> float` | scalar results; `wedge` is the 2D cross product |
+| `_normalize(a)` | unit length; asserts non-zero |
+| `_normalize_safe(a, tolerance)` | the zero vector when the length is below `tolerance`, instead of asserting |
+| `_is_equal(a, b)`<br>`_is_nearly_equal(a, b, tolerance) -> bool` | exact / squared distance below `tolerance^2` |
+
+### richc/math/vec3f.h - 3D float vector
+
+`rc_vec3f { float x, y, z; }`. The same operation set as `vec2f` (minus
+`_make_sincos`/`_make_cossin`/`_perp`/`_wedge`), plus:
+
+| API | Description |
+|-----|-------------|
+| `rc_vec3f_make(x, y, z)`, `_make_zero`, `_make_unitx/y/z` | constructors |
+| `_from_floats(p)`<br>`_as_floats(a)` | from / as a `float[3]` |
+| `_from_vec2f(v, z)`<br>`_from_vec3i(v)` | extend a `rc_vec2f` / cast from `rc_vec3i` |
+| `_cross(a, b) -> rc_vec3f` | the 3D cross product |
+| `_add`, `_add3`, `_add4`, `_sub`, `_negate`, `_scalar_mul`, `_scalar_div`, `_component_mul/min/max/floor/ceil/abs`, `_lerp`, `_dot`, `_lengthsqr`, `_length`, `_normalize`, `_normalize_safe`, `_is_equal`, `_is_nearly_equal` | as `vec2f` |
+
+### richc/math/vec4f.h - 4D float vector
+
+`rc_vec4f { float x, y, z, w; }`. The same operation set as `vec3f` minus
+`_cross`, plus:
+
+| API | Description |
+|-----|-------------|
+| `rc_vec4f_make(x, y, z, w)`, `_make_zero`, `_make_unitx/y/z/w` | constructors |
+| `_from_floats(p)`<br>`_as_floats(a)` | from / as a `float[4]` |
+| `_from_vec2f(v, z, w)`<br>`_from_vec3f(v, w)` | extend a smaller vector |
+| `_add`, `_add3`, `_add4`, `_sub`, `_negate`, `_scalar_mul`, `_scalar_div`, `_component_mul/min/max/floor/ceil/abs`, `_lerp`, `_dot`, `_lengthsqr`, `_length`, `_normalize`, `_normalize_safe`, `_is_equal`, `_is_nearly_equal` | as `vec3f` |
+
+### richc/math/box2i.h - 2D integer box
+
+`rc_box2i { rc_vec2i min_, max_; }` - an axis-aligned box over the half-open
+region `[min, max)` (matching pixel/tile grids). `min <= max` component-wise is
+an invariant the constructors establish and the queries assume; a
+hand-initialised box must uphold it. The corners are internal members - read
+them via the accessors.
+
+| API | Description |
+|-----|-------------|
+| `rc_box2i_make(a, b)` | box from two corners, sorted |
+| `_make_pos_size(pos, size)` | top-left plus extent |
+| `_make_with_margin(a, b, margin)` | sorted corners expanded by `margin` per side; asserts no `int32_t` overflow |
+| `_min(a)`<br>`_max(a) -> rc_vec2i` | the corners |
+| `_size(a) -> rc_vec2i` | the extent `max - min` |
+| `_is_empty(a) -> bool` | zero or negative extent on either axis |
+| `_contains(a, b)`<br>`_contains_point(a, p)`<br>`_intersects(a, b) -> bool` | containment and overlap (touching edges do not intersect) |
+| `_union(a, b)` | smallest box containing both |
+| `_intersection(a, b)` | largest box contained in both; empty (`min == max`) when disjoint - test with `_is_empty` |
+| `_expand(a, p)` | smallest box containing `a` and the point `p` |
+| `_translate(a, delta)` | both corners shifted |
+| `_is_equal(a, b) -> bool` | exact corner-wise equality |
+
+### richc/math/box2f.h - 2D float box
+
+`rc_box2f { rc_vec2f min_, max_; }` - the float counterpart of `rc_box2i`, with
+the identical operation set over `rc_vec2f`, plus:
+
+| API | Description |
+|-----|-------------|
+| `rc_box2f_is_nearly_equal(a, b, tolerance) -> bool` | both corners within `tolerance` |
+
+### richc/math/mat22f.h - 2x2 float matrix
+
+`rc_mat22f { rc_vec2f cx, cy; }`, column-major: `m * v = cx*v.x + cy*v.y`.
+
+| API | Description |
+|-----|-------------|
+| `rc_mat22f_make(cx, cy)`, `_make_zero`, `_make_identity` | constructors |
+| `_make_rotation(a)` | counter-clockwise rotation by `a` radians |
+| `_from_floats(p)`<br>`_as_floats(m)` | from / as a column-major `float[4]` |
+| `_add`, `_sub`, `_scalar_mul` | component arithmetic |
+| `_vec2f_mul(m, v) -> rc_vec2f` | transform a vector (`m * v`) |
+| `_mul(a, b)` | matrix product `a * b` |
+| `_determinant(m) -> float`, `_transpose(m)` | |
+| `_inverse(m)` | asserts determinant != 0 |
+
+### richc/math/mat23f.h - 2D affine transform
+
+`rc_mat23f { rc_mat22f rot; rc_vec2f trans; }` - a linear part and a
+translation, applied as `rot * v + trans`.
+
+| API | Description |
+|-----|-------------|
+| `rc_mat23f_make(rot, trans)`, `_make_identity`, `_make_translation(v)` | constructors |
+| `_from_mat22f(m)` | embed a linear map with zero translation |
+| `_from_floats(p)`<br>`_as_floats(m)` | from / as a `float[6]` (columns `rot.cx`, `rot.cy`, `trans`) |
+| `_vec2f_mul(m, v) -> rc_vec2f` | `rot * v + trans` |
+| `_mul(a, b)` | compose affine transforms |
+| `rc_mat22f_mat23f_mul(L, b)`<br>`rc_mat23f_mat22f_mul(a, R)` | left / right multiply by a linear map (right leaves the translation unchanged) |
+| `_inverse(m)` | delegates to `rc_mat22f_inverse`; asserts determinant != 0 |
+
+### richc/math/mat33f.h - 3x3 float matrix
+
+`rc_mat33f { rc_vec3f cx, cy, cz; }`, column-major.
+
+| API | Description |
+|-----|-------------|
+| `rc_mat33f_make(cx, cy, cz)`, `_make_zero`, `_make_identity` | constructors |
+| `_make_transpose(rx, ry, rz)` | from row vectors, transposing on store |
+| `_make_rotation_x/y/z(a)` | right-handed rotation about each axis, radians |
+| `_from_floats(p)`<br>`_as_floats(m)` | from / as a column-major `float[9]` |
+| `_add`, `_sub`, `_scalar_mul`, `_vec3f_mul(m, v)`, `_mul(a, b)`, `_transpose` | as `mat22f` |
+| `_determinant(m) -> float` | scalar triple product `cx . (cy x cz)` |
+| `_inverse(m)` | adjugate/cofactor method; asserts determinant != 0 |
+
+### richc/math/mat34f.h - 3D affine transform
+
+`rc_mat34f { rc_mat33f rot; rc_vec3f trans; }`, applied as `rot * v + trans`.
+
+| API | Description |
+|-----|-------------|
+| `rc_mat34f_make(rot, trans)`, `_make_identity`, `_make_translation(v)` | constructors |
+| `_make_lookat(eye, focus, up)` | right-handed view matrix mapping the eye to the origin with -Z toward `focus`; `up` is orthogonalised |
+| `_from_mat33f(m)` | embed a linear map with zero translation |
+| `_from_floats(p)`<br>`_as_floats(m)` | from / as a `float[12]` |
+| `_vec3f_mul(m, v)`, `_mul(a, b)` | transform / compose |
+| `rc_mat33f_mat34f_mul(L, b)`<br>`rc_mat34f_mat33f_mul(a, R)` | left / right multiply by a linear map |
+| `_inverse(m)` | delegates to `rc_mat33f_inverse`; asserts determinant != 0 |
+
+### richc/math/mat44f.h - 4x4 float matrix
+
+`rc_mat44f { rc_vec4f cx, cy, cz, cw; }`, column-major. Inline except
+`determinant` and `inverse` (in `src/math/mat44f.c`). The projections all
+target the library's one canonical clip space - NDC x right and y up in
+[-1, 1], depth in [0, 1] with reverse-Z (near -> 1, far -> 0), view space
+right-handed with -Z forward - and there are no handedness or depth-range
+variants.
+
+| API | Description |
+|-----|-------------|
+| `rc_mat44f_make(cx, cy, cz, cw)`, `_make_zero`, `_make_identity` | constructors |
+| `_make_transpose(rx, ry, rz, rw)` | from row vectors, transposing on store |
+| `_make_translation(v)` | 3D translation |
+| `_make_perspective(y_fov, aspect, n, f)` | finite far plane; view z = -n gives depth exactly 1, z = -f exactly 0 |
+| `_make_perspective_inf(y_fov, aspect, n)` | the f -> infinity limit (`depth = n / -z`); the default to reach for in 3D |
+| `_make_ortho(left, right, top, bottom, n, f)` | maps the box to NDC, depth sense reversed |
+| `_make_ortho_2d(w, h)` | 2D convenience: a pixel rect, top-left origin, y down; z = 0 lands on depth 1. Equals `_make_ortho(0, w, 0, h, 0, 1)` |
+| `_from_mat22f/33f/34f(m)` | embed a smaller matrix |
+| `_from_floats(p)`<br>`_as_floats(m)` | from / as a column-major `float[16]` |
+| `_add`, `_sub`, `_scalar_mul`, `_vec4f_mul(m, v)`, `_mul(a, b)`, `_transpose` | as the smaller matrices |
+| `_determinant(m) -> float`, `_inverse(m)` | in the `.c`; `inverse` asserts determinant != 0 |
+
+### richc/math/quatf.h - quaternion
+
+`rc_quatf { rc_vec3f xyz; float w; }` - a rotation as `q = w + x*i + y*j + z*k`
+(Hamilton convention), identity `(0,0,0,1)`. The rotation-building constructors
+return unit quaternions; the component arithmetic does not preserve unit
+length, so normalise when a unit result is needed. Cheap value ops are inline;
+`make_angle_axis`, the matrix conversions, `slerp`, `exp`, `log`, and `pow`
+live in `src/math/quatf.c`.
+
+| API | Description |
+|-----|-------------|
+| `rc_quatf_make(x, y, z, w)`, `_make_identity` | constructors |
+| `_make_angle_axis(angle, axis)` | rotation about an axis (normalised internally) |
+| `_from_floats(p)`<br>`_as_floats(q)` | from / as a `float[4]` (`x,y,z,w`) |
+| `_from_vec3f(xyz, w)` | from vector and scalar parts |
+| `_from_mat33f(m)`<br>`rc_mat33f_from_quatf(q)` | rotation matrix conversion both ways (`from_mat33f` uses Mike Day's branch method - one sqrt, stable through 180-degree turns) |
+| `_add`, `_sub`, `_scalar_mul`, `_negate`, `_dot`, `_lengthsqr`, `_length`, `_normalize` | 4-vector component arithmetic (not unit-preserving) |
+| `_conjugate(q)` | = inverse for unit `q` |
+| `_inverse(q)` | conjugate / `\|q\|^2` |
+| `_mul(a, b)` | compose rotations; `b` applied first |
+| `_vec3f_transform(q, v)` | rotate `v` (Rodrigues formula, no matrix) |
+| `_angle(q) -> float`<br>`_axis(q) -> rc_vec3f` | angle-axis read-back (unit X when there is no rotation) |
+| `_lerp`, `_nlerp` | linear / normalised-linear interpolation |
+| `_slerp(a, b, t)` | shorter-arc spherical interpolation; falls back to nlerp when nearly parallel |
+| `_exp`, `_log`, `_pow(q, t)` | exponential maps (`log` asserts `\|q\| != 0`; `pow` is `exp(t * log(q))`) |
+| `_is_equal`, `_is_nearly_equal(a, b, tolerance) -> bool` | comparison |
+
+### richc/math/rational.h - rational arithmetic
+
+`rc_rational { int64_t num_, denom_; }` - an exact rational, always held in
+canonical form (`denom > 0`, `gcd(|num|, denom) == 1`); the members are
+internal, so read them through the accessors and build values through the
+constructors. Division by zero produces the invalid state `0/0`. Operations
+assert their inputs are valid and their results fit `int64_t`; GCD
+pre-reduction keeps intermediates small, but genuine overflow asserts rather
+than wrapping.
+
+| API | Description |
+|-----|-------------|
+| `rc_rational_make(num, denom)` | canonicalises; `denom == 0` -> invalid |
+| `_from_i64(n)` | the integer `n/1` |
+| `_from_double(val, threshold)` | simplest rational within `threshold` of `val` (continued fractions) |
+| `_num(a)`<br>`_denom(a) -> int64_t` | the canonical numerator / denominator |
+| `_is_valid`, `_is_zero`, `_is_integer`, `_is_positive`, `_is_negative -> bool` | predicates |
+| `_negate`, `_abs`, `_reciprocal` | unary |
+| `_add`, `_sub`, `_mul`, `_div` | rational-rational arithmetic |
+| `_int_add`, `_int_sub`, `_int_mul`, `_int_div` | variants taking an `int64_t` second operand |
+| `_compare(a, b) -> int32_t` | -1/0/+1; overflow-safe (a continued-fraction descent that never forms the cross product) |
+| `_is_equal`, `_is_less_than`, `_is_greater_than -> bool`, `_min`, `_max` | comparisons built on it |
+| `_to_double(a) -> double` | approximate conversion |
+
+### richc/math/solve.h - polynomial root solvers
+
+Analytic real-root solvers (in `src/math/solve.c`), each returning a small
+by-value struct with the count and the roots, in no particular order.
+Degenerate leading coefficients fall back to the lower-degree solver rather
+than asserting.
+
+| API | Description |
+|-----|-------------|
+| `rc_solve_quadratic(a, b, c) -> rc_quadratic_roots` | `{ int num_roots; float root[2]; }` - 0-2 real roots of `a*t^2 + b*t + c`; sign-selection plus Vieta avoids catastrophic cancellation |
+| `rc_solve_cubic(a, b, c, d) -> rc_cubic_roots` | `{ int num_roots; float root[3]; }` - 1 or 3 real roots (Cardano / trigonometric method) |
+
+---
+
+## Rectangle packing
+
+`richc/rect_pack.h`. Packs axis-aligned rectangles into a container with a
+spacing gap, using Maximal Rectangles with Best Short Side Fit. It works purely
+on sizes and positions - no image dependency - so it underpins the app layer's
+image atlas packers but is reusable for any 2D packing. Results are returned by
+value or as a span over the output arena; the packer captures no arena.
+`spacing` inflates each placed rectangle before carving the free list; no
+border gap is enforced at the container edges.
+
+| API | Description |
+|-----|-------------|
+| `rc_rect_pack_all(container, spacing, sizes, arena, scratch) -> rc_span_vec2i` | from-scratch batch path: sorts the `rc_view_vec2i` sizes by decreasing longer side for density, places them all, and returns positions indexed by the input (allocated from `arena`) - or the invalid `{0}` span if the whole set does not fit, leaving `arena` untouched. `scratch` is a by-value arena (necessarily a *different* arena) for the free list and sort permutation |
+| `rc_rect_pack_make(container, spacing, arena) -> rc_rect_pack` | incremental path: a packer that retains its free-rect list as state |
+| `rc_rect_pack_add(packer, size, arena) -> rc_rect_pack_result` | place one rectangle without disturbing earlier placements; returns `{ rc_vec2i pos; bool placed; }` (`placed` false when it no longer fits). Pass the same arena as `make`, and let the free list be that arena's only growable |
+
+---
+
+## Random numbers
+
+`richc/random.h`. A tiny, fast pseudo-random generator (splitmix32): one word
+of state, an add and two multiply-mixes per draw. Good statistical quality and
+no bad seeds (any seed, including 0, is fine); deterministic, so a seed always
+replays the same stream. Not for cryptography.
+
+| API | Description |
+|-----|-------------|
+| `rc_random_make(seed) -> rc_random` | a generator (`{ uint32_t state; }`) seeded to `seed`; reseed by assigning a fresh one |
+| `rc_random_next(p) -> uint32_t` | the next 32-bit draw, advancing the state. Bound with `% n` (bias negligible for small `n`) |
+
+---
+
+## Scalar operations
+
+`richc/ops.h`. Small `static inline` scalar helpers. Functions carry a scalar
+type suffix (`i32`/`i64`/`u32`/`u64`/`f32`/`f64`), which also dodges the
+Windows `min`/`max` macros.
+
+| API | Description |
+|-----|-------------|
+| `rc_bitcast_f32(x) -> uint32_t`<br>`rc_bitcast_f64(x) -> uint64_t` | the float's bit pattern (via a union); used by the float hashes |
+| `rc_min_i32/i64/f32/f64(a, b)`<br>`rc_max_i32/i64/f32/f64(a, b)` | minimum / maximum |
+| `rc_sgn_i32/i64(a)` | -1, 0, or +1 |
+| `rc_gcd_i32/i64(a, b)` | Euclidean GCD, always non-negative |
+| `rc_clz_u32/u64(a)`<br>`rc_ctz_u32/u64(a) -> uint32_t` | count leading / trailing zeros (the type's width for 0) |
+| `rc_popcount_u32(a) -> uint32_t` | population count |
+| `rc_mul_overflows_u64`, `rc_add_overflows_u64`, `rc_add_overflows_i64`, `rc_sub_overflows_i64`, `rc_mul_overflows_i64 -> bool` | true when the operation would overflow the result type |
+| `rc_deg_to_rad(degrees) -> float` | degrees to radians |
+
+---
+
+## File I/O
+
+`richc/file.h`. Whole-file load and save. Filenames are `rc_str`; all I/O is
+binary mode (no line-ending translation), and loaded data is allocated from the
+supplied arena. Every function reports an `rc_file_error`: `RC_FILE_OK` (0),
 `RC_FILE_ERROR_NOT_FOUND`, `RC_FILE_ERROR_ACCESS_DENIED`,
-`RC_FILE_ERROR_TOO_LARGE`, or `RC_FILE_ERROR_IO`.
+`RC_FILE_ERROR_TOO_LARGE`, or `RC_FILE_ERROR_IO`. Loads return a mutable,
+growable result - an `rc_mstr` for text, an `rc_array_bytes` for binary -
+because loaded data is commonly modified after reading; a read-only caller just
+takes `.view`. `minimum_capacity` is a byte-capacity floor on the result
+buffer, which is `max(size + 1, minimum_capacity)` bytes - the spare byte
+becomes the text load's `'\0'` terminator (so `rc_str_as_cstr` takes its
+no-copy fast path).
 
-### Size
-
-```c
-typedef struct { uint32_t size; rc_file_error error; } rc_file_size_result;
-
-rc_file_size_result rc_file_size(rc_str filename);
-bool                rc_file_exists(rc_str filename);
-```
-
-`rc_file_size` measures the file in bytes without reading it; needs no arena.
-`RC_FILE_ERROR_TOO_LARGE` if the size does not fit in a `uint32_t`. `rc_file_exists`
-tests for presence only (no arena, no read access required).
-
-### Loading
-
-A load returns a mutable, growable result - an `rc_mstr` for text, an
-`rc_array_bytes` for binary. The mutable form is chosen not because the result
-must *own* its memory (it does not - the supplied `arena` owns the allocation,
-and the caller scopes its lifetime by arena rather than freeing it
-individually), but because loaded data is the kind of thing a caller commonly
-wants to *modify* after reading: parse it in place, append to it, or rewrite it.
-Returning the growable container keeps those options open. A caller that only
-reads simply takes a read-only view (`result.text.view` /
-`result.contents.view`).
-
-`minimum_capacity` is a byte-capacity floor on the result (`result_cap >=
-minimum_capacity`), interpreted the same way as `rc_mstr_make` / `rc_array_*`: the
-buffer is `max(size + 1, minimum_capacity)` bytes - the content plus one spare
-byte, which text turns into the `rc_mstr`'s `'\0'` terminator and binary leaves as
-unused headroom.
-
-```c
-typedef struct { rc_mstr        text;     rc_file_error error; } rc_file_load_text_result;
-typedef struct { rc_array_bytes contents; rc_file_error error; } rc_file_load_binary_result;
-
-rc_file_load_text_result   rc_file_load_text(rc_str filename, uint32_t minimum_capacity, rc_arena *arena);
-rc_file_load_binary_result rc_file_load_binary(rc_str filename, uint32_t minimum_capacity, rc_arena *arena);
-```
-
-Text loads keep a trailing `'\0'` (the `rc_mstr` invariant), so `rc_str_as_cstr`
-on `result.text.view` takes its no-copy fast path. On failure the returned `text`
-/ `contents` is the empty (invalid) state and `error` is set.
-
-### Saving
-
-```c
-rc_file_error rc_file_save_text(rc_str filename, rc_str text);
-rc_file_error rc_file_save_binary(rc_str filename, rc_view_bytes data);
-```
-
-Both create or truncate the file.
-
-### Deleting
-
-```c
-rc_file_error rc_file_delete(rc_str filename);
-```
-
-Removes the file, returning `RC_FILE_ERROR_NOT_FOUND` when it does not exist.
+| API | Description |
+|-----|-------------|
+| `rc_file_size(filename) -> rc_file_size_result` | `{ uint32_t size; rc_file_error error; }` - byte size without reading; `TOO_LARGE` if it does not fit a `uint32_t`. No arena |
+| `rc_file_exists(filename) -> bool` | presence only; no arena, no read access needed |
+| `rc_file_load_text(filename, min_cap, arena) -> rc_file_load_text_result` | `{ rc_mstr text; rc_file_error error; }`; on failure `text` is the invalid state |
+| `rc_file_load_binary(filename, min_cap, arena) -> rc_file_load_binary_result` | `{ rc_array_bytes contents; rc_file_error error; }` |
+| `rc_file_save_text(filename, text) -> rc_file_error` | create or truncate, write an `rc_str` |
+| `rc_file_save_binary(filename, data) -> rc_file_error` | create or truncate, write an `rc_view_bytes` |
+| `rc_file_delete(filename) -> rc_file_error` | remove; `NOT_FOUND` when it does not exist |
 
 ---
 
-## richc/zip/inflate.h - DEFLATE decompression (inflate)
+## Decompression
 
-Decompresses a DEFLATE stream into a growable byte array. Only the
-decompression direction is provided; there is no compressor. Two entry points
-share one result and error type:
+`richc/zip/inflate.h`. DEFLATE decompression into a growable byte array
+(decompression only; there is no compressor). Compressed input is untrusted:
+malformed data returns an error, never traps. Both entry points accept stored,
+fixed, and dynamic Huffman blocks and share the result type
+`rc_zip_inflate_result { rc_array_bytes data; rc_zip_error error; }`, where
+`rc_zip_error` is `RC_ZIP_OK`, `RC_ZIP_ERROR_BAD_DATA`,
+`RC_ZIP_ERROR_TRUNCATED`, `RC_ZIP_ERROR_BAD_HEADER`, or
+`RC_ZIP_ERROR_CHECKSUM`. The output is owned by the supplied arena; on error
+`data` is the empty state. `minimum_capacity` pre-sizes the output for a caller
+that knows the decompressed size (DEFLATE does not record it; pass 0 when
+unknown).
 
-```c
-typedef enum {
-    RC_ZIP_OK = 0,
-    RC_ZIP_ERROR_BAD_DATA,     // malformed DEFLATE: bad block type, Huffman code, NLEN, or symbol
-    RC_ZIP_ERROR_TRUNCATED,    // input ended mid-stream
-    RC_ZIP_ERROR_BAD_HEADER,   // zlib: invalid CMF/FLG, or an unsupported preset dictionary
-    RC_ZIP_ERROR_CHECKSUM      // zlib: the trailing Adler-32 did not match the output
-} rc_zip_error;
-
-typedef struct { rc_array_bytes data; rc_zip_error error; } rc_zip_inflate_result;
-
-rc_zip_inflate_result rc_zip_inflate(rc_view_bytes compressed, uint32_t minimum_capacity, rc_arena *arena);
-rc_zip_inflate_result rc_zip_inflate_zlib(rc_view_bytes compressed, uint32_t minimum_capacity, rc_arena *arena);
-```
-
-`rc_zip_inflate` decodes a raw DEFLATE stream (RFC 1951). `rc_zip_inflate_zlib`
-decodes a zlib-wrapped stream (RFC 1950): it validates the 2-byte header, rejects
-an unsupported preset dictionary, decodes the DEFLATE body, then verifies the
-output against the trailing big-endian Adler-32. Both forms accept stored, fixed,
-and dynamic Huffman blocks.
-
-The output is decoded into an arena-backed `rc_array_bytes`, which the supplied
-`arena` owns (the caller scopes its lifetime by arena, as with the file loaders).
-On success `error` is `RC_ZIP_OK` and `data` holds the decompressed bytes (take
-`data.view` for read-only access); on any error `data` is the empty (invalid)
-state and `error` is set. Compressed input is treated as untrusted - malformed
-data returns an error rather than asserting.
-
-`minimum_capacity` is a floor on the output array's capacity. Neither DEFLATE nor
-the zlib wrapper records the decompressed size, so in general it is not known
-ahead of time and the array grows geometrically; a caller that does know it (a
-PNG decoder knows it exactly: `height * (1 + width * bytes_per_pixel)`) passes it
-to decode without reallocation. Pass `0` when it is unknown.
+| API | Description |
+|-----|-------------|
+| `rc_zip_inflate(compressed, min_cap, arena) -> rc_zip_inflate_result` | decode a raw DEFLATE stream (RFC 1951) |
+| `rc_zip_inflate_zlib(compressed, min_cap, arena) -> rc_zip_inflate_result` | decode a zlib-wrapped stream (RFC 1950): validates the 2-byte header, rejects a preset dictionary, verifies the trailing Adler-32 |
 
 ---
 
-## richc/genpool_handle.h - generational pool handle
+## Time
 
-The handle type handed out by
-[`genpool.h`](#richctemplategenpoolh---generational-object-pool): a slot index
-paired with the slot's generation at issue time. It lives in its own small
-guarded header (rather than the template) so a public header can declare
-handle-carrying types without instantiating a pool.
+`richc/time.h`. A single steady, monotonic nanosecond clock
+(QueryPerformanceCounter / `clock_gettime(CLOCK_MONOTONIC)`). It never goes
+backwards and is unaffected by wall-clock changes, so only differences between
+readings are meaningful - use it for elapsed-time measurement and timeout
+deadlines (it pairs with the `wait_for` timeouts in `thread/`).
 
-```c
-rc_genpool_handle              // { uint32_t index_; uint32_t gen_; } - {0} is the null handle
-
-rc_genpool_handle rc_genpool_handle_make(uint32_t index, uint32_t gen);
-bool              rc_genpool_handle_is_null(rc_genpool_handle h);   // NOT a liveness check
-uint32_t          rc_genpool_handle_index(rc_genpool_handle h);     // asserts h is not null
-uint32_t          rc_genpool_handle_gen(rc_genpool_handle h);
-bool              rc_genpool_handle_equal(rc_genpool_handle a, rc_genpool_handle b);
-```
-
-`index_` stores the slot index **plus one**, with 0 meaning "no slot" - the same
-off-by-one used by the pool free lists - so a **zero-initialised handle is the
-null handle**. The fields are internal (trailing underscore); inspect a handle
-only through the functions.
-
-`is_null` says whether the handle refers to any slot at all; it says nothing
-about whether that slot is still live - only the owning pool's `is_valid` can
-tell. One handle type serves every genpool instantiation (handles are not
-typesafe per pool, just as pool indices are plain `uint32_t`); where mixing
-handles from different pools must be a compile error, wrap the handle in a
-one-member struct per pool (the app layer's gfx handles do this).
+| API | Description |
+|-----|-------------|
+| `rc_time_now_ns() -> uint64_t` | current value of the monotonic clock, in nanoseconds; the origin is arbitrary and platform-defined |
 
 ---
 
-## richc/hash.h - hashing
+## Concurrency
 
-`uint32_t` hash functions for richc types, suitable as the hash expression for
-the hash-table templates.
+`richc/thread/`. Hand-rolled cross-platform concurrency primitives - a
+replacement for C11 threads/atomics, which are not reliably available under
+MSVC - and a task-graph thread pool built on top of them. Atomics split by
+*compiler* (clang/gcc builtins vs MSVC intrinsics); the sync and thread objects
+split by *OS* (Win32 vs POSIX, with Apple's `dispatch_semaphore` for the
+semaphore). Unusually for the library, these public headers **include the OS
+header** to embed the real platform type as a private `handle_` member - a
+deliberate, scoped exception to the "no OS headers in the public API" rule,
+because the objects must be constructed in place in their final storage and are
+not copyable. They are initialised with `_init` / cleaned up with `_deinit`
+rather than returned by value, for the same reason. OS calls that can only fail
+on programmer error `RC_PANIC`; only `rc_thread_create` returns a failure.
+
+### richc/thread/atomic.h - atomics
+
+Lock-free atomic scalars with explicit memory ordering. Each atomic type wraps
+one value in a struct with a private member; all access goes through the typed
+operations, every one of which takes an explicit `rc_memory_order` -
+`RC_MEMORY_ORDER_RELAXED`, `_ACQUIRE`, `_RELEASE`, `_ACQ_REL`, or `_SEQ_CST`
+(consume is deliberately omitted). Backends: clang/gcc use the `__atomic_*`
+builtins with full order support; MSVC uses `_Interlocked*` intrinsics, which
+are full-barrier, so every order maps to sequential consistency - always
+correct, if stronger than asked for.
+
+Types: `rc_atomic_u8/i8/u16/i16/u32/i32/u64/i64` (integers), `rc_atomic_ptr`
+(`void *`), `rc_atomic_bool`, and `rc_atomic_flag` (test-and-set flag). In the
+table `<T>` is the integer type suffix and `T` its value type.
+
+| API | Description |
+|-----|-------------|
+| `rc_atomic_<T>_load(a, order) -> T`<br>`rc_atomic_<T>_store(a, v, order)` | atomic read / write |
+| `rc_atomic_<T>_exchange(a, v, order) -> T` | swap; returns the previous value |
+| `rc_atomic_<T>_compare_exchange_strong/weak(a, &expected, desired, order) -> bool` | CAS; on failure writes the observed value back to `expected` (`weak` may fail spuriously - use in a loop) |
+| `rc_atomic_<T>_fetch_add/sub/and/or/xor(a, v, order) -> T` | read-modify-write; return the previous value |
+| `rc_atomic_ptr_*`<br>`rc_atomic_bool_*` | load / store / exchange / compare_exchange only (no arithmetic; `bool` has `compare_exchange_strong`) |
+| `rc_atomic_flag_test_and_set(f, order) -> bool`<br>`rc_atomic_flag_clear(f, order)` | set and return the previous state / clear |
+| `rc_atomic_thread_fence(order)` | full inter-thread fence |
+| `rc_atomic_signal_fence(order)` | compiler-only fence (same thread / signal handler) |
+
+### richc/thread/spinlock.h - spinlock
+
+A minimal test-and-set lock over `rc_atomic_flag`: header-only, no OS object.
+For very short critical sections where a mutex's syscall on contention would
+dominate; a contended waiter burns CPU, so never hold it across blocking or
+lengthy work. A zero-initialised `rc_spinlock` is a valid unlocked lock - no
+init call.
+
+| API | Description |
+|-----|-------------|
+| `rc_spinlock_lock(s)` | acquire, spinning until free |
+| `rc_spinlock_trylock(s) -> bool` | acquire without spinning; true if taken |
+| `rc_spinlock_unlock(s)` | release |
+
+### richc/thread/mutex.h - mutexes
+
+`rc_mutex` is a non-recursive lock (relocking by the owner is undefined) - the
+lock that pairs with `rc_cond`. `rc_mutex_recursive` may be relocked by its
+owning thread, each lock matched by an unlock; it does not pair with `rc_cond`.
+Backing: SRWLOCK / CRITICAL_SECTION on Windows, pthread mutexes elsewhere.
+Using a mutex after deinit, or destroying a locked one, is undefined.
+
+| API | Description |
+|-----|-------------|
+| `rc_mutex_init(m)`<br>`rc_mutex_deinit(m)` | construct / destroy in place |
+| `rc_mutex_lock(m)`<br>`rc_mutex_unlock(m)` | acquire / release |
+| `rc_mutex_trylock(m) -> bool` | true if the lock was acquired |
+| `rc_mutex_recursive_init/deinit/lock/trylock/unlock` | the recursive counterpart |
+
+### richc/thread/rwlock.h - reader/writer lock
+
+`rc_rwlock` allows any number of concurrent readers or a single exclusive
+writer (SRWLOCK / pthread_rwlock). Not recursive; a read lock cannot be
+upgraded (release, then re-acquire). Read and write locks are released by their
+own calls, matching the SRWLOCK model.
+
+| API | Description |
+|-----|-------------|
+| `rc_rwlock_init(rw)`<br>`rc_rwlock_deinit(rw)` | construct / destroy in place |
+| `rc_rwlock_read_lock/read_trylock/read_unlock(rw)` | shared acquisition (`trylock -> bool`) |
+| `rc_rwlock_write_lock/write_trylock/write_unlock(rw)` | exclusive acquisition (`trylock -> bool`) |
+
+### richc/thread/cond.h - condition variable
+
+`rc_cond` lets a thread wait, with its `rc_mutex` released, until another
+thread signals a change (CONDITION_VARIABLE / pthread_cond; on Linux built on
+CLOCK_MONOTONIC, so timeouts ignore wall-clock changes). Waits may wake
+spuriously, so always re-check the predicate in a loop while holding the mutex.
+Pairs only with the non-recursive `rc_mutex`. The classic pattern:
 
 ```c
-uint32_t rc_hash_u32(uint32_t x);          // Murmur3 32-bit finalizer
-uint32_t rc_hash_i32(int32_t x);
-uint32_t rc_hash_u64(uint64_t x);          // splitmix64 finalizer, folded to 32 bits
-uint32_t rc_hash_i64(int64_t x);
-uint32_t rc_hash_f32(float x);             // by bit pattern; -0.0f and +0.0f hash alike
-uint32_t rc_hash_f64(double x);
-uint32_t rc_hash_ptr(const void *p);       // hashes the pointer, not the pointee
-uint32_t rc_hash_bytes(const void *data, uint32_t len);   // FNV-1a 32-bit
-uint32_t rc_hash_str(rc_str s);            // hashes the string's bytes
-uint32_t rc_hash_combine(uint32_t seed, uint32_t hash);   // Boost hash_combine
-
-uint32_t rc_hash_vec2i(rc_vec2i v);        // components folded with rc_hash_combine
-uint32_t rc_hash_vec3i(rc_vec3i v);
-uint32_t rc_hash_vec2f(rc_vec2f v);        // per-component rc_hash_f32, then folded
-uint32_t rc_hash_vec3f(rc_vec3f v);
-uint32_t rc_hash_vec4f(rc_vec4f v);
+rc_mutex_lock(&m);
+while (!predicate)
+    rc_cond_wait(&c, &m);   // atomically unlocks m, sleeps, re-locks m
+// predicate now holds, m held
+rc_mutex_unlock(&m);
 ```
 
-`rc_hash_combine` mixes one hash into a running seed, for hashing a struct field
-by field:
+| API | Description |
+|-----|-------------|
+| `rc_cond_init(c)`<br>`rc_cond_deinit(c)` | construct / destroy in place |
+| `rc_cond_wait(c, m)` | atomically unlock `m`, sleep, re-lock `m`; `m` must be held on entry |
+| `rc_cond_wait_for(c, m, timeout_ns) -> bool` | as `wait`, giving up after `timeout_ns`; false if the timeout elapsed. `m` is held on return either way |
+| `rc_cond_signal(c)` | wake at least one waiter |
+| `rc_cond_broadcast(c)` | wake all waiters |
+
+### richc/thread/semaphore.h - counting semaphore
+
+`rc_semaphore` holds a non-negative count: `wait` decrements it, blocking while
+it is zero; `post` increments by a given amount, releasing that many waiters.
+Useful for bounding a resource pool or waking a worker queue. Backing: Win32
+semaphore, POSIX `sem_t` on Linux, `dispatch_semaphore_t` on Apple. (The Linux
+`sem_timedwait` deadline is CLOCK_REALTIME - the one timeout here that is not
+monotonic.)
+
+| API | Description |
+|-----|-------------|
+| `rc_semaphore_init(s, initial_count)`<br>`rc_semaphore_deinit(s)` | construct / destroy in place |
+| `rc_semaphore_wait(s)` | block until the count is positive, then decrement |
+| `rc_semaphore_try_wait(s) -> bool` | decrement if positive; true if it did |
+| `rc_semaphore_wait_for(s, timeout_ns) -> bool` | false if the timeout elapsed first |
+| `rc_semaphore_post(s, count)` | add `count` to the semaphore |
+
+### richc/thread/thread.h - threads and utilities
+
+`rc_thread` is caller-owned and initialised in place: it stores the function
+and argument and is itself handed to the OS thread, so launching one allocates
+nothing. Because the running thread reads through the object, it **must stay
+live at a stable address until joined** (or, if detached, for the thread's
+lifetime) - store it somewhere durable, not a temporary.
+
+| API | Description |
+|-----|-------------|
+| `rc_thread_create(t, fn, arg) -> bool` | start a thread running `fn(arg)` (`rc_thread_func` is `void (*)(void *)`); false if the OS refused - the one legitimate creation failure |
+| `rc_thread_join(t)` | wait for the thread and release its resources |
+| `rc_thread_detach(t)` | release the thread to run independently; it can no longer be joined |
+| `rc_thread_current_id() -> uint64_t` | opaque id, unique among live threads |
+| `rc_thread_yield()` | hint the OS scheduler to run another thread |
+| `rc_thread_sleep_ns(ns)` | sleep for at least `ns` nanoseconds |
+| `rc_thread_hardware_concurrency() -> uint32_t` | logical core count (>= 1); for sizing a pool |
+| `rc_once`<br>`rc_once_run(once, fn)` | run `fn()` exactly once across all threads; a zero-initialised `rc_once` is ready to use |
+| `RC_THREAD_LOCAL` | keyword macro declaring a variable with per-thread storage |
+
+### richc/thread/tls.h - thread-local keys
+
+`rc_tls` is a dynamically created key naming one `void *` slot with an
+independent value per thread (TlsAlloc / pthread_key) - for when the set of
+thread-local variables is not known at compile time (`RC_THREAD_LOCAL` is
+simpler when it is). Slots start NULL in every thread; keys carry no
+destructor. The key is a small copyable handle, so it is returned and passed by
+value.
+
+| API | Description |
+|-----|-------------|
+| `rc_tls_create() -> rc_tls` | allocate a key |
+| `rc_tls_destroy(key)` | release the key; using it afterwards is undefined |
+| `rc_tls_get(key) -> void *`<br>`rc_tls_set(key, value)` | this thread's value for the key |
+
+### richc/thread/scheduler.h - task scheduler
+
+`rc_scheduler` (opaque) is a task-graph thread pool: worker threads plus a
+bounded pool of task slots. A task is a function and a `void *` context; wire
+tasks into a dependency graph, submit them, and wait. Like everything in richc
+the scheduler never owns its allocation: `create` carves the scheduler and all
+its buffers from an arena in one shot (the block never grows, so it may share
+an arena), and the returned pointer is stable for the arena's lifetime - which,
+note, makes this the library's one `_create` (it returns a pointer, so it is
+not a by-value `_make`). `RC_PANIC` on task-pool exhaustion - size `max_tasks`
+generously.
+
+Types:
+
+| Type | Description |
+|------|-------------|
+| `rc_task` | a task handle: `{ uint32_t slot, generation; }`; the generation traps stale handles. `RC_TASK_NONE` is the null handle |
+| `rc_task_func` | `void (*)(rc_task_context *tc, void *ctx)` |
+| `rc_task_context` | passed to the running task: the `scheduler` (to spawn children), a per-worker `scratch` arena reset after the task returns, the task's own handle `self`, and `worker_index` |
+| `rc_scheduler_config` | `num_threads` (0 -> hardware concurrency - 1, at least 1), `max_tasks` (the bound on outstanding tasks), `scratch_reserve` (per-worker scratch VA reserve; 0 -> a default) |
+| `RC_TASK_RESULT_SIZE` | size (64) of each slot's inline result buffer; fixed ABI shared with the future template |
+
+Functions:
+
+| API | Description |
+|-----|-------------|
+| `rc_scheduler_create(config, arena) -> rc_scheduler *` | carve the scheduler from `arena` and start the workers |
+| `rc_scheduler_deinit(s)` | stop and join the workers and destroy the scratch arenas; never frees the block (the arena owner reclaims it) |
+| `rc_scheduler_task_make(s, fn, ctx) -> rc_task` | create a task (not yet runnable) holding a single self-hold |
+| `rc_task_after(s, before, run_after)` | make `run_after` wait for `before`; wire before submitting |
+| `rc_scheduler_submit(s, task)` | release the self-hold; the task runs once all predecessors have completed (wiring order vs submit order does not matter) |
+| `rc_scheduler_run(s, fn, ctx) -> rc_task` | make + submit with no dependencies (fire-and-forget) |
+| `rc_scheduler_wait(s, task)` | wait for a task. On a worker it *participates* - running other ready tasks while it waits - so recursive fork/join keeps the cores busy and cannot deadlock the pool; on an outside thread it blocks |
+| `rc_scheduler_wait_all(s)` | wait (from an outside thread) until all submitted work has drained |
+| `rc_task_context_result(tc) -> void *` | where the running task's result goes: the caller's `out` storage when a future supplied one, else the inline slot buffer. The typed future accessors build on this |
+| `rc_scheduler_run_future_`, `rc_scheduler_get_result_` | internal (trailing `_`): used by the future template; not part of the API |
+
+A task can equally skip results and futures entirely and just write through a
+caller struct reached via its `ctx`.
+
+Wiring a dependency graph - `b` and `c` run in parallel after `a`, `d` after
+both (wiring order versus submit order does not matter, so submit them all and
+wait on the last):
 
 ```c
-uint32_t h = rc_hash_i32(point.x);
-h = rc_hash_combine(h, rc_hash_i32(point.y));
+rc_arena arena = rc_arena_make_default();
+rc_scheduler *s = rc_scheduler_create(
+    (rc_scheduler_config) {.max_tasks = 4096}, &arena);
+
+rc_task a = rc_scheduler_task_make(s, load,  &job);
+rc_task b = rc_scheduler_task_make(s, parse, &job);
+rc_task c = rc_scheduler_task_make(s, hash,  &job);
+rc_task d = rc_scheduler_task_make(s, store, &job);
+rc_task_after(s, a, b);
+rc_task_after(s, a, c);
+rc_task_after(s, b, d);
+rc_task_after(s, c, d);
+rc_scheduler_submit(s, a);
+rc_scheduler_submit(s, b);
+rc_scheduler_submit(s, c);
+rc_scheduler_submit(s, d);
+rc_scheduler_wait(s, d);
 ```
 
-The vector hashes are exactly this fold: each component is hashed by its scalar
-hash (`rc_hash_i32` or `rc_hash_f32`) and combined left-to-right, so component
-order matters and float vectors inherit the `-0.0f`/`+0.0f` normalisation.
+Recursive fork/join - a task spawns children through `tc->scheduler` and waits
+on them; because `wait` on a worker participates (running other ready tasks),
+the recursion keeps every core busy and cannot deadlock the pool. The child
+jobs live in `tc->scratch`, the per-worker scratch arena: it is reset only
+after the task returns, and the parent waits for both children before
+returning, so no cleanup is needed:
 
-Float values `-0.0` and `+0.0` are equal under `==`, so they are normalised to
-hash the same. Hash functions for further types are added here as those types
-are ported.
+```c
+typedef struct sum_job {
+    const int *v;
+    uint32_t   lo;
+    uint32_t   hi;
+    int64_t    out;
+} sum_job;
+
+static void parallel_sum(rc_task_context *tc, void *ctx)
+{
+    sum_job *j = ctx;
+    if (j->hi - j->lo <= 4096) {
+        int64_t sum = 0;
+        for (uint32_t i = j->lo; i < j->hi; ++i)
+            sum += j->v[i];
+        j->out = sum;
+        return;
+    }
+    uint32_t mid = j->lo + (j->hi - j->lo) / 2;
+    sum_job *l = rc_arena_alloc_type(tc->scratch, sum_job, 1);
+    sum_job *r = rc_arena_alloc_type(tc->scratch, sum_job, 1);
+    *l = (sum_job) {.v = j->v, .lo = j->lo, .hi = mid};
+    *r = (sum_job) {.v = j->v, .lo = mid, .hi = j->hi};
+
+    rc_task lt = rc_scheduler_run(tc->scheduler, parallel_sum, l);
+    rc_task rt = rc_scheduler_run(tc->scheduler, parallel_sum, r);
+    rc_scheduler_wait(tc->scheduler, lt);
+    rc_scheduler_wait(tc->scheduler, rt);
+    j->out = l->out + r->out;
+}
+
+sum_job top = {.v = data, .lo = 0, .hi = n};
+rc_scheduler_wait(s, rc_scheduler_run(s, parallel_sum, &top));
+// top.out holds the sum
+```
+
+### richc/template/future.h - typed futures
+
+A template header (it lives in `template/`, documented here with the scheduler
+it wraps) generating a typed future over a scheduler task. A future is just the
+scheduler plus the task handle plus an optional result pointer - no allocation,
+no reference counting, and deliberately no separate promise type: the task's
+slot is the shared state, and the producer side is a typed write into it.
+Control macros: `RC_FUTURE_TYPE` (required) and `RC_FUTURE_NAME` (optional;
+default is the type's spelling). Both are undefined again by the header.
+
+Generated for `RC_FUTURE_TYPE int` (all `static inline`):
+
+| API | Description |
+|-----|-------------|
+| `rc_future_int` | the future value type |
+| `rc_scheduler_run_int(s, fn, ctx, out) -> rc_future_int` | submit a task and return a future for its result. `out` is caller-owned result storage of any size, kept alive until `get`; pass NULL to use the slot's inline buffer instead, which requires `sizeof(RC_FUTURE_TYPE) <= RC_TASK_RESULT_SIZE` (checked at run time) |
+| `rc_future_int_result(tc) -> int *` | producer side, from inside the task: typed pointer to the result storage (build a struct in place) |
+| `rc_future_int_set(tc, v)` | producer side: store a scalar result |
+| `rc_future_int_get(f) -> int` | consumer side: wait for the task and return the result (read straight from `*out`, or copied out of the inline buffer, which also releases the slot) |
+
+```c
+#define RC_FUTURE_TYPE int
+#include "richc/template/future.h"
+
+typedef struct add_args {
+    int a;
+    int b;
+} add_args;
+
+static void add_task(rc_task_context *tc, void *ctx)
+{
+    add_args *in = ctx;
+    rc_future_int_set(tc, in->a + in->b);
+}
+
+add_args in = {.a = 20, .b = 22};
+int out;
+rc_future_int f = rc_scheduler_run_int(s, add_task, &in, &out);  // or out = NULL: inline slot buffer
+int sum = rc_future_int_get(f);   // 42
+```
+
+A struct result is built in place through the typed pointer instead:
+
+```c
+static void make_row(rc_task_context *tc, void *ctx)
+{
+    row *r = rc_future_row_result(tc);
+    // fill *r field by field
+}
+```
 
 ---
 
-## richc/macros.h - preprocessor utilities and assertions
-
-Small general-purpose preprocessor helpers used across the library.
-
-```c
-#define RC_CONCAT(a, b)   // paste two tokens together, expanding macros first
-#define RC_STRINGIFY(x)   // convert a token to a string literal, expanding macros first
-#define RC_INDEX_NONE     // sentinel "not found" / "invalid" index (== UINT32_MAX)
-#define RC_ASSERT(cond)   // debug-only assertion; breaks into the debugger on failure
-#define RC_PANIC(cond)    // always-active assertion; traps on failure
-#define RC_UNREACHABLE()  // provably-dead path; traps in debug, optimiser hint in release
-```
-
-- `RC_CONCAT(a, b)` expands its arguments and then token-pastes them, so
-  `RC_CONCAT(rc_array_, int)` yields `rc_array_int`.
-- `RC_STRINGIFY(x)` expands its argument and then stringizes it, so
-  `RC_STRINGIFY(RC_INDEX_NONE)` yields `"((uint32_t)-1)"`.
-- `RC_INDEX_NONE` is the `uint32_t` value used throughout the library to mean
-  "no such index".
-- `RC_ASSERT(cond)` checks `cond` in debug builds and triggers a debug break if
-  it is false; under `NDEBUG` it evaluates and discards `cond` (so variables
-  used only in assertions do not warn). It is an expression, not a statement, so
-  it can sit on the left of a comma operator.
-- `RC_PANIC(cond)` checks `cond` in all builds and traps (terminates) on
-  failure. Use it for unrecoverable invariants such as out-of-memory.
-- `RC_UNREACHABLE()` marks a path that cannot be reached given preconditions
-  already enforced - typically the `default` of a switch over a validated closed
-  set. In debug builds it traps if reached; in all builds it emits the compiler's
-  unreachable hint (`__builtin_unreachable()` / MSVC `__assume(0)`), so the
-  compiler treats the enclosing switch as exhaustive and needs no dummy
-  return/value on the dead path.
-
----
-
-## richc/mstr.h - mutable string
-
-`rc_mstr` is an arena-backed growable string, implemented like `rc_array` but
-keeping a `'\0'` terminator one byte past the content. Its `{ data, len }` fields
-share layout with `rc_str` and are exposed as `s.view`, so a non-owning view of
-the current contents is always available without copying. The buffer always holds
-a `'\0'` at `data[len]`, so `rc_str_as_cstr(s.view, ...)` takes the no-copy fast
-path.
-
-### Type
-
-```c
-typedef struct rc_mstr {
-    union {
-        struct { char *data; uint32_t len; };
-        rc_str view;
-    };
-    uint32_t cap;
-} rc_mstr;
-```
-
-`cap` is the real byte capacity of the allocation (`allocation == cap`), exactly
-as for `rc_array`. The terminator is accounted on the length side: the used size
-is `len + 1`, so a valid string always satisfies `cap >= len + 1` and a `cap`-byte
-buffer holds up to `cap - 1` characters. The invariant is: `data == NULL` is the
-invalid (zero-initialised) state; `data != NULL` means at least one byte is
-allocated, `data[len] == '\0'`, and `cap >= len + 1`. Growth is geometric (the
-larger of `2*cap`, the request, or 8). All capacity parameters below are byte
-capacities (the `cap` value).
-
-### Construction
-
-```c
-rc_mstr rc_mstr_make(uint32_t capacity, rc_arena *a);
-rc_mstr rc_mstr_from_cstr(const char *s, uint32_t minimum_capacity, rc_arena *a);
-rc_mstr rc_mstr_from_str(rc_str s, uint32_t minimum_capacity, rc_arena *a);
-```
-
-- `rc_mstr_make` returns an empty string in a `capacity`-byte buffer; `capacity ==
-  0` yields the invalid `{ 0 }` (no allocation).
-- `rc_mstr_from_cstr` / `rc_mstr_from_str` copy the source, sizing the buffer to
-  `max(source length + 1, minimum_capacity)`. They return the invalid state when
-  given a NULL C string or an invalid `rc_str`.
-
-### Predicates
-
-```c
-bool rc_mstr_is_valid(const rc_mstr *s);   // inline; true when data is non-NULL
-bool rc_mstr_is_empty(const rc_mstr *s);   // inline; true when len is 0
-```
-
-### Mutation
-
-```c
-void rc_mstr_reset(rc_mstr *s);
-void rc_mstr_reserve(rc_mstr *s, uint32_t capacity, rc_arena *a);
-void rc_mstr_append(rc_mstr *s, rc_str str, rc_arena *a);
-void rc_mstr_append_char(rc_mstr *s, char c, rc_arena *a);
-void rc_mstr_append_n(rc_mstr *s, char c, uint32_t n, rc_arena *a);
-void rc_mstr_append_hex8(rc_mstr *s, uint8_t value, rc_arena *a);
-void rc_mstr_append_hex16(rc_mstr *s, uint16_t value, rc_arena *a);
-void rc_mstr_append_hex32(rc_mstr *s, uint32_t value, rc_arena *a);
-void rc_mstr_append_hex64(rc_mstr *s, uint64_t value, rc_arena *a);
-void rc_mstr_replace(rc_mstr *s, rc_str find, rc_str replacement, rc_arena *a);
-```
-
-- `rc_mstr_reset` sets `len` to 0 and keeps the buffer.
-- `rc_mstr_reserve` ensures the buffer is at least `capacity` bytes (exact, no-op
-  if already large enough); it may move the buffer.
-- `rc_mstr_append` / `rc_mstr_append_char` append, growing geometrically as
-  needed; appending an empty `rc_str` is a no-op. They accept an invalid
-  (zero-initialised) `rc_mstr` and allocate on first use, like `rc_array` push.
-- `rc_mstr_append_n` appends `n` copies of `c` (column padding, rules); `n == 0`
-  is a no-op.
-- `rc_mstr_append_hex8/16/32/64` append the value as fixed-width uppercase
-  hexadecimal, zero-padded to the type's full digit count (2 / 4 / 8 / 16) - no
-  prefix, no locale, no printf.
-- `rc_mstr_replace` replaces every non-overlapping occurrence of `find` with
-  `replacement`, rewriting in place (left-to-right when the result is no larger,
-  otherwise reserving and rewriting right-to-left). An empty `find` is a no-op.
-
-`rc_str` arguments must be valid (asserted); the `rc_mstr` itself may be invalid
-(zero-initialised) for `reset` / `reserve` / `append` / `append_char` / `replace`.
-Allocations go through the arena, which never returns NULL.
-
-### Teardown
-
-```c
-void rc_mstr_deinit(rc_mstr *s, rc_arena *a);
-```
-
-`rc_mstr_deinit` frees the backing allocation (best-effort, see `rc_arena_free`)
-and zeroes the struct back to the invalid state; it is a safe no-op on an already
-invalid (zeroed) string. Use `rc_mstr_reset` instead to clear the contents while
-keeping the buffer.
-
----
-
-## richc/ops.h - scalar bit and math operations
-
-Small `static inline` scalar helpers. Functions carry a scalar type suffix
-(`i32`/`i64`/`u32`/`u64`/`f32`/`f64`), which also avoids the Windows `min`/`max`
-macros.
-
-```c
-uint32_t rc_bitcast_f32(float x);          // float  -> its uint32_t bit pattern
-uint64_t rc_bitcast_f64(double x);         // double -> its uint64_t bit pattern
-
-int32_t  rc_min_i32(int32_t a, int32_t b);     int32_t rc_max_i32(int32_t a, int32_t b);
-int64_t  rc_min_i64(int64_t a, int64_t b);     int64_t rc_max_i64(int64_t a, int64_t b);
-int32_t  rc_sgn_i32(int32_t a);                int64_t rc_sgn_i64(int64_t a);   // -1, 0, or +1
-
-int32_t  rc_gcd_i32(int32_t a, int32_t b);     // Euclidean GCD, always non-negative
-int64_t  rc_gcd_i64(int64_t a, int64_t b);
-
-uint32_t rc_clz_u32(uint32_t a);           // count leading zeros (32 for a == 0)
-uint32_t rc_clz_u64(uint64_t a);           // count leading zeros (64 for a == 0)
-uint32_t rc_ctz_u32(uint32_t a);           // count trailing zeros (32 for a == 0)
-uint32_t rc_ctz_u64(uint64_t a);           // count trailing zeros (64 for a == 0)
-uint32_t rc_popcount_u32(uint32_t a);      // population count (number of set bits)
-
-bool rc_mul_overflows_u64(uint64_t a, uint64_t b);   bool rc_add_overflows_u64(uint64_t a, uint64_t b);
-bool rc_add_overflows_i64(int64_t a, int64_t b);     bool rc_sub_overflows_i64(int64_t a, int64_t b);
-bool rc_mul_overflows_i64(int64_t a, int64_t b);
-
-float rc_deg_to_rad(float degrees);
-```
-
-The overflow checks return true when the operation would overflow the result
-type. `rc_bitcast_f32` / `rc_bitcast_f64` reinterpret the float bits (via a
-union); they are used by the float hashes.
-
----
-
-## richc/str.h - string view
-
-`rc_str` is a non-owning view over character data: a pointer and a length. It is
-used like a value type - passed and held by value - and never allocates. The
-invalid view (`{ NULL, 0 }`) is a "not found" / "absent" sentinel: test for it
-with `rc_str_is_valid` rather than passing it on. Functions that operate on the
-string (comparison, search, conversion) assert their `rc_str` arguments are
-valid; the empty-but-valid view (`{ ptr, 0 }`) is fully supported.
-
-### Types
-
-```c
-typedef struct rc_str { const char *data; uint32_t len; } rc_str;
-typedef struct rc_str_pair { rc_str first; rc_str second; } rc_str_pair;
-```
-
-A view is in one of three states:
-
-- **Invalid**: `{ NULL, 0 }` - the "no string" / "not found" sentinel.
-- **Empty**: `{ ptr, 0 }` - valid but zero length (`ptr` is non-NULL).
-- **Valid**: `data` non-NULL, `len` greater than zero.
-
-`rc_str_pair` is returned by the split functions.
-
-### Construction
-
-```c
-#define RC_STR(literal)        // compile-time view from a string literal
-rc_str rc_str_make(const char *data, uint32_t len);   // inline
-rc_str rc_str_from_cstr(const char *s);
-```
-
-- `RC_STR(literal)` builds a view at compile time. Pass only string literals or
-  `char[]` arrays; do not pass a `char *` pointer, since the length is computed
-  from `sizeof`.
-- `rc_str_make(data, len)` builds a view over an explicit pointer and length; the
-  data need not be null-terminated. It is the preferred way to construct an
-  `rc_str` from a pointer and count, over a raw struct literal.
-- `rc_str_from_cstr(s)` builds a view over a null-terminated C string. Returns the
-  invalid view `{ NULL, 0 }` when `s` is NULL.
-
-### Predicates
-
-```c
-bool rc_str_is_valid(rc_str s);   // inline; true when data is non-NULL
-bool rc_str_is_empty(rc_str s);   // inline; true when len is 0 (also true if invalid)
-```
-
-### Comparison
-
-```c
-bool rc_str_is_equal(rc_str a, rc_str b);
-bool rc_str_is_equal_insensitive(rc_str a, rc_str b);
-int  rc_str_compare(rc_str a, rc_str b);
-int  rc_str_compare_insensitive(rc_str a, rc_str b);
-```
-
-- `rc_str_is_equal` returns true when both have the same length and bytes. Any
-  two zero-length views are equal, including the invalid view.
-- `rc_str_compare` returns a negative value, zero, or a positive value when `a`
-  sorts before, equal to, or after `b`. Comparison is byte-wise; if one view is
-  a prefix of the other, the shorter sorts first.
-- The `_insensitive` variants fold ASCII case before comparing.
-
-### Slicing
-
-All slicing functions are inline and clamp out-of-range arguments to the valid
-range rather than asserting.
-
-```c
-rc_str rc_str_left(rc_str s, uint32_t count);                 // first count chars
-rc_str rc_str_right(rc_str s, uint32_t count);                // last count chars
-rc_str rc_str_substr(rc_str s, uint32_t start, uint32_t count); // count chars from start
-rc_str rc_str_skip(rc_str s, uint32_t start);                 // suffix beginning at start
-```
-
-`rc_str_left(s, count)` and `rc_str_right(s, count)` clamp `count` to `s.len`.
-`rc_str_substr` clamps both `start` and `count`. `rc_str_skip` clamps `start`.
-
-### Searching
-
-```c
-bool     rc_str_starts_with(rc_str s, rc_str prefix);
-bool     rc_str_ends_with(rc_str s, rc_str suffix);
-uint32_t rc_str_find_first(rc_str haystack, rc_str needle);
-uint32_t rc_str_find_last(rc_str haystack, rc_str needle);
-bool     rc_str_contains(rc_str haystack, rc_str needle);
-```
-
-- `rc_str_starts_with` / `rc_str_ends_with` return true for an empty prefix or
-  suffix, and false when it is longer than `s`.
-- `rc_str_find_first` / `rc_str_find_last` return the index of the match, or
-  `RC_INDEX_NONE` when absent or when the needle is longer than the haystack.
-  An empty needle is always found: `find_first` returns 0, `find_last` returns
-  `haystack.len` (the virtual position just past the last character).
-- `rc_str_contains` is true when `rc_str_find_first` finds the needle.
-
-### Trimming
-
-```c
-rc_str rc_str_remove_prefix(rc_str s, rc_str prefix);
-rc_str rc_str_remove_suffix(rc_str s, rc_str suffix);
-```
-
-Return `s` with the prefix or suffix removed when present, otherwise `s`
-unchanged.
-
-### Splitting
-
-```c
-rc_str_pair rc_str_first_split(rc_str s, rc_str split_by);
-rc_str_pair rc_str_last_split(rc_str s, rc_str split_by);
-```
-
-Split `s` at the first (or last) occurrence of `split_by`. `.first` is the text
-before the delimiter and `.second` is the text after it; neither includes the
-delimiter. When the delimiter is absent, `.first` is the whole input and
-`.second` is the invalid view (test with `rc_str_is_valid(pair.second)`).
-
-### Conversion
-
-```c
-const char *rc_str_as_cstr(rc_str s, char *buf, uint32_t buf_size);
-```
-
-Return a null-terminated C string for `s`.
-
-- Fast path: when `s.data` is non-NULL and already followed by a `'\0'` byte,
-  `s.data` is returned directly with no copy.
-- Slow path: otherwise up to `buf_size - 1` bytes are copied into `buf` and a
-  `'\0'` is appended; `buf` is returned. The copy is truncated to fit.
-- Returns NULL when no fast path applies and `buf` is NULL or `buf_size` is 0.
-
----
-
-## richc/test.h - unit-test framework
-
-A self-registering unit-test framework. Each test macro places a pointer to a
-test descriptor into a dedicated linker section, and the runner walks that
-section at run time; no manual registration list is required. The framework is
-part of the core `richc` library and is only linked into a final executable
-when something references `rc_test_run`.
-
-Supported platforms: Windows (MSVC, clang, gcc) and Linux (clang, gcc).
-
-### Defining tests
-
-```c
-RC_TEST(group, name) { ... }        // a simple test
-RC_TEST_SKIP(group, name) { ... }   // registered but not run (reported SKIP)
-```
-
-`group` and `name` are bare identifiers, used to label the test as
-`group.name`. The body that follows the macro is the test function.
-
-### Fixtures
-
-```c
-RC_TEST_GROUP_DATA(group) { ... };       // declare the per-group fixture struct
-RC_TEST_GROUP_INIT(group, fix) { ... }   // runs before each test in the group
-RC_TEST_GROUP_DEINIT(group, fix) { ... } // runs after each test in the group
-RC_TEST_STEP(group, name, fix) { ... }   // a test that receives the fixture
-RC_TEST_STEP_SKIP(group, name, fix)      // registered fixtured test, not run
-```
-
-Declare the fixture struct with `RC_TEST_GROUP_DATA`, then define `INIT` and
-`DEINIT` for the group. The last argument to `INIT`, `DEINIT`, and `STEP` names
-the fixture pointer made available inside the body; it has type
-`struct rc_test_group_data_<group> *`. `INIT` runs before, and `DEINIT` after,
-each `RC_TEST_STEP` in the group.
-
-```c
-RC_TEST_GROUP_DATA(counter) { int value; };
-RC_TEST_GROUP_INIT(counter, fix)        { fix->value = 100; }
-RC_TEST_GROUP_DEINIT(counter, fix)      { fix->value = 0; }
-RC_TEST_STEP(counter, starts_full, fix) { RC_CHECK(fix->value, ==, 100); }
-```
-
-### Assertions
-
-```c
-RC_CHECK(a, op, b);   // assert a op b
-RC_CHECK_TRUE(a);     // assert a is truthy
-RC_CHECK_FALSE(a);    // assert a is falsy
-```
-
-The left operand selects the comparison through `_Generic`. Supported operand
-types and operators:
+## Unit testing
+
+`richc/test.h`. A self-registering unit-test framework: each test macro places
+a descriptor pointer into a dedicated linker section and the runner walks that
+section, so no registration list is needed. Part of the core library, but only
+linked into an executable when something references `rc_test_run`. Supported on
+Windows (MSVC, clang, gcc) and Linux (clang, gcc).
+
+| API | Description |
+|-----|-------------|
+| `RC_TEST(group, name) { ... }` | define a test, labelled `group.name` (bare identifiers); the body is the test function |
+| `RC_TEST_SKIP(group, name) { ... }` | registered but not run; reported SKIP |
+| `RC_TEST_GROUP_DATA(group) { ... };` | declare the per-group fixture struct |
+| `RC_TEST_GROUP_INIT(group, fix) { ... }`<br>`RC_TEST_GROUP_DEINIT(group, fix) { ... }` | run before / after each fixtured test in the group; `fix` names the fixture pointer |
+| `RC_TEST_STEP(group, name, fix) { ... }` | a test that receives the fixture |
+| `RC_TEST_STEP_SKIP(group, name, fix)` | registered fixtured test, not run |
+| `RC_CHECK(a, op, b)` | assert `a op b`; the left operand selects the comparison via `_Generic` (see below) |
+| `RC_CHECK_TRUE(a)`<br>`RC_CHECK_FALSE(a)` | assert truthy / falsy |
+| `rc_test_run(filter) -> int` | run every test whose group name starts with `filter` (`""` for all); prints per-test lines and a summary, returns the failure count |
+| `RC_TEST_MAIN()` | emit a `main` calling `rc_test_run` with the first command-line argument as the filter; place once per test executable |
+
+`RC_CHECK` operand types and operators:
 
 | Operand type | Operators |
 |--------------|-----------|
@@ -815,1282 +1391,35 @@ types and operators:
 | `rc_vec2f`, `rc_vec3f`, `rc_vec4f` | `==` `!=` and `~=` |
 | `rc_rational` | `==` `!=` `<` `>` `<=` `>=` |
 
-`~=` is an approximate compare with a fixed epsilon of 0.0001; for the float
-vectors it holds when every component is within epsilon. The vector `==` / `!=`
-are exact, equivalent to the type's own `is_equal`. The `rc_rational` operators
-use the type's exact `is_equal` and overflow-safe `compare` (its operands must be
-valid). Plain `int` / `unsigned` literals match the `int32_t` / `uint32_t`
-entries. A failing assertion prints the file, line, expression, and actual value,
-then aborts the current test (the runner records it as a failure and continues
-with the next test).
-
-Because the vector and rational types are first-class operands, a whole-value
-comparison replaces a wrapped `is_equal` call or a set of per-component checks:
+`~=` is an approximate compare with a fixed epsilon of 0.0001 (for vectors,
+every component within epsilon); the vector `==`/`!=` are exact. A failing
+assertion prints the file, line, expression, and actual value, then aborts the
+current test; the runner records the failure and continues.
 
 ```c
-RC_CHECK(rc_vec2f_add(a, b), ==, rc_vec2f_make(11.0f, 22.0f));
-RC_CHECK(rc_vec2f_normalize(rc_vec2f_make(3.0f, 4.0f)), ~=, rc_vec2f_make(0.6f, 0.8f));
-RC_CHECK(rc_rational_add(rc_rational_make(1, 2), rc_rational_make(1, 3)), ==, rc_rational_make(5, 6));
-```
-
-### Running
-
-```c
-int rc_test_run(const char *filter);
-RC_TEST_MAIN();
-```
-
-- `rc_test_run(filter)` runs every test whose group name starts with `filter`
-  (pass `""` to run all), prints a per-test line and a summary, and returns the
-  number of failed tests.
-- `RC_TEST_MAIN()` emits a `main` that calls `rc_test_run` with the first
-  command-line argument as the filter (or `""` when none is given). Place it
-  once in a test executable.
-
-```c
-#include "richc/str.h"
-#include "richc/test.h"
-
 RC_TEST(str, basics)
 {
     rc_str s = RC_STR("hello world");
     RC_CHECK(s.len, ==, 11u);
-    RC_CHECK_TRUE(rc_str_starts_with(s, RC_STR("hello")));
+    RC_CHECK(rc_vec2f_normalize(rc_vec2f_make(3.0f, 4.0f)), ~=, rc_vec2f_make(0.6f, 0.8f));
 }
-
-RC_TEST_MAIN()
 ```
 
 ---
 
-## richc/template/array.h - view, span, array
-
-A template header that, for one element type, generates a read-only view, a
-mutable span, and a growable arena-backed array.
-
-### Instantiation
-
-Define `RC_ARRAY_TYPE` (and optionally `RC_ARRAY_NAME`) before including:
-
-```c
-#define RC_ARRAY_TYPE int
-#include "richc/template/array.h"   // rc_view_int, rc_span_int, rc_array_int
-```
-
-The generated types are `rc_array_<s>`, `rc_span_<s>`, `rc_view_<s>`, where `<s>`
-is `RC_ARRAY_NAME` (default: the element type's spelling, so it must be a single
-identifier - give a name for multi-token types). Both control macros are
-undefined again by the header, so it can be included again for another type.
-
-### Types
-
-```c
-typedef struct rc_view_<s>  { const T *data; uint32_t num; }              rc_view_<s>;
-typedef struct rc_span_<s>  {       T *data; uint32_t num; }              rc_span_<s>;
-typedef struct rc_array_<s> {       T *data; uint32_t num; uint32_t cap; } rc_array_<s>;
-```
-
-The span and array embed an anonymous union, so converting to a narrower type is
-a typesafe field access with no function call:
-
-```c
-rc_view_int v = arr.view;    // array -> view
-rc_span_int s = arr.span;    // array -> span
-rc_view_int w = s.view;      // span  -> view
-```
-
-### Shared macros (defined once, work on any view/span/array)
-
-- `RC_AT(c, i)` - bounds-checked element access; an lvalue, so it can be read or
-  assigned. Asserts `i < c.num`.
-- `RC_VIEW(arr)` / `RC_SPAN(arr)` - brace initializers from a C array
-  expression, for use in a declaration only. The count is derived via `sizeof`,
-  so `arr` must be a real array, not a pointer.
-
-```c
-int raw[] = {1, 2, 3};
-rc_view_int v = RC_VIEW(raw);
-rc_span_int s = RC_SPAN(raw);
-```
-
-### Array operations
-
-Construction and access:
-
-```c
-rc_array_<s> rc_array_<s>_make(uint32_t initial_capacity, rc_arena *arena);
-rc_array_<s> rc_array_<s>_make_copy(rc_view_<s> view, uint32_t minimum_capacity, rc_arena *arena);
-T            rc_array_<s>_get(const rc_array_<s> *array, uint32_t index);   // by value
-void         rc_array_<s>_set(rc_array_<s> *array, uint32_t index, T value);
-T           *rc_array_<s>_at(rc_array_<s> *array, uint32_t index);
-bool         rc_array_<s>_is_valid(const rc_array_<s> *array);   // owns a buffer (data != NULL)
-bool         rc_array_<s>_is_empty(const rc_array_<s> *array);   // num == 0
-```
-
-Capacity and size:
-
-```c
-void         rc_array_<s>_reserve(rc_array_<s> *array, uint32_t capacity, rc_arena *arena); // exact
-rc_span_<s>  rc_array_<s>_resize(rc_array_<s> *array, uint32_t num, rc_arena *arena);        // -> whole array
-void         rc_array_<s>_reset(rc_array_<s> *array);                                       // num = 0
-void         rc_array_<s>_deinit(rc_array_<s> *array, rc_arena *arena);                     // free + zero
-```
-
-`reserve` allocates the exact capacity requested. The growing operations below
-instead grow geometrically (to the larger of double the capacity, the request,
-or 8), so they stay amortised O(1). `resize` sets the element count and returns
-a span over the whole array - the idiom is to resize to a fixed size, then work
-through the returned span.
-
-Adding and removing:
-
-```c
-uint32_t rc_array_<s>_push(rc_array_<s> *array, T value, rc_arena *arena);           // -> index
-uint32_t rc_array_<s>_push_n(rc_array_<s> *array, uint32_t n, rc_arena *arena);      // n uninitialised; -> first index
-uint32_t rc_array_<s>_push_n_zero(rc_array_<s> *array, uint32_t n, rc_arena *arena); // n zeroed; -> first index
-T        rc_array_<s>_pop(rc_array_<s> *array);                                      // last by value; asserts non-empty
-void     rc_array_<s>_pop_n(rc_array_<s> *array, uint32_t n);                        // drop last n
-uint32_t rc_array_<s>_append(rc_array_<s> *array, rc_view_<s> view, rc_arena *arena);// -> new element count
-void     rc_array_<s>_insert(rc_array_<s> *array, uint32_t index, T value, rc_arena *arena);
-void     rc_array_<s>_insert_n(rc_array_<s> *array, uint32_t index, uint32_t n, rc_arena *arena);      // uninitialised
-void     rc_array_<s>_insert_n_zero(rc_array_<s> *array, uint32_t index, uint32_t n, rc_arena *arena); // zeroed
-void     rc_array_<s>_remove(rc_array_<s> *array, uint32_t index);                   // shift tail left
-void     rc_array_<s>_remove_n(rc_array_<s> *array, uint32_t index, uint32_t n);
-```
-
-### Span operations
-
-A span is passed by value; `set`/`at`/`last_at` write through to the underlying
-memory.
-
-```c
-rc_span_<s> rc_span_<s>_make(T *data, uint32_t num);            // wraps a pointer; no allocation
-bool        rc_span_<s>_is_valid(rc_span_<s> span);            // data != NULL
-bool        rc_span_<s>_is_empty(rc_span_<s> span);            // num == 0
-rc_span_<s> rc_span_<s>_get_subspan(rc_span_<s> span, uint32_t start, uint32_t end);  // [start, end), clamped
-rc_span_<s> rc_span_<s>_get_head(rc_span_<s> span, uint32_t n);  // first n, clamped
-rc_span_<s> rc_span_<s>_get_tail(rc_span_<s> span, uint32_t n);  // from index n, clamped
-T           rc_span_<s>_get(rc_span_<s> span, uint32_t index);   // by value
-void        rc_span_<s>_set(rc_span_<s> span, uint32_t index, T value);
-T          *rc_span_<s>_at(rc_span_<s> span, uint32_t index);
-T          *rc_span_<s>_last_at(rc_span_<s> span);               // asserts non-empty
-void        rc_span_<s>_reverse(rc_span_<s> span);               // reverse in place
-void        rc_span_<s>_rotate(rc_span_<s> span, uint32_t k);     // left rotation by k
-```
-
-`rotate` rotates the span left by `k` in place - the element at index `k` moves to
-index 0, the rest following in the same relative order - in `O(n)` time and `O(1)`
-space, a no-op when `k == 0` or `k >= num` (`k` is not reduced modulo `num`). It
-uses the Gries-Mills block swap (the span splits into `[0, k)` and `[k, num)`, and
-the smaller block is swapped into place before continuing on the shorter remainder,
-Euclidean-style): exactly `num - gcd(num, k)` element swaps, each a sequential,
-cache-friendly pass - never more than the textbook three-reversal, and fewer when
-`gcd` is large.
-
-### View operations
-
-The same set as span, minus `set` (read-only); `at`/`last_at` return `const`
-pointers, and the slice helpers take and return views.
-
-```c
-rc_view_<s> rc_view_<s>_make(const T *data, uint32_t num);      // wraps a pointer; no allocation
-bool        rc_view_<s>_is_valid(rc_view_<s> view);
-bool        rc_view_<s>_is_empty(rc_view_<s> view);
-rc_view_<s> rc_view_<s>_get_subview(rc_view_<s> view, uint32_t start, uint32_t end);  // clamped
-rc_view_<s> rc_view_<s>_get_head(rc_view_<s> view, uint32_t n);  // clamped
-rc_view_<s> rc_view_<s>_get_tail(rc_view_<s> view, uint32_t n);  // clamped
-T               rc_view_<s>_get(rc_view_<s> view, uint32_t index);
-const T        *rc_view_<s>_at(rc_view_<s> view, uint32_t index);
-const T        *rc_view_<s>_last_at(rc_view_<s> view);           // asserts non-empty
-```
-
-There is no allocating span/view constructor: allocation is the array's job. For
-a fixed-size allocated span, make an array and resize it
-(`rc_array_<s>_resize(&a, n, arena)` returns the span); for a copy, use
-`rc_array_<s>_make_copy(view, 0, arena)` and take its `.span` / `.view`.
-
-### Arena parameter
-
-Every operation that may reallocate takes `rc_arena *arena` last. Passing NULL
-is valid when no growth is required; a reallocation with `arena == NULL` asserts.
-Arena allocation never returns NULL (out of memory is a panic), so results are
-never NULL-checked.
-
-The intended usage is **one growable array per arena**. The arena reserves a
-large virtual address range and commits on demand, and `rc_arena_realloc` grows
-the latest allocation in place (the same address), so when the array is its
-arena's sole growable, growth never moves the buffer and pointers from `at`
-survive growth. If several growable arrays share one arena, growing one that is
-no longer the latest allocation relocates it (a copy to a new address), which
-invalidates outstanding pointers into it - so prefer holding an index over a
-pointer across growth in that case. Element indices are always stable.
-
----
-
-## richc/template/hash_trie.h - 16-way hash trie
-
-A preprocessor template (like `array.h`) for an arena-backed map or set keyed by
-a 64-bit hash. Each node has 16 children selected by successive 4-bit groups of
-the hash. Nodes are stored 16 to a block, and the blocks live in an `rc_pool`
-(`richc/template/pool.h`), so a block emptied by `delete` is freed back and
-recycled by a later allocation rather than leaking. One pool can back many
-independent tries.
-
-A trie is a **value**, not a handle: it is nothing but a root block index, so it
-is trivially copyable and a zero-initialised trie (`{ 0 }`) is a valid empty trie
-- no `make` call, matching the pool it sits on. The pool is **not** stored in the
-trie; it is passed to every operation (like the pool's own accessors), so a struct
-that owns tries plus a shared pool can be copied or returned by value freely.
-
-Define `RC_TRIE_VALUE_TYPE` for a map; omit it for a set (then the node carries
-no value, `add` takes no value, and `find` / `find_ptr` / `value_*` are not
-generated).
-
-### Instantiation
-
-```c
-#define RC_TRIE_KEY_TYPE   uint64_t
-#define RC_TRIE_VALUE_TYPE int
-#define RC_TRIE_HASH(k)    rc_hash_u64(k)   // expression cast to uint64_t
-#define RC_TRIE_NAME       rc_trie_u64      // optional; default rc_trie_<KEY_TYPE>
-#include "richc/template/hash_trie.h"
-```
-
-Control macros: `RC_TRIE_KEY_TYPE`, `RC_TRIE_HASH(k)` (required);
-`RC_TRIE_VALUE_TYPE` (optional - present for a map, absent for a set);
-`RC_TRIE_EQUAL(a, b)` (optional, default `(a) == (b)`); `RC_TRIE_NAME` (optional;
-the default requires a single-identifier key type, so pass an explicit name for
-multi-token keys). All are `#undef`'d by the header.
-
-### Generated types and functions
-
-```c
-rc_trie_u64_pool                              // an rc_pool of 16-node blocks
-rc_trie_u64                                   // { uint32_t root; }  ({ 0 } is a valid empty trie)
-
-rc_trie_u64_pool rc_trie_u64_pool_make(uint32_t min_blocks, rc_arena *arena);
-void             rc_trie_u64_pool_reserve(rc_trie_u64_pool *pool, uint32_t min_blocks, rc_arena *arena);
-void             rc_trie_u64_pool_deinit(rc_trie_u64_pool *pool, rc_arena *arena);
-
-// The pool is passed to every op; the trie goes BY VALUE, except add() which takes it by
-// pointer (it may lazily set the root on the first insert). Index accessors take only the pool.
-// Read-only ops take a CONST pool; only mutators + the pointer accessors take a mutable one.
-bool             rc_trie_u64_contains(rc_trie_u64 t, const rc_trie_u64_pool *pool, uint64_t key);             // both set and map
-bool             rc_trie_u64_add(rc_trie_u64 *t, rc_trie_u64_pool *pool, uint64_t key, int val, rc_arena *arena);  // a set omits val
-bool             rc_trie_u64_delete(rc_trie_u64 t, rc_trie_u64_pool *pool, uint64_t key);                     // true if present
-
-// map only (RC_TRIE_VALUE_TYPE defined):
-uint32_t         rc_trie_u64_find(rc_trie_u64 t, const rc_trie_u64_pool *pool, uint64_t key);                 // node index, or RC_INDEX_NONE
-int             *rc_trie_u64_find_ptr(rc_trie_u64 t, rc_trie_u64_pool *pool, uint64_t key);                   // value pointer, or NULL
-int              rc_trie_u64_value_get(const rc_trie_u64_pool *pool, uint32_t index);
-void             rc_trie_u64_value_set(rc_trie_u64_pool *pool, uint32_t index, int value);
-int             *rc_trie_u64_value_at(rc_trie_u64_pool *pool, uint32_t index);
-
-// key read-back by node index (both set and map); keys are immutable, so both are const:
-uint64_t         rc_trie_u64_key_get(const rc_trie_u64_pool *pool, uint32_t index);
-const uint64_t  *rc_trie_u64_key_at(const rc_trie_u64_pool *pool, uint32_t index);
-```
-
-- A trie is constructed by zero-initialising it (`rc_trie_u64 t = { 0 };`) - there is no `make`.
-  The root block is allocated lazily by the first `add`; `find` / `contains` / `delete` on an empty
-  trie report "absent" without touching the pool. `root` stores the block index + 1, so `0` means
-  "no root block" (the same off-by-one the pool free-list uses).
-- `contains` reports membership and works for both set and map tries.
-- `add` is the only op taking the trie by pointer (it may allocate + store the root on the first
-  insert); every other op takes the trie by value, and the index accessors take only the pool (a
-  node index is pool-global, not tied to one trie).
-- Read-only ops take a `const` pool, so a const owner can look symbols up without casting: `contains`,
-  `find`, `value_get`, `key_get`, and both key accessors (`key_at` returns a `const` pointer - a key is
-  immutable once placed). Only the mutators (`add`, `delete`, `value_set`) and the writable value
-  accessors (`value_at`, `find_ptr`, which hand out mutable access) take a mutable pool.
-- `add` returns true when the key was new, false when it was already present (a
-  map then replaces its value); a set's `add` takes no `val`.
-- `find` (map only) returns a node index (`block * 16 + slot`), or `RC_INDEX_NONE`
-  if absent; read or write the value with `value_get` / `value_set` / `value_at`.
-  Following richc's index-first style, the index is stable across pool growth
-  (prefer it to hold a result), and is valid until the next add/delete that
-  restructures the trie.
-- `find_ptr` (map only) returns the value pointer directly - faster for one-shot
-  access, but the pointer follows the usual pool rule (survives in-place growth,
-  invalidated by a relocating grow), whereas the index from `find` is always
-  growth-stable.
-- `key_get` / `key_at` read the KEY at a node index (by value / by const pointer),
-  available for both set and map tries. A node index comes from `find` (map) or is
-  handed to a [`hash_trie_foreach`](#richctemplatealgorithmhash_trie_foreachh---iterate-every-entry)
-  callback. A key is immutable once placed, so there is no `key_set` and `key_at` is const.
-- The trie has no built-in iteration; the
-  [`hash_trie_foreach`](#richctemplatealgorithmhash_trie_foreachh---iterate-every-entry)
-  algorithm template visits every entry (walking from the root, since one pool can
-  back many tries and a flat pool scan cannot tell them apart).
-- Keys with identical hashes are handled correctly, forming an O(n)-deep chain
-  (operations stay correct, access degrades to O(n) for n identical hashes).
-- A zero-initialised pool is a valid empty pool; `pool_deinit` frees the backing
-  (best-effort, LIFO) and zeroes the pool.
-- `pool_make`/`pool_reserve`/`pool_reset`/`pool_deinit` come from the `rc_pool`
-  template; its low-level block ops (`pool_alloc`/`pool_free`/`pool_get`/`pool_set`/
-  `pool_at`) are generated and used internally by the trie - do not call them on a
-  pool that backs tries.
-
----
-
-## richc/template/genpool.h - generational object pool
-
-A preprocessor template (like `pool.h`, which it closely mirrors) for a
-free-list object pool whose slots carry a generation counter. `alloc` returns an
-[`rc_genpool_handle`](#richcgenpool_handleh---generational-pool-handle) rather
-than a bare index, and `free` increments the slot's generation, invalidating
-every handle issued for the slot's previous lifetime: a stale handle is
-*detected* (`is_valid` false, `at` NULL, `get`/`set`/`free` assert) instead of
-silently aliasing the slot's next occupant. Use a genpool where handles outlive
-their elements (resource tables, scene objects); use a plain pool where indices
-are managed strictly.
-
-### Instantiation
-
-```c
-#define RC_GENPOOL_TYPE thing
-#define RC_GENPOOL_NAME rc_genpool_thing   // optional; default rc_genpool_<TYPE>
-#include "richc/template/genpool.h"
-```
-
-Control macros: `RC_GENPOOL_TYPE` (required); `RC_GENPOOL_NAME` (optional; the
-default requires a single-identifier element type). Both are `#undef`'d by the
-header. Each slot is
-
-```c
-struct { union { uint32_t next_free_; RC_GENPOOL_TYPE value; }; uint32_t gen; }
-```
-
-- the free-list link shares storage with the value exactly as in `pool.h`
-(references stored as `index + 1`, 0 = none, so a **zero-initialised pool is a
-valid empty pool**), while the generation lives *outside* the union, so it
-survives the slot's dead period. An element type smaller than `uint32_t` rounds
-the union up to 4 bytes, and the generation adds 4 more (plus any alignment
-padding the element type demands).
-
-### Generated type and functions
-
-```c
-rc_genpool_thing                                 // { array items; uint32_t first_free; } - { 0 } is valid
-
-rc_genpool_thing  rc_genpool_thing_make(uint32_t capacity, rc_arena *arena);  // optional; only to pre-reserve
-void              rc_genpool_thing_reserve(rc_genpool_thing *pool, uint32_t min_capacity, rc_arena *arena);
-void              rc_genpool_thing_reset(rc_genpool_thing *pool);             // drop all elements, keep backing
-void              rc_genpool_thing_deinit(rc_genpool_thing *pool, rc_arena *arena);  // free backing + zero
-rc_genpool_handle rc_genpool_thing_alloc(rc_genpool_thing *pool, rc_arena *arena);   // handle to a zeroed slot
-void              rc_genpool_thing_free(rc_genpool_thing *pool, rc_genpool_handle h);  // asserts is_valid; gen += 1
-bool              rc_genpool_thing_is_valid(const rc_genpool_thing *pool, rc_genpool_handle h);
-thing             rc_genpool_thing_get(const rc_genpool_thing *pool, rc_genpool_handle h);   // asserts is_valid
-void              rc_genpool_thing_set(rc_genpool_thing *pool, rc_genpool_handle h, thing value);  // asserts is_valid
-thing            *rc_genpool_thing_at(rc_genpool_thing *pool, rc_genpool_handle h);          // NULL if not valid
-const thing      *rc_genpool_thing_at_const(const rc_genpool_thing *pool, rc_genpool_handle h);  // NULL likewise
-rc_genpool_handle rc_genpool_thing_handle_at(const rc_genpool_thing *pool, uint32_t index);  // live slots only
-rc_bitset         rc_genpool_thing_free_bitset(const rc_genpool_thing *pool, rc_arena *arena);  // dead slots
-```
-
-- `is_valid` is true when the handle is non-null, in range, and its generation
-  matches the slot's - i.e. the element it named is still live. `get`/`set`
-  assert it; `at`/`at_const` are the non-trapping accessors, returning NULL for
-  a null, out-of-range, or stale handle. `at` pointers have the same stability
-  caveat as `pool.h`: they survive in-place growth but are invalidated if the
-  backing relocates because it shares an arena with other growables - prefer the
-  handle for long-lived references.
-- `alloc` reuses a freed slot when one exists (the returned handle carries the
-  slot's advanced generation, so handles from the previous lifetime stay stale),
-  otherwise appends a fresh slot at generation 0; the value is zeroed either
-  way.
-- `free` asserts the handle is valid - trapping null, stale, and **double-free**
-  (a genuine improvement over `pool.h`, whose in-band free list cannot detect
-  one) - then bumps the slot's generation and pushes the slot onto the free
-  list. Because free advances the generation, `alloc(); free(h);` is *not*
-  byte-identical, unlike `pool.h` - that is the feature. The backing is never
-  trimmed; `reset`/`deinit` reclaim it wholesale.
-- Handles are the shared `rc_genpool_handle` type, not typesafe per pool: a
-  handle presented to the wrong genpool goes undetected when index and
-  generation happen to match there. Wrap the handle in a one-member struct per
-  pool where mixing must be a compile error.
-- `reset`/`deinit` drop the slot array, so slots recreated afterwards restart at
-  generation 0: a handle issued before the reset can alias one issued after
-  (same caveat class as `pool.h` index reuse; there is no epoch mechanism). A
-  single slot's generation wraps after 2^32 frees, momentarily revalidating an
-  ancient handle; noted, not defended.
-- The generation does not encode liveness (it only advances on free), so as with
-  `pool.h` the only liveness information is the free list, exposed by
-  `free_bitset` (set bits are the dead slots). `handle_at` reconstructs the
-  handle a slot currently validates against; on a *free* slot that is the handle
-  the next alloc will issue, which `is_valid` would accept - so call it only for
-  slots known to be live, e.g. the clear bits of `free_bitset`. The
-  [`genpool_foreach`](#richctemplatealgorithmgenpool_foreachh---iterate-live-genpool-entries)
-  template combines the two to visit the live elements.
-
----
-
-## richc/template/pool.h - free-list object pool
-
-A preprocessor template (like `array.h`) for an index-stable object pool backed
-by an `rc_array`. `alloc` hands out a stable `uint32_t` index for a fixed-size
-element; freed indices are recycled through an in-band free list, so an index
-stays valid for the element's lifetime regardless of other allocs/frees.
-
-### Instantiation
-
-```c
-#define RC_POOL_TYPE thing
-#define RC_POOL_NAME rc_pool_thing   // optional; default rc_pool_<TYPE>
-#include "richc/template/pool.h"
-```
-
-Control macros: `RC_POOL_TYPE` (required); `RC_POOL_NAME` (optional; the default
-requires a single-identifier element type). Both are `#undef`'d by the header.
-Each slot is a `union { uint32_t next_free_; RC_POOL_TYPE value; }`, so an element
-type smaller than `uint32_t` rounds each slot up to 4 bytes. The free list stores
-references as `index + 1` (0 = none), which lets index 0 be an ordinary list
-member and makes a **zero-initialised pool a valid empty pool** (no `make` needed).
-
-### Generated type and functions
-
-```c
-rc_pool_thing                                    // { array items; uint32_t first_free; } - { 0 } is valid
-
-rc_pool_thing rc_pool_thing_make(uint32_t capacity, rc_arena *arena);   // optional; only to pre-reserve
-void          rc_pool_thing_reserve(rc_pool_thing *pool, uint32_t min_capacity, rc_arena *arena);
-void          rc_pool_thing_reset(rc_pool_thing *pool);                 // drop all elements, keep backing
-void          rc_pool_thing_deinit(rc_pool_thing *pool, rc_arena *arena); // free backing + zero
-uint32_t      rc_pool_thing_alloc(rc_pool_thing *pool, rc_arena *arena); // index of a zeroed slot
-void          rc_pool_thing_free(rc_pool_thing *pool, uint32_t index);
-thing         rc_pool_thing_get(const rc_pool_thing *pool, uint32_t index);
-void          rc_pool_thing_set(rc_pool_thing *pool, uint32_t index, thing value);
-thing        *rc_pool_thing_at(rc_pool_thing *pool, uint32_t index);    // pointer; see below
-const thing  *rc_pool_thing_at_const(const rc_pool_thing *pool, uint32_t index);  // read-only pointer
-rc_bitset     rc_pool_thing_free_bitset(const rc_pool_thing *pool, rc_arena *arena);  // dead slots
-```
-
-- `alloc` returns an INDEX (not a pointer); the slot's value is zeroed. It reuses
-  a freed slot when one exists, otherwise appends, growing the backing. The index
-  is always stable; `at` pointers survive in-place growth (the intended
-  one-growable-per-arena case) but are invalidated if the backing relocates
-  because it shares an arena with other growables. `at_const` is the same pointer
-  through a `const` pool, for read-only access.
-- `free` always pushes the slot onto the free list, even when it is the final
-  slot, so `alloc` and `free` are exact inverses: `alloc(); free(i);` restores
-  the pool byte-for-byte. Trailing free slots are not trimmed - the backing
-  array holds its high-water mark until `reset`/`deinit` reclaim it wholesale.
-  Double-freeing or freeing an out-of-range index is a caller error.
-- The pool itself does not iterate (a freed slot is indistinguishable from a live
-  one by inspection), but `free_bitset` exposes the liveness information: it
-  returns an `rc_bitset`, sized to `items.num` and allocated from `arena`, whose
-  set bits are exactly the free-list (dead) slots - so a clear bit is a live slot.
-  The [`pool_foreach`](#richctemplatealgorithmpool_foreachh---iterate-live-pool-entries)
-  template builds on it to visit the live elements.
-
----
-
-## richc/template/algorithm/bitset_foreach.h - iterate set bits
-
-A preprocessor template (like `sort.h`) that generates a function to visit the set
-bits of an [`rc_bitset`](#richcbitseth---growable-bit-array) in ascending index
-order. It uses the bitset iteration idiom (`get_first_set` / `get_next_set`) and
-invokes a caller-supplied macro on each set bit's index, with an optional context.
-Include it again (after redefining the control macros) to generate another
-iterator.
-
-### Instantiation
-
-```c
-typedef struct { uint32_t count; } counter;
-static void bump(counter *c, uint32_t i) { (void)i; c->count++; }
-
-#define RC_BITSET_FOREACH_CTX        counter
-#define RC_BITSET_FOREACH_FUNC(c, i) bump(c, i)
-#include "richc/template/algorithm/bitset_foreach.h"
-// void rc_bitset_foreach(const rc_bitset *bs, counter *ctx);
-```
-
-| Control macro | Required | Default | Meaning |
-|---------------|----------|---------|---------|
-| `RC_BITSET_FOREACH_FUNC` | yes | - | per-bit callback (see below) |
-| `RC_BITSET_FOREACH_CTX`  | no  | none | context type threaded to the callback |
-| `RC_BITSET_FOREACH_NAME` | no  | `rc_bitset_foreach` | generated function name |
-
-All macros defined before inclusion are undefined again by the header. Unlike the
-type-parameterised templates there is no `TYPE`, so the default name is fixed;
-give an explicit `RC_BITSET_FOREACH_NAME` to generate more than one iterator in a
-translation unit.
-
-### Callback and context
-
-Without a context the callback is `RC_BITSET_FOREACH_FUNC(index)`, where `index`
-is the `uint32_t` set-bit index. Defining `RC_BITSET_FOREACH_CTX` adds a context
-pointer as the callback's first argument and as a function parameter:
-
-```c
-#define RC_BITSET_FOREACH_FUNC(ctx, index)  ...   // ctx is RC_BITSET_FOREACH_CTX *
-```
-
-The generated signature is `void NAME(const rc_bitset *bs)` without a context, or
-`void NAME(const rc_bitset *bs, CTX *ctx)` with one. Iteration is read-only and
-allocates nothing.
-
----
-
-## richc/template/algorithm/genpool_foreach.h - iterate live genpool entries
-
-A preprocessor template (like `sort.h`) that generates a function to visit the
-*live* entries of a genpool. The genpool has no built-in iteration because the
-generation does not encode liveness; this template bridges that by calling the
-pool's `free_bitset` to find the dead slots in a scratch arena, then invoking a
-caller-supplied macro with the pool and each live slot's handle (reconstructed
-via the pool's `handle_at`). Include it again (after redefining the control
-macros) to generate another iterator.
-
-### Instantiation
-
-```c
-#define RC_GENPOOL_TYPE thing
-#include "richc/template/genpool.h"   // rc_genpool_thing + free_bitset + handle_at
-
-typedef struct { int total; } sum_ctx;
-static void add_cost(sum_ctx *c, rc_genpool_thing *pool, rc_genpool_handle h)
-{ c->total += rc_genpool_thing_at(pool, h)->cost; }
-
-#define RC_GENPOOL_FOREACH_POOL          rc_genpool_thing
-#define RC_GENPOOL_FOREACH_CTX           sum_ctx
-#define RC_GENPOOL_FOREACH_FUNC(c, p, h) add_cost(c, p, h)
-#include "richc/template/algorithm/genpool_foreach.h"
-// void rc_genpool_thing_foreach(rc_genpool_thing *pool, sum_ctx *ctx, rc_arena scratch);
-```
-
-| Control macro | Required | Default | Meaning |
-|---------------|----------|---------|---------|
-| `RC_GENPOOL_FOREACH_POOL` | yes | - | pool type name (the same passed to `RC_GENPOOL_NAME`, e.g. `rc_genpool_thing`); drives the defaults |
-| `RC_GENPOOL_FOREACH_FUNC` | yes | - | per-element callback (see below) |
-| `RC_GENPOOL_FOREACH_CTX`  | no  | none | context type threaded to the callback |
-| `RC_GENPOOL_FOREACH_NAME` | no  | `<POOL>_foreach` | generated function name |
-
-All macros defined before inclusion are undefined again by the header.
-
-### Callback and context
-
-Without a context the callback is `RC_GENPOOL_FOREACH_FUNC(pool, handle)`, where
-`pool` is the `POOL *` and `handle` is the live element's `rc_genpool_handle` -
-the callback reaches the object through the pool's `get` / `set` / `at` (the
-handle-over-pointer convention; `at` is writable, so it can mutate in place).
-Each handle carries the slot's current generation, so it satisfies `is_valid`.
-Defining `RC_GENPOOL_FOREACH_CTX` adds a context pointer as the callback's first
-argument and as a function parameter:
-
-```c
-#define RC_GENPOOL_FOREACH_FUNC(ctx, pool, handle)  ...   // ctx is RC_GENPOOL_FOREACH_CTX *
-```
-
-The generated signature is `void NAME(POOL *pool, rc_arena scratch)` without a
-context, or `void NAME(POOL *pool, CTX *ctx, rc_arena scratch)` with one. The
-`scratch` arena is taken by value (the standard scratch pattern): the dead-slot
-bitset is built in the caller's snapshot and discarded on return, leaving the
-caller's arena untouched.
-
----
-
-## richc/template/algorithm/hash_trie_foreach.h - iterate every entry
-
-A preprocessor template (like `pool_foreach.h`) that generates a function to visit
-every live entry of an `rc_trie`. The trie has no built-in iteration; this template
-bridges that by walking from the root over the 16-node blocks and invoking a
-caller-supplied macro with the POOL and each entry's node index. It walks from the
-root (rather than scanning the backing pool) because one pool can back many tries,
-so a flat pool scan could not tell one trie's entries from another's. Include it
-again (after redefining the control macros) to generate another iterator.
-
-### Instantiation
-
-```c
-#define RC_TRIE_KEY_TYPE   uint64_t
-#define RC_TRIE_VALUE_TYPE int
-#define RC_TRIE_HASH(k)    (k)
-#include "richc/template/hash_trie.h"       // rc_trie_uint64_t + key_get / value_get
-
-typedef struct { int total; } sum_ctx;
-static void add_val(sum_ctx *c, const rc_trie_uint64_t_pool *pool, uint32_t i)
-{ c->total += rc_trie_uint64_t_value_get(pool, i); }
-
-#define RC_TRIE_FOREACH_TRIE          rc_trie_uint64_t
-#define RC_TRIE_FOREACH_CTX           sum_ctx
-#define RC_TRIE_FOREACH_CONST                       // read-only walk: const pool
-#define RC_TRIE_FOREACH_FUNC(c, p, i) add_val(c, p, i)
-#include "richc/template/algorithm/hash_trie_foreach.h"
-// void rc_trie_uint64_t_foreach(rc_trie_uint64_t t, const rc_trie_uint64_t_pool *pool, sum_ctx *ctx);
-```
-
-| Control macro | Required | Default | Meaning |
-|---------------|----------|---------|---------|
-| `RC_TRIE_FOREACH_TRIE` | yes | - | trie type name (the same passed to `RC_TRIE_NAME`, e.g. `rc_trie_symbol`); drives the defaults |
-| `RC_TRIE_FOREACH_FUNC` | yes | - | per-entry callback (see below) |
-| `RC_TRIE_FOREACH_CTX`  | no  | none | context type threaded to the callback |
-| `RC_TRIE_FOREACH_CONST` | no | (mutable) | define for a read-only walk (const pool) |
-| `RC_TRIE_FOREACH_NAME` | no  | `<TRIE>_foreach` | generated function name |
-
-All macros defined before inclusion are undefined again by the header.
-
-### Const or mutable
-
-By default the pool is **mutable**, so a callback may update entries in place with
-`value_set` (the walk never adds or deletes, so in-place updates are safe). Define
-`RC_TRIE_FOREACH_CONST` for a **read-only** walk: the pool arrives as a `const` pointer,
-so a const owner can iterate without casting, but the callback may only read (via
-`key_get` / `value_get`) - accumulate any output into the mutable context. The example
-above adds `#define RC_TRIE_FOREACH_CONST` (a pure accumulator, so read-only fits).
-
-### Callback and context
-
-Without a context the callback is `RC_TRIE_FOREACH_FUNC(pool, index)`, where `pool`
-is the `TRIE_pool *` (`const` iff `RC_TRIE_FOREACH_CONST` is defined) and `index` is the
-live entry's node index - the callback reaches the key and value through the trie's
-`key_get` / `value_get` (which take the pool, the index-over-pointer convention).
-Defining `RC_TRIE_FOREACH_CTX` adds a context pointer as the callback's first argument
-and as a function parameter:
-
-```c
-#define RC_TRIE_FOREACH_FUNC(ctx, pool, index)  ...   // ctx is RC_TRIE_FOREACH_CTX *
-```
-
-The generated signature is `void NAME(TRIE t, [const] TRIE_pool *pool)` without a context, or
-`void NAME(TRIE t, [const] TRIE_pool *pool, CTX *ctx)` with one - the trie by value, the pool
-explicitly (an empty trie visits nothing). Entries are visited in an unspecified order
-(a trie is unordered). Iteration allocates nothing (no scratch arena, unlike
-`pool_foreach`); do not add or delete keys during iteration.
-
----
-
-## richc/template/algorithm/lower_bound.h - binary search
-
-A preprocessor template (like `array.h`) that generates a binary search over a
-sorted `rc_view`. It finds the first element `e` for which `!(e < value)` - the
-first element `>= value` when the view is sorted ascending under the comparison -
-and returns its index, or `view.num` if every element is less than `value`.
-Include it again (after redefining the control macros) for another element type.
-
-### Instantiation
-
-```c
-#define RC_LOWER_BOUND_TYPE int
-#include "richc/template/algorithm/lower_bound.h"
-// uint32_t rc_lower_bound_int(rc_view_int view, int value);
-```
-
-| Control macro | Required | Default | Meaning |
-|---------------|----------|---------|---------|
-| `RC_LOWER_BOUND_TYPE` | yes | - | element type |
-| `RC_LOWER_BOUND_CTX`  | no  | none | context type threaded to the comparator |
-| `RC_LOWER_BOUND_CMP`  | no  | `(a) < (b)` | comparator expression |
-| `RC_LOWER_BOUND_VIEW` | no  | `rc_view_<TYPE>` | view type to search |
-| `RC_LOWER_BOUND_NAME` | no  | `rc_lower_bound_<TYPE>` | generated function name |
-
-All macros defined before inclusion are undefined again by the header. The
-default `VIEW` and `NAME` paste `<TYPE>`, so they require a single-identifier
-type; give an explicit `RC_LOWER_BOUND_VIEW` / `RC_LOWER_BOUND_NAME` for a
-multi-token element type.
-
-### Comparator and context
-
-Without a context the comparator is `RC_LOWER_BOUND_CMP(a, b)`, true iff `a < b`.
-Defining `RC_LOWER_BOUND_CTX` adds a context pointer as the comparator's first
-argument and as a function parameter:
-
-```c
-typedef struct { int sign; } sign_ctx;
-#define RC_LOWER_BOUND_TYPE          int
-#define RC_LOWER_BOUND_CTX           sign_ctx
-#define RC_LOWER_BOUND_CMP(c, a, b)  ((c)->sign * (a) < (c)->sign * (b))
-#define RC_LOWER_BOUND_NAME          rc_lower_bound_signed
-#include "richc/template/algorithm/lower_bound.h"
-// uint32_t rc_lower_bound_signed(rc_view_int view, sign_ctx *ctx, int value);
-```
-
-The generated signature is `uint32_t NAME(VIEW view, TYPE value)` without a
-context, or `uint32_t NAME(VIEW view, CTX *ctx, TYPE value)` with one.
-
----
-
-## richc/template/algorithm/max_element.h - index of the maximum
-
-A preprocessor template (like `array.h`) that scans an `rc_view` and returns the
-index of the *first* element that no other element is greater than - the leftmost
-maximum under the comparison - or `RC_INDEX_NONE` if the view is empty. Include it
-again (after redefining the control macros) for another element type.
-
-### Instantiation
-
-```c
-#define RC_MAX_ELEMENT_TYPE int
-#include "richc/template/algorithm/max_element.h"
-// uint32_t rc_max_element_int(rc_view_int view);
-```
-
-| Control macro | Required | Default | Meaning |
-|---------------|----------|---------|---------|
-| `RC_MAX_ELEMENT_TYPE` | yes | - | element type |
-| `RC_MAX_ELEMENT_CTX`  | no  | none | context type threaded to the comparator |
-| `RC_MAX_ELEMENT_CMP`  | no  | `(a) < (b)` | comparator expression (still "less than"; the template applies it the other way round) |
-| `RC_MAX_ELEMENT_VIEW` | no  | `rc_view_<TYPE>` | view type to scan |
-| `RC_MAX_ELEMENT_NAME` | no  | `rc_max_element_<TYPE>` | generated function name |
-
-The comparator and context conventions are identical to `lower_bound.h`: the
-comparator is true iff `a < b`, and defining `RC_MAX_ELEMENT_CTX` adds a context
-pointer as both the comparator's first argument and a function parameter. All
-macros defined before inclusion are undefined again by the header. The generated
-signature is `uint32_t NAME(VIEW view)` without a context, or
-`uint32_t NAME(VIEW view, CTX *ctx)` with one.
-
----
-
-## richc/template/algorithm/min_element.h - index of the minimum
-
-A preprocessor template (like `array.h`) that scans an `rc_view` and returns the
-index of the *first* element that no other element is less than - the leftmost
-minimum under the comparison - or `RC_INDEX_NONE` if the view is empty. It is the
-companion to `max_element.h` with an identical interface (`RC_MIN_ELEMENT_TYPE` /
-`_CTX` / `_CMP` / `_VIEW` / `_NAME`, default name `rc_min_element_<TYPE>`); only
-the chosen extreme differs.
-
-```c
-#define RC_MIN_ELEMENT_TYPE int
-#include "richc/template/algorithm/min_element.h"
-// uint32_t rc_min_element_int(rc_view_int view);
-```
-
----
-
-## richc/template/algorithm/pool_foreach.h - iterate live pool entries
-
-A preprocessor template (like `sort.h`) that generates a function to visit the
-*live* entries of an `rc_pool`. The pool has no built-in iteration because a freed
-slot is byte-identical to a live one; this template bridges that by calling the
-pool's `free_bitset` to find the dead slots in a scratch arena, then invoking a
-caller-supplied macro with the pool and each live slot's index. Include it again
-(after redefining the control macros) to generate another iterator.
-
-### Instantiation
-
-```c
-#define RC_POOL_TYPE thing
-#include "richc/template/pool.h"            // rc_pool_thing + rc_pool_thing_free_bitset
-
-typedef struct { int total; } sum_ctx;
-static void add_cost(sum_ctx *c, rc_pool_thing *pool, uint32_t i)
-{ c->total += rc_pool_thing_at(pool, i)->cost; }
-
-#define RC_POOL_FOREACH_POOL          rc_pool_thing
-#define RC_POOL_FOREACH_CTX           sum_ctx
-#define RC_POOL_FOREACH_FUNC(c, p, i) add_cost(c, p, i)
-#include "richc/template/algorithm/pool_foreach.h"
-// void rc_pool_thing_foreach(rc_pool_thing *pool, sum_ctx *ctx, rc_arena scratch);
-```
-
-| Control macro | Required | Default | Meaning |
-|---------------|----------|---------|---------|
-| `RC_POOL_FOREACH_POOL` | yes | - | pool type name (the same passed to `RC_POOL_NAME`, e.g. `rc_pool_thing`); drives the defaults |
-| `RC_POOL_FOREACH_FUNC` | yes | - | per-element callback (see below) |
-| `RC_POOL_FOREACH_CTX`  | no  | none | context type threaded to the callback |
-| `RC_POOL_FOREACH_NAME` | no  | `<POOL>_foreach` | generated function name |
-
-All macros defined before inclusion are undefined again by the header.
-
-### Callback and context
-
-Without a context the callback is `RC_POOL_FOREACH_FUNC(pool, index)`, where `pool`
-is the `POOL *` and `index` is the live element's `uint32_t` slot - the callback
-reaches the object through the pool's `get` / `set` / `at` (the index-over-pointer
-convention; `at` is writable, so it can mutate in place). Defining
-`RC_POOL_FOREACH_CTX` adds a context pointer as the callback's first argument and
-as a function parameter:
-
-```c
-#define RC_POOL_FOREACH_FUNC(ctx, pool, index)  ...   // ctx is RC_POOL_FOREACH_CTX *
-```
-
-The generated signature is `void NAME(POOL *pool, rc_arena scratch)` without a
-context, or `void NAME(POOL *pool, CTX *ctx, rc_arena scratch)` with one. The
-`scratch` arena is taken by value (the standard scratch pattern): the dead-slot
-bitset is built in the caller's snapshot and discarded on return, leaving the
-caller's arena untouched.
-
----
-
-## richc/template/algorithm/sort.h - introsort
-
-A preprocessor template (like `array.h`) that generates an in-place sort over a
-mutable `rc_span`. It is an introsort: quicksort with a median-of-three pivot for
-large spans, falling back to heapsort when the recursion depth exceeds
-`2*floor(log2(n))` (guaranteeing `O(n log n)` worst case), and insertion sort for
-spans of 16 elements or fewer - the same strategy as libstdc++ and libc++. The
-sort is not stable. Include it again (after redefining the control macros) for
-another element type.
-
-### Instantiation
-
-```c
-#define RC_SORT_TYPE int
-#include "richc/template/algorithm/sort.h"
-// void rc_sort_int(rc_span_int span);
-```
-
-| Control macro | Required | Default | Meaning |
-|---------------|----------|---------|---------|
-| `RC_SORT_TYPE` | yes | - | element type |
-| `RC_SORT_CTX`  | no  | none | context type threaded to the comparator |
-| `RC_SORT_CMP`  | no  | `(a) < (b)` | comparator expression |
-| `RC_SORT_SPAN` | no  | `rc_span_<TYPE>` | span type to sort |
-| `RC_SORT_NAME` | no  | `rc_sort_<TYPE>` | generated function name |
-
-All macros defined before inclusion are undefined again by the header.
-
-### Comparator and context
-
-The comparator is `RC_SORT_CMP(a, b)`, true iff `a < b` (so the span is sorted
-ascending under it; pass a `>` comparator to sort descending). Defining
-`RC_SORT_CTX` adds a context pointer as the comparator's first argument and as a
-trailing function parameter, threaded through the whole sort:
-
-```c
-typedef struct { int sign; } sign_ctx;
-#define RC_SORT_TYPE          int
-#define RC_SORT_CTX           sign_ctx
-#define RC_SORT_CMP(c, a, b)  ((c)->sign * (a) < (c)->sign * (b))
-#define RC_SORT_NAME          rc_sort_signed
-#include "richc/template/algorithm/sort.h"
-// void rc_sort_signed(rc_span_int span, sign_ctx *ctx);
-```
-
-The generated signature is `void NAME(SPAN span)` without a context, or
-`void NAME(SPAN span, CTX *ctx)` with one.
-
----
-
-## richc/template/algorithm/upper_bound.h - binary search
-
-A preprocessor template (like `array.h`) that generates a binary search over a
-sorted `rc_view`. It finds the first element `e` for which `!(e <= value)` - the
-first element strictly greater than `value` when the view is sorted ascending
-under the comparison - and returns its index, or `view.num` if every element is
-`<= value`. It is the companion to `lower_bound.h`: with duplicates of `value`
-present, `lower_bound` gives the first matching index and `upper_bound` the index
-just past the last, so `[lower, upper)` is the equal range.
-
-### Instantiation
-
-```c
-#define RC_UPPER_BOUND_TYPE int
-#include "richc/template/algorithm/upper_bound.h"
-// uint32_t rc_upper_bound_int(rc_view_int view, int value);
-```
-
-| Control macro | Required | Default | Meaning |
-|---------------|----------|---------|---------|
-| `RC_UPPER_BOUND_TYPE` | yes | - | element type |
-| `RC_UPPER_BOUND_CTX`  | no  | none | context type threaded to the comparator |
-| `RC_UPPER_BOUND_CMP`  | no  | `(a) < (b)` | comparator expression |
-| `RC_UPPER_BOUND_VIEW` | no  | `rc_view_<TYPE>` | view type to search |
-| `RC_UPPER_BOUND_NAME` | no  | `rc_upper_bound_<TYPE>` | generated function name |
-
-The comparator and context conventions are identical to `lower_bound.h`: the
-comparator is `RC_UPPER_BOUND_CMP(a, b)`, true iff `a < b`, and defining
-`RC_UPPER_BOUND_CTX` adds a context pointer as both the comparator's first
-argument and a function parameter. The `<=` test reuses this `<` comparator as
-`!(value < element)`, so no separate comparator is needed. All macros defined
-before inclusion are undefined again by the header.
-
-The generated signature is `uint32_t NAME(VIEW view, TYPE value)` without a
-context, or `uint32_t NAME(VIEW view, CTX *ctx, TYPE value)` with one.
-
----
-
-## richc/math/box2i.h - 2D integer box
-
-`rc_box2i { rc_vec2i min_; rc_vec2i max_; }` - an axis-aligned bounding box over
-the half-open region `[min, max)` (min inclusive, max exclusive, matching pixel
-/ tile grids). `min <= max` component-wise is an invariant: the constructors
-establish it and the queries assume it, but C cannot enforce it on a
-hand-initialised box, so a caller that builds one directly must uphold it. The
-corners are internal members (trailing underscore); read them via the accessors.
-
-- Construction: `rc_box2i_make(a, b)` (sorts the two corners),
-  `rc_box2i_make_pos_size(pos, size)` (top-left + extent),
-  `rc_box2i_make_with_margin(a, b, margin)` (sorted corners expanded by `margin`
-  on each side; asserts no `int32_t` overflow).
-- Accessors: `rc_box2i_min(a)` and `rc_box2i_max(a)` -> `rc_vec2i` (the corners),
-  `rc_box2i_size(a)` -> `rc_vec2i` (the extent `max - min`).
-- Queries: `rc_box2i_is_empty(a)` -> `bool` (zero or negative extent on either
-  axis), `rc_box2i_contains(a, b)` -> `bool`, `rc_box2i_intersects(a, b)` ->
-  `bool` (touching edges do not count), `rc_box2i_contains_point(a, p)` -> `bool`.
-- Combination: `rc_box2i_union(a, b)` (smallest box containing both),
-  `rc_box2i_intersection(a, b)` (largest box contained in both; an empty box with
-  `min == max` when they do not overlap, so the invariant holds - test it with
-  `rc_box2i_is_empty`), `rc_box2i_expand(a, p)` (smallest box containing `a` and
-  the point `p`).
-- Transformation: `rc_box2i_translate(a, delta)` (both corners shifted by `delta`).
-- Equality: `rc_box2i_is_equal(a, b)` -> `bool` (exact corner-wise equality).
-
----
-
-## richc/math/box2f.h - 2D float box
-
-`rc_box2f { rc_vec2f min_; rc_vec2f max_; }` - the float counterpart of
-`rc_box2i`, an axis-aligned bounding box over the half-open region `[min, max)`
-(min inclusive, max exclusive). `min <= max` component-wise is an invariant the
-constructors establish and the queries assume; a caller that builds one directly
-must uphold it. The corners are internal members (trailing underscore); read
-them via the accessors.
-
-- Construction: `rc_box2f_make(a, b)` (sorts the two corners),
-  `rc_box2f_make_pos_size(pos, size)` (top-left + extent),
-  `rc_box2f_make_with_margin(a, b, margin)` (sorted corners expanded by `margin`
-  on each side).
-- Accessors: `rc_box2f_min(a)` and `rc_box2f_max(a)` -> `rc_vec2f` (the corners),
-  `rc_box2f_size(a)` -> `rc_vec2f` (the extent `max - min`).
-- Queries: `rc_box2f_is_empty(a)` -> `bool` (zero or negative extent on either
-  axis), `rc_box2f_contains(a, b)` -> `bool`, `rc_box2f_intersects(a, b)` ->
-  `bool` (touching edges do not count), `rc_box2f_contains_point(a, p)` -> `bool`.
-- Combination: `rc_box2f_union(a, b)` (smallest box containing both),
-  `rc_box2f_intersection(a, b)` (largest box contained in both; empty when they
-  do not overlap - test with `rc_box2f_is_empty`), `rc_box2f_expand(a, p)`
-  (smallest box containing `a` and the point `p`).
-- Transformation: `rc_box2f_translate(a, delta)` (both corners shifted by `delta`).
-- Equality: `rc_box2f_is_equal(a, b)` -> `bool` (exact), and
-  `rc_box2f_is_nearly_equal(a, b, tolerance)` -> `bool` (both corners within
-  `tolerance`).
-
----
-
-## richc/math/vec2i.h - 2D integer vector
-
-`rc_vec2i { int32_t x, y; }`. All operations are inline.
-
-- Construction: `rc_vec2i_make(x, y)`, `_make_zero`, `_make_unitx`,
-  `_make_unity`, `_from_i32s(p)` (from `int32_t[2]`).
-- Conversion: `_as_i32s(a)` -> `const int32_t *` (the components as `int32_t[2]`).
-- Arithmetic (return `rc_vec2i`): `_add`, `_add3`, `_add4`, `_sub`,
-  `_scalar_mul`, `_scalar_div` (asserts the divisor is non-zero),
-  `_component_mul`, `_component_min`, `_component_max`, `_perp` (the CCW
-  perpendicular `(-y, x)`), `_negate`.
-- Scalar results (`int64_t`, asserting no overflow): `_dot`, `_wedge` (the 2D
-  cross product), `_lengthsqr`.
-- `_is_equal(a, b)` -> `bool`.
-
-`length` is not provided - the exact integer result is not representable in
-general.
-
----
-
-## richc/math/vec3i.h - 3D integer vector
-
-`rc_vec3i { int32_t x, y, z; }`. All operations are inline.
-
-- Construction: `rc_vec3i_make(x, y, z)`, `_make_zero`, `_make_unitx/y/z`,
-  `_from_i32s(p)`, `_from_vec2i(v, z)` (extend a `rc_vec2i`).
-- Conversion: `_as_i32s(a)` -> `const int32_t *`.
-- Arithmetic (return `rc_vec3i`): `_add`, `_add3`, `_add4`, `_sub`,
-  `_scalar_mul`, `_scalar_div`, `_component_mul`, `_component_min`,
-  `_component_max`, `_negate`.
-- Scalar results (`int64_t`, asserting no overflow): `_dot`, `_lengthsqr`.
-- `_cross(a, b)` -> `rc_vec3i` - each component is computed in `int64_t` and
-  asserted to fit in `int32_t`.
-- `_is_equal(a, b)` -> `bool`.
-
----
-
-## richc/math/vec2f.h - 2D float vector
-
-`rc_vec2f { float x, y; }`. All operations are inline; no heap allocation.
-
-- Construction: `rc_vec2f_make(x, y)`, `_make_zero`, `_make_unitx`,
-  `_make_unity`, `_make_sincos(angle)` -> `(sin, cos)`, `_make_cossin(angle)`
-  -> `(cos, sin)`, `_from_floats(p)` (from `float[2]`), `_from_vec2i(v)` (cast
-  from `rc_vec2i`).
-- Conversion: `_as_floats(a)` -> `const float *` (the components as `float[2]`).
-- Arithmetic (return `rc_vec2f`): `_add`, `_add3`, `_add4`, `_sub`,
-  `_scalar_mul`, `_scalar_div`, `_component_mul`, `_component_min`,
-  `_component_max`, `_component_floor`, `_component_ceil`, `_component_abs`,
-  `_lerp(a, b, t)` (`a + (b - a) * t`), `_perp` (the CCW perpendicular
-  `(-y, x)`), `_negate`.
-- Scalar results (`float`): `_dot`, `_wedge` (the 2D cross product),
-  `_lengthsqr`, `_length`.
-- `_normalize(a)` -> `rc_vec2f` - scales to unit length; asserts the vector is
-  non-zero. `_normalize_safe(a, tolerance)` returns the zero vector when the
-  length is below `tolerance` instead of asserting.
-- `_is_nearly_equal(a, b, tolerance)` -> `bool` (squared distance below
-  `tolerance^2`), `_is_equal(a, b)` -> `bool` (exact).
-
----
-
-## richc/math/vec3f.h - 3D float vector
-
-`rc_vec3f { float x, y, z; }`. All operations are inline; no heap allocation.
-
-- Construction: `rc_vec3f_make(x, y, z)`, `_make_zero`, `_make_unitx/y/z`,
-  `_from_floats(p)` (from `float[3]`), `_from_vec2f(v, z)` (extend a `rc_vec2f`),
-  `_from_vec3i(v)` (cast from `rc_vec3i`).
-- Conversion: `_as_floats(a)` -> `const float *`.
-- Arithmetic (return `rc_vec3f`): `_add`, `_add3`, `_add4`, `_sub`,
-  `_scalar_mul`, `_scalar_div`, `_component_mul`, `_component_min`,
-  `_component_max`, `_component_floor`, `_component_ceil`, `_component_abs`,
-  `_lerp(a, b, t)`, `_negate`.
-- Scalar results (`float`): `_dot`, `_lengthsqr`, `_length`.
-- `_cross(a, b)` -> `rc_vec3f` - the 3D cross product.
-- `_normalize(a)` -> `rc_vec3f` (asserts non-zero), `_normalize_safe(a, tolerance)`.
-- `_is_nearly_equal(a, b, tolerance)` -> `bool`, `_is_equal(a, b)` -> `bool`.
-
----
-
-## richc/math/vec4f.h - 4D float vector
-
-`rc_vec4f { float x, y, z, w; }`. All operations are inline; no heap allocation.
-
-- Construction: `rc_vec4f_make(x, y, z, w)`, `_make_zero`, `_make_unitx/y/z/w`,
-  `_from_floats(p)` (from `float[4]`), `_from_vec2f(v, z, w)` (extend a
-  `rc_vec2f`), `_from_vec3f(v, w)` (extend a `rc_vec3f`).
-- Conversion: `_as_floats(a)` -> `const float *`.
-- Arithmetic (return `rc_vec4f`): `_add`, `_add3`, `_add4`, `_sub`,
-  `_scalar_mul`, `_scalar_div`, `_component_mul`, `_component_min`,
-  `_component_max`, `_component_floor`, `_component_ceil`, `_component_abs`,
-  `_lerp(a, b, t)`, `_negate`.
-- Scalar results (`float`): `_dot`, `_lengthsqr`, `_length`.
-- `_normalize(a)` -> `rc_vec4f` (asserts non-zero), `_normalize_safe(a, tolerance)`.
-- `_is_nearly_equal(a, b, tolerance)` -> `bool`, `_is_equal(a, b)` -> `bool`.
-
----
-
-## richc/math/mat22f.h - 2x2 float matrix
-
-`rc_mat22f { rc_vec2f cx, cy; }`, column-major (`cx` is the first column). A
-column vector is transformed as `m * v = cx*v.x + cy*v.y`. All operations are
-inline.
-
-- Construction: `rc_mat22f_make(cx, cy)`, `_make_zero`, `_make_identity`,
-  `_make_rotation(a)` (counter-clockwise by `a` radians), `_from_floats(p)`
-  (from `float[4]`, column-major).
-- Conversion: `_as_floats(m)` -> `const float *` (column-major `float[4]`).
-- Operations: `_add`, `_sub`, `_scalar_mul`, `_vec2f_mul(m, v)` -> `rc_vec2f`
-  (`m * v`), `_mul(a, b)` (`a * b`), `_determinant` -> `float`, `_transpose`,
-  `_inverse` (asserts determinant != 0).
-
----
-
-## richc/math/mat23f.h - 2D affine transform
-
-`rc_mat23f { rc_mat22f rot; rc_vec2f trans; }` - a linear part and a
-translation, applied as `rot * v + trans`. All operations are inline.
-
-- Construction: `rc_mat23f_make(rot, trans)`, `_make_identity`,
-  `_make_translation(v)`, `_from_mat22f(m)` (embed a linear map, zero
-  translation), `_from_floats(p)` (from `float[6]`, columns `rot.cx`, `rot.cy`,
-  `trans`).
-- Conversion: `_as_floats(m)` -> `const float *` (`float[6]`).
-- Operations: `_vec2f_mul(m, v)` (`rot * v + trans`), `_mul(a, b)` (compose
-  affine transforms), `rc_mat22f_mat23f_mul(L, b)` (left-multiply by a linear
-  map), `rc_mat23f_mat22f_mul(a, R)` (right-multiply, translation unchanged),
-  `_inverse` (delegates to `rc_mat22f_inverse`; asserts determinant != 0).
-
----
-
-## richc/math/mat33f.h - 3x3 float matrix
-
-`rc_mat33f { rc_vec3f cx, cy, cz; }`, column-major. `m * v = cx*v.x + cy*v.y +
-cz*v.z`. All operations are inline.
-
-- Construction: `rc_mat33f_make(cx, cy, cz)`, `_make_transpose(rx, ry, rz)`
-  (from row vectors; transposes on store), `_make_zero`, `_make_identity`,
-  `_make_rotation_x/y/z(a)` (right-handed rotation about each axis, radians),
-  `_from_floats(p)` (from `float[9]`).
-- Conversion: `_as_floats(m)` -> `const float *` (column-major `float[9]`).
-- Operations: `_add`, `_sub`, `_scalar_mul`, `_vec3f_mul(m, v)`, `_mul(a, b)`,
-  `_determinant` (scalar triple product `cx . (cy x cz)`), `_transpose`,
-  `_inverse` (adjugate / cofactor method; asserts determinant != 0).
-
----
-
-## richc/math/mat34f.h - 3D affine transform
-
-`rc_mat34f { rc_mat33f rot; rc_vec3f trans; }`, applied as `rot * v + trans`.
-All operations are inline.
-
-- Construction: `rc_mat34f_make(rot, trans)`, `_make_identity`,
-  `_make_translation(v)`, `_make_lookat(eye, focus, up)` (right-handed view
-  matrix mapping the eye to the origin with -Z toward `focus`; `up` is
-  orthogonalised), `_from_mat33f(m)`, `_from_floats(p)` (from `float[12]`).
-- Conversion: `_as_floats(m)` -> `const float *` (`float[12]`).
-- Operations: `_vec3f_mul(m, v)` (`rot * v + trans`), `_mul(a, b)`,
-  `rc_mat33f_mat34f_mul(L, b)` (left-multiply by a linear map),
-  `rc_mat34f_mat33f_mul(a, R)` (right-multiply, translation unchanged),
-  `_inverse` (delegates to `rc_mat33f_inverse`; asserts determinant != 0).
-
----
-
-## richc/math/mat44f.h - 4x4 float matrix
-
-`rc_mat44f { rc_vec4f cx, cy, cz, cw; }`, column-major. `m * v = cx*v.x + cy*v.y
-+ cz*v.z + cw*v.w`. The operations are inline except `determinant` and
-`inverse`, which live in `src/math/mat44f.c`.
-
-- Construction: `rc_mat44f_make(cx, cy, cz, cw)`, `_make_transpose(...)` (from
-  row vectors), `_make_zero`, `_make_identity`, `_make_translation(v)` (3D
-  translation), the projections below, `_from_mat22f/33f/34f(m)` (embed a
-  smaller matrix), `_from_floats(p)` (from `float[16]`).
-- Projections - all in the library's one canonical clip space (NDC x right and
-  y up in [-1, 1], depth in [0, 1] with reverse-Z: near -> 1, far -> 0; view
-  space right-handed, -Z forward); there are no variants and no handedness or
-  depth-range parameters:
-  - `_make_perspective(y_fov, aspect, n, f)` - finite far plane; view z = -n
-    gives depth exactly 1, z = -f exactly 0; clip w is the positive view
-    distance.
-  - `_make_perspective_inf(y_fov, aspect, n)` - the f -> infinity limit
-    (depth = n / -z); the default to reach for in 3D.
-  - `_make_ortho(left, right, top, bottom, n, f)` - maps the box to NDC with
-    the depth sense reversed (near face -> 1).
-  - `_make_ortho_2d(w, h)` - 2D convenience: a pixel rect with origin
-    top-left and y down to canonical NDC; geometry at z = 0 lands on depth 1.
-    Equivalent to `_make_ortho(0, w, 0, h, 0, 1)`.
-- Conversion: `_as_floats(m)` -> `const float *` (column-major `float[16]`).
-- Operations: `_add`, `_sub`, `_scalar_mul`, `_vec4f_mul(m, v)`, `_mul(a, b)`,
-  `_transpose`, `_determinant` -> `float`, `_inverse` (asserts determinant != 0).
-
----
-
-## richc/math/quatf.h - quaternion
-
-`rc_quatf { rc_vec3f xyz; float w; }` - a rotation as a quaternion `q = w + x*i +
-y*j + z*k` (Hamilton convention), identity `(0,0,0,1)`. The rotation-building
-constructors return unit quaternions; the component arithmetic does not preserve
-unit length, so normalise when a unit result is needed. The cheap value
-operations are inline; `make_angle_axis`, `from_mat33f`, `mat33f_from_quatf`,
-`slerp`, `exp`, `log`, and `pow` live in `src/math/quatf.c`.
-
-- Construction: `rc_quatf_make(x, y, z, w)`, `_make_identity`,
-  `_make_angle_axis(angle, axis)` (axis normalised internally), `_from_floats(p)`
-  (`x,y,z,w`), `_from_vec3f(xyz, w)`, `_from_mat33f(m)` (recovers the rotation
-  from an orthonormal matrix using Mike Day's branch method - one `sqrt`, stable
-  through 180-degree turns).
-- Conversion: `_as_floats(q)` -> `const float *` (`x,y,z,w`),
-  `rc_mat33f_from_quatf(q)` -> `rc_mat33f` (rotation matrix from a unit
-  quaternion).
-- Component arithmetic (4-vector, not unit-preserving): `_add`, `_sub`,
-  `_scalar_mul`, `_negate`, `_dot`, `_lengthsqr`, `_length`, `_normalize`.
-- Rotation: `_conjugate` (= inverse for unit `q`), `_inverse` (conjugate /
-  `|q|^2`), `_mul(a, b)` (compose; `b` applied first), `_vec3f_transform(q, v)`
-  (rotate `v` by the Rodrigues formula, no matrix), `_angle(q)` -> `float`,
-  `_axis(q)` -> `rc_vec3f` (unit X when there is no rotation).
-- Interpolation: `_lerp`, `_nlerp` (normalised lerp), `_slerp(a, b, t)`
-  (shorter-arc spherical interpolation, falls back to nlerp when nearly
-  parallel).
-- Exponential maps: `_exp`, `_log` (asserts `|q| != 0`), `_pow(q, t)`
-  (`exp(t * log(q))`).
-- Comparison: `_is_equal`, `_is_nearly_equal(a, b, tolerance)`.
-
----
-
-## richc/math/solve.h - polynomial root solvers
-
-Analytic real-root solvers for quadratics and cubics, implemented in
-`src/math/solve.c`. Each returns a small by-value struct holding the count and
-the roots.
-
-```c
-typedef struct rc_quadratic_roots { int num_roots; float root[2]; } rc_quadratic_roots;
-typedef struct rc_cubic_roots     { int num_roots; float root[3]; } rc_cubic_roots;
-
-rc_quadratic_roots rc_solve_quadratic(float a, float b, float c);  // a*t^2 + b*t + c = 0
-rc_cubic_roots     rc_solve_cubic(float a, float b, float c, float d);  // a*t^3 + ... = 0
-```
-
-- `rc_solve_quadratic` returns 0, 1, or 2 real roots. It uses sign-selection
-  (compute the larger-magnitude root, then the other via Vieta's theorem) to
-  avoid catastrophic cancellation, and falls back to the linear solution when
-  `|a|` is tiny.
-- `rc_solve_cubic` returns 1 or 3 real roots: Cardano's formula for the single
-  real root (positive discriminant) and the trigonometric method for three real
-  roots. It delegates to `rc_solve_quadratic` when `|a|` is tiny.
-
-The roots are returned in no particular order. Degenerate leading coefficients
-are handled gracefully rather than asserting, since a caller inspects
-`num_roots` regardless.
-
----
-
-## richc/math/rational.h - rational arithmetic
-
-`rc_rational { int64_t num_; int64_t denom_; }` - an exact rational held in
-canonical form: `denom > 0` and `gcd(|num|, denom) == 1`. The members carry a
-trailing underscore because the canonical invariant is the type's
-responsibility; read the value through `rc_rational_num(a)` / `rc_rational_denom(a)`
-and build values through the constructors. Division by zero produces the invalid
-state `0/0`, for which `rc_rational_is_valid` returns false. Non-trivial
-operations live in `src/math/rational.c`.
-
-- Construction: `rc_rational_make(num, denom)` (canonicalises; `denom == 0` ->
-  invalid), `rc_rational_from_i64(n)`, `rc_rational_from_double(val, threshold)`
-  (simplest rational within `threshold` of `val`, via continued fractions).
-- Accessors / predicates: `rc_rational_num`, `rc_rational_denom`,
-  `rc_rational_is_valid`, `_is_zero`, `_is_integer`, `_is_positive`,
-  `_is_negative`.
-- Arithmetic: `_negate`, `_abs`, `_reciprocal`, `_mul`, `_int_mul`, `_div`,
-  `_int_div`, `_add`, `_int_add`, `_sub`, `_int_sub`. The `_int_*` variants take
-  an `int64_t` second operand. All keep the result canonical (GCD pre-reduction)
-  and assert against `int64_t` overflow of the result.
-- Comparison: `_compare(a, b)` -> `-1/0/+1` (overflow-safe - a continued-fraction
-  descent that never forms the cross product, so it works even when `a - b`
-  would overflow), `_is_equal`, `_is_less_than`, `_is_greater_than`, `_min`,
-  `_max`.
-- Conversion: `_to_double(a)`.
-
-Operations assert their inputs are valid and their results fit in `int64_t`; GCD
-pre-reduction keeps the products' and sums' intermediates as small as possible,
-but a genuine overflow is reported via `RC_ASSERT` rather than wrapping. The
-library uses `int64_t` throughout and does not fall back to a wider type.
-
----
-
-## richc/random.h - pseudo-random generator
-
-A tiny, fast pseudo-random generator (splitmix32): one word of state, an add and
-two multiply-mixes per draw. Good statistical quality and - unlike xorshift - no
-bad seeds (any seed, including 0, is fine). Deterministic: the same seed always
-replays the same stream. Not for cryptography.
-
-```c
-rc_random                                    // { uint32_t state; }
-
-rc_random  rc_random_make(uint32_t seed);      // a generator seeded to `seed`
-uint32_t rc_random_next(rc_random *p);         // the next 32-bit draw, advancing the state
-```
-
-- To bound a draw to `[0, n)`, take `rc_random_next(&p) % n` (a modulo bias is
-  negligible for the small `n` typical of games and tools).
-- To reseed an existing generator, assign a fresh one: `p = rc_random_make(seed)`.
-
----
-
-## richc/rect_pack.h - rectangle packing
-
-Packs axis-aligned rectangles into a container with a spacing gap, using Maximal
-Rectangles with Best Short Side Fit. It works purely on sizes and positions - no
-image dependency - so it underpins the image atlas packers (see
-[app.md](app.md#richcimageimage_packh---image-atlas-packer)) but is reusable for
-any 2D packing. Results are returned by value, or as a span over the output arena;
-the packer captures no arena.
-
-- `rc_rect_pack_all(container, spacing, sizes, arena, scratch)` - the from-scratch
-  path. Sorts a batch of `rc_view_vec2i` sizes by decreasing longer side (for a
-  denser packing), places them all, and returns an `rc_span_vec2i` of positions
-  indexed by the input - or the invalid `{0}` span if the whole set does not fit,
-  leaving `arena` untouched. Positions are allocated from `arena`; `scratch`
-  (passed by value, and necessarily a different arena from `arena`) holds the free
-  list and the sort permutation and is released on return.
-- `rc_rect_pack_make(container, spacing, arena)` and `rc_rect_pack_add(packer,
-  size, arena)` - the incremental path. `rc_rect_pack` retains its free-rect list
-  as state, so rectangles can be added over time without disturbing earlier
-  placements. `rc_rect_pack_add` returns `rc_rect_pack_result { rc_vec2i pos; bool
-  placed; }` (`placed` is false when the rectangle no longer fits) and grows the
-  free list from `arena` - no scratch needed. Pass the same arena to `make` and
-  every `add`, and let the free list be that arena's only growable so it grows in
-  place.
-- `spacing` is maintained by inflating each placed rectangle by `spacing` before
-  carving the free list; no border gap is enforced at the container edges.
+## Macros and assertions
+
+`richc/macros.h`. Small preprocessor utilities and the assertion macros used
+across the library. `RC_ASSERT` is for *internal* preconditions (programmer
+error); untrusted external input gets validated and returns an error instead.
+`RC_ASSERT` is an expression, not a statement, so it can sit on the left of a
+comma operator (`*(RC_ASSERT(i < v.num), v.data + i)`).
+
+| API | Description |
+|-----|-------------|
+| `RC_CONCAT(a, b)` | paste two tokens, expanding macros first (`RC_CONCAT(rc_array_, int)` -> `rc_array_int`) |
+| `RC_STRINGIFY(x)` | convert a token to a string literal, expanding macros first |
+| `RC_INDEX_NONE` | the `uint32_t` "not found" / "invalid" index sentinel (`UINT32_MAX`) |
+| `RC_ASSERT(cond)` | debug-only assertion: a false `cond` triggers a debug break; under `NDEBUG` `cond` is evaluated and discarded (so assertion-only variables do not warn) |
+| `RC_PANIC(cond)` | always-active assertion: traps in all builds. For unrecoverable invariants such as out-of-memory |
+| `RC_UNREACHABLE()` | marks a provably dead path (e.g. the `default` of a switch over a validated closed set): traps in debug, and in all builds emits the compiler's unreachable hint, so the switch is treated as exhaustive with no dummy return needed |
