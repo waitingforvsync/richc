@@ -514,16 +514,25 @@ template.
 ## Algorithm templates
 
 `richc/template/algorithm/`. Each header is a preprocessor template generating
-one function, following shared conventions. The comparator-based templates take
-`RC_<X>_TYPE` (required), an optional `RC_<X>_CMP(a, b)` comparator expression
-- always "less than", default `(a) < (b)` - an optional `RC_<X>_CTX` context
-type (defining it adds a `CTX *` as the comparator's first argument and as a
-function parameter), and optional `RC_<X>_VIEW`/`RC_<X>_SPAN` and `RC_<X>_NAME`
-overrides (the defaults paste `<TYPE>`, so they require a single-identifier
-type). The foreach templates instead name their container type and take a
-required `RC_<X>_FUNC` callback macro plus the optional `RC_<X>_CTX` and
-`RC_<X>_NAME`. All macros defined before inclusion are undefined again by the
-header, so it can be included again for another instantiation.
+one function, and they all share one set of control-macro conventions - laid
+out once here, so the per-file sections below only describe what each template
+does. As with every template, all macros defined before inclusion are
+undefined again by the header, so it can be included again for another
+instantiation.
+
+The comparator-based templates (sort, the binary searches, min/max element)
+are parameterised on an element type:
+
+| Control macro | Description |
+|---------------|-------------|
+| `RC_<X>_TYPE` | element type (required) |
+| `RC_<X>_CMP(a, b)` | comparator expression, true iff `a < b` (optional; default `(a) < (b)`) |
+| `RC_<X>_CTX` | context type (optional). Defining it adds a `CTX *` as the comparator's first argument - `RC_<X>_CMP(ctx, a, b)` - and as a function parameter |
+| `RC_<X>_VIEW` / `RC_<X>_SPAN` | container type to operate on (optional; default `rc_view_<TYPE>` / `rc_span_<TYPE>`) |
+| `RC_<X>_NAME` | generated function name (optional; default `rc_<x>_<TYPE>`) |
+
+The `VIEW`/`SPAN` and `NAME` defaults paste `<TYPE>`, so a multi-token element
+type needs explicit overrides.
 
 ```c
 #define RC_SORT_TYPE int
@@ -539,6 +548,16 @@ typedef struct { int sign; } sign_ctx;
 // void rc_sort_signed(rc_span_int span, sign_ctx *ctx);
 ```
 
+The foreach templates (bitset, pool, genpool, hash trie) are parameterised on
+a container type instead, and take a callback rather than a comparator:
+
+| Control macro | Description |
+|---------------|-------------|
+| `RC_<X>_POOL` / `RC_<X>_TRIE` | container type name (required; drives the defaults). `bitset_foreach` has no container macro - there is only one `rc_bitset` type |
+| `RC_<X>_FUNC(...)` | per-element callback macro (required) |
+| `RC_<X>_CTX` | context type (optional). Defining it adds a `CTX *` as the callback's first argument and as a function parameter |
+| `RC_<X>_NAME` | generated function name (optional; default `<container>_foreach`) |
+
 ### richc/template/algorithm/sort.h - introsort
 
 In-place, not stable, over a mutable span: quicksort with a median-of-three
@@ -549,7 +568,6 @@ same strategy as libstdc++ and libc++.
 | API | Description |
 |-----|-------------|
 | `rc_sort_<s>(span[, ctx])` | sort ascending under the comparator (pass a `>` comparator to sort descending) |
-| `RC_SORT_TYPE`, `RC_SORT_CMP`, `RC_SORT_CTX`, `RC_SORT_SPAN`, `RC_SORT_NAME` | control macros, as above |
 
 ### richc/template/algorithm/lower_bound.h / upper_bound.h - binary search
 
@@ -563,7 +581,6 @@ upper)` is the equal range.
 |-----|-------------|
 | `rc_lower_bound_<s>(view[, ctx], value) -> uint32_t` | first index whose element is `>= value` |
 | `rc_upper_bound_<s>(view[, ctx], value) -> uint32_t` | first index whose element is `> value` |
-| `RC_LOWER_BOUND_*`<br>`RC_UPPER_BOUND_*` (`TYPE`, `CMP`, `CTX`, `VIEW`, `NAME`) | control macros, as above |
 
 ### richc/template/algorithm/min_element.h / max_element.h - extremes
 
@@ -574,7 +591,6 @@ Scan an `rc_view` for the leftmost minimum or maximum under the comparison
 |-----|-------------|
 | `rc_min_element_<s>(view[, ctx]) -> uint32_t` | index of the first minimum, or `RC_INDEX_NONE` if empty |
 | `rc_max_element_<s>(view[, ctx]) -> uint32_t` | index of the first maximum, or `RC_INDEX_NONE` if empty |
-| `RC_MIN_ELEMENT_*`<br>`RC_MAX_ELEMENT_*` (`TYPE`, `CMP`, `CTX`, `VIEW`, `NAME`) | control macros, as above |
 
 ### richc/template/algorithm/bitset_foreach.h - iterate set bits
 
@@ -585,10 +601,7 @@ generate more than one iterator in a translation unit.
 
 | API | Description |
 |-----|-------------|
-| `NAME(bs[, ctx])` | call `RC_BITSET_FOREACH_FUNC([ctx,] index)` on each set bit |
-| `RC_BITSET_FOREACH_FUNC` | per-bit callback macro (required) |
-| `RC_BITSET_FOREACH_CTX` | optional context type; adds `CTX *` as the callback's first argument and a function parameter |
-| `RC_BITSET_FOREACH_NAME` | function name (default `rc_bitset_foreach`) |
+| `NAME(bs[, ctx])` | call `RC_BITSET_FOREACH_FUNC([ctx,] index)` on each set bit; default name `rc_bitset_foreach` |
 
 ### richc/template/algorithm/pool_foreach.h - iterate live pool entries
 
@@ -601,9 +614,6 @@ live slot's index. The callback reaches the object through the pool's
 | API | Description |
 |-----|-------------|
 | `NAME(pool[, ctx], scratch)` | call `RC_POOL_FOREACH_FUNC([ctx,] pool, index)` on each live slot; `scratch` is an `rc_arena` by value |
-| `RC_POOL_FOREACH_POOL` | pool type name (required; drives the defaults) |
-| `RC_POOL_FOREACH_FUNC` | per-element callback macro (required) |
-| `RC_POOL_FOREACH_CTX`, `RC_POOL_FOREACH_NAME` | optional context type / name (default `<POOL>_foreach`) |
 
 ### richc/template/algorithm/genpool_foreach.h - iterate live genpool entries
 
@@ -614,10 +624,7 @@ index.
 
 | API | Description |
 |-----|-------------|
-| `NAME(pool[, ctx], scratch)` | call `RC_GENPOOL_FOREACH_FUNC([ctx,] pool, handle)` on each live element |
-| `RC_GENPOOL_FOREACH_POOL` | genpool type name (required; drives the defaults) |
-| `RC_GENPOOL_FOREACH_FUNC` | per-element callback macro (required) |
-| `RC_GENPOOL_FOREACH_CTX`, `RC_GENPOOL_FOREACH_NAME` | optional context type / name (default `<POOL>_foreach`) |
+| `NAME(pool[, ctx], scratch)` | call `RC_GENPOOL_FOREACH_FUNC([ctx,] pool, handle)` on each live element; `scratch` as in `pool_foreach` |
 
 ### richc/template/algorithm/hash_trie_foreach.h - iterate every trie entry
 
@@ -632,10 +639,7 @@ default the pool is mutable, so the callback may `value_set` in place; define
 | API | Description |
 |-----|-------------|
 | `NAME(t, pool[, ctx])` | call `RC_TRIE_FOREACH_FUNC([ctx,] pool, index)` on each entry; the trie goes by value (an empty trie visits nothing) |
-| `RC_TRIE_FOREACH_TRIE` | trie type name (required; drives the defaults) |
-| `RC_TRIE_FOREACH_FUNC` | per-entry callback macro (required) |
-| `RC_TRIE_FOREACH_CONST` | define for a read-only walk (const pool) |
-| `RC_TRIE_FOREACH_CTX`, `RC_TRIE_FOREACH_NAME` | optional context type / name (default `<TRIE>_foreach`) |
+| `RC_TRIE_FOREACH_CONST` | extra control macro, this template only: define for a read-only walk (const pool) |
 
 ---
 
@@ -1182,6 +1186,35 @@ lifetime) - store it somewhere durable, not a temporary.
 | `rc_thread_hardware_concurrency() -> uint32_t` | logical core count (>= 1); for sizing a pool |
 | `rc_once`<br>`rc_once_run(once, fn)` | run `fn()` exactly once across all threads; a zero-initialised `rc_once` is ready to use |
 | `RC_THREAD_LOCAL` | keyword macro declaring a variable with per-thread storage |
+
+One worker per core over a shared atomic - the `rc_thread` objects live in an
+array that outlives the threads (the stable-storage rule), and each is joined
+before the array goes away:
+
+```c
+typedef struct worker_ctx {
+    rc_atomic_i64 *counter;
+    int            iters;
+} worker_ctx;
+
+static void worker(void *p)
+{
+    worker_ctx *c = p;
+    for (int i = 0; i < c->iters; ++i)
+        rc_atomic_i64_fetch_add(c->counter, 1, RC_MEMORY_ORDER_RELAXED);
+}
+
+rc_atomic_i64 counter = {0};
+worker_ctx ctx = {.counter = &counter, .iters = 100000};
+
+uint32_t num = rc_thread_hardware_concurrency();
+rc_thread *threads = rc_arena_alloc_type(&arena, rc_thread, num);
+for (uint32_t i = 0; i < num; ++i)
+    RC_PANIC(rc_thread_create(&threads[i], worker, &ctx));
+for (uint32_t i = 0; i < num; ++i)
+    rc_thread_join(&threads[i]);
+// counter == num * ctx.iters
+```
 
 ### richc/thread/tls.h - thread-local keys
 
