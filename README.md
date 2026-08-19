@@ -155,6 +155,14 @@ For learning the gfx layer from scratch, start with the tutorial,
 and a triangle up to offscreen rendering, MSAA, instancing, and storage
 buffers, then hands over to the reference.
 
+## Roadmap ##
+
+richc is work-in-progress. The existing API is more or less stable, and is used
+in other projects, for example [Baron](https://github.com/waitingforvsync/baron).
+A networking library is planned next for Core, and a layouting/immediate UI layer
+for App. The aim is to keep things modular so that unused features are stripped
+at link time.
+
 ## Authorship / AI disclosure ##
 
 richc was designed and mostly implemented by me, Rich Talbot-Watkins, and
