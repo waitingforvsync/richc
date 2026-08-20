@@ -19,6 +19,9 @@
  *   RC_STR(literal) - compile-time view from a string literal; DO NOT pass a
  *       char * pointer (sizeof of a pointer gives the pointer width, not the
  *       string length).
+ *   RC_STR_INIT(literal) - same view as a plain brace list, for initializers
+ *       of static storage duration (where a compound literal is not a
+ *       constant expression).
  *   rc_str_make(data, len) - view over an explicit pointer and length (the data
  *       need not be null-terminated).
  *   rc_str_from_cstr(const char *) - run-time view from a null-terminated
@@ -81,8 +84,13 @@ typedef struct rc_str_pair {
  * Build a view from a string literal at compile time.
  * sizeof(literal) includes the terminating '\0', so subtract 1.
  * Only use with string literals or char[] arrays.
+ *
+ * RC_STR is a compound literal: usable anywhere an rc_str value is, but not a
+ * constant expression, so MSVC rejects it in static-storage initializers.
+ * There, use RC_STR_INIT, a bare brace list valid ONLY as an initializer.
  */
-#define RC_STR(s) ((rc_str) {(s), (uint32_t)(sizeof(s) - 1)})
+#define RC_STR_INIT(s) {(s), (uint32_t)(sizeof(s) - 1)}
+#define RC_STR(s)      ((rc_str) RC_STR_INIT(s))
 
 /* Build a view from an explicit pointer and length (the data need not be
  * null-terminated). */
