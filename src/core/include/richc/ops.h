@@ -17,6 +17,9 @@
 #include <stdlib.h>   // abs, llabs
 
 #ifdef _MSC_VER
+#ifndef _WIN64
+#error "richc requires a 64-bit target on MSVC (32-bit Windows is not supported)"
+#endif
 #include <intrin.h>   // _BitScanReverse, _BitScanReverse64, _BitScanForward, _BitScanForward64
 #endif
 

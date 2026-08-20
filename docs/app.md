@@ -130,9 +130,10 @@ family.
 
 ### richc/image/image.h - CPU image
 
-`rc_image { rc_span_bytes data; rc_vec2i size; uint32_t stride; rc_pixel_format
+`rc_image { rc_span_bytes data; rc_vec2i size; uint32_t stride; uint32_t
 format; }` - a non-owning window over arena-backed pixel bytes; the arena owns
-the bytes, the image just describes their layout. The origin is the top-left
+the bytes, the image just describes their layout. `format` holds an
+`rc_pixel_format` value. The origin is the top-left
 corner: pixels run left-to-right, rows top-to-bottom, `stride` bytes apart
 (`stride >= size.x * bytes_per_pixel`). Pixels are read and written as a packed
 `uint32_t` colour with R in bits 0-7, G in 8-15, B in 16-23, A in 24-31:

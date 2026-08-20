@@ -18,7 +18,7 @@
  *
  * Type
  * ----
- *   rc_image  { rc_span_bytes data; rc_vec2i size; uint32_t stride; rc_pixel_format format; }
+ *   rc_image  { rc_span_bytes data; rc_vec2i size; uint32_t stride; uint32_t format; }
  *
  * Pixel format
  * ------------
@@ -85,7 +85,7 @@ typedef struct rc_image {
     rc_span_bytes   data;    /* raw pixel bytes (borrowed; the arena owns them) */
     rc_vec2i        size;    /* width (x), height (y) in pixels                 */
     uint32_t        stride;  /* bytes per row (>= size.x * bytes_per_pixel)     */
-    rc_pixel_format format;
+    uint32_t        format;  /* an rc_pixel_format value                        */
 } rc_image;
 
 /* ---- construction ---- */

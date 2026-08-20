@@ -67,10 +67,13 @@
 #  define RC_TEST_SECTION_(s) __attribute__((used, section(s)))
 /* The ELF linker synthesises __start_rc_test / __stop_rc_test for this name. */
 #  define RC_TEST_SECTION_NAME_ "rc_test"
+#elif defined(__APPLE__)
+#  define RC_TEST_SECTION_(s) __attribute__((used, section(s)))
+/* Mach-O names a section as "segment,section"; ld64 synthesises the
+ * section$start$__DATA$rc_test / section$end$__DATA$rc_test symbols for it. */
+#  define RC_TEST_SECTION_NAME_ "__DATA,rc_test"
 #else
-/* macOS / Mach-O needs a "segment,section" name and getsectiondata rather than
- * __start_/__stop_ symbols; that is separate work, not handled here. */
-#  error "richc test: unsupported platform"
+#  error "richc test: unsupported platform (expected _WIN32, __APPLE__, or __linux__)"
 #endif
 
 /* ---- descriptor ---- */

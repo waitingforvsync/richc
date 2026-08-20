@@ -9,10 +9,19 @@
  * test items in name order ($a < $b < $c); on ELF the linker provides the
  * __start_/__stop_ symbols for the named section.  The ELF symbols are declared
  * weak so a test executable that registers no tests at all still links: with the
- * section absent they resolve to 0, and the run loop just iterates zero times. */
+ * section absent they resolve to 0, and the run loop just iterates zero times.
+ * On Mach-O, ld64 provides section$start$/section$end$ symbols for any
+ * "segment$section" pair, bound here with asm labels (the names contain '$', so
+ * they cannot be spelled as C identifiers); an empty section yields an empty
+ * range. */
 #if defined(_WIN32)
 RC_TEST_SECTION_("rc_test$a") static const rc_test *rc_test_section_start;
 RC_TEST_SECTION_("rc_test$c") static const rc_test *rc_test_section_stop;
+#  define RC_TEST_BEGIN (&rc_test_section_start)
+#  define RC_TEST_END   (&rc_test_section_stop)
+#elif defined(__APPLE__)
+extern const rc_test *rc_test_section_start __asm("section$start$__DATA$rc_test");
+extern const rc_test *rc_test_section_stop  __asm("section$end$__DATA$rc_test");
 #  define RC_TEST_BEGIN (&rc_test_section_start)
 #  define RC_TEST_END   (&rc_test_section_stop)
 #else

@@ -63,6 +63,9 @@ typedef enum rc_memory_order {
 #if defined(__clang__) || defined(__GNUC__)
 #  define RC_ATOMIC_BUILTINS_ 1
 #elif defined(_MSC_VER)
+#  ifndef _WIN64
+#    error "richc requires a 64-bit target on MSVC (32-bit Windows is not supported)"
+#  endif
 #  include <intrin.h>
 #else
 #  error "thread/atomic.h: unsupported compiler (expected clang, gcc, or MSVC)"
