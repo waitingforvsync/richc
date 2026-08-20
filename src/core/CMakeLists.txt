@@ -123,7 +123,11 @@ else()
 endif()
 
 find_package(Threads REQUIRED)
-target_link_libraries(richc PRIVATE m Threads::Threads)
+target_link_libraries(richc PRIVATE Threads::Threads)
+if(NOT WIN32)
+    # libm is part of the CRT on Windows; elsewhere it is a separate library.
+    target_link_libraries(richc PRIVATE m)
+endif()
 
 # ---- core test executable ----
 
