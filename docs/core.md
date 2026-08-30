@@ -445,7 +445,9 @@ API is exactly the [array template's](#richctemplatearrayh---view-span-array).
 |--------|-------|
 | `richc/array/u8.h` .. `u64.h`, `i8.h` .. `i64.h` | `rc_array_u8` .. `rc_array_u64`, `rc_array_i8` .. `rc_array_i64` (all four widths of each) |
 | `richc/array/f32.h`, `richc/array/f64.h` | `rc_array_f32`, `rc_array_f64` |
+| `richc/array/bool.h` | `rc_array_bool` |
 | `richc/array/str.h`, `richc/array/mstr.h` | `rc_array_str`, `rc_array_mstr` |
+| `richc/array/bitset.h` | `rc_array_bitset` (rows of `rc_bitset` - dataflow sets and the like) |
 | `richc/math/array/vec2i.h`, `vec3i.h`, `vec2f.h`, `vec3f.h`, `vec4f.h` | `rc_array_vec2i` etc. |
 | `richc/math/array/box2i.h`, `box2f.h` | `rc_array_box2i`, `rc_array_box2f` |
 | `richc/math/array/mat22f.h`, `mat23f.h`, `mat33f.h`, `mat34f.h`, `mat44f.h` | `rc_array_mat22f` etc. |
