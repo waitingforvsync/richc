@@ -213,6 +213,62 @@ RC_TEST_STEP(array, resize_shrink, fix)
     RC_CHECK(s.num, ==, 2u);              // span over the whole (shrunk) array
 }
 
+RC_TEST_STEP(array, resize_zero_grow, fix)
+{
+    rc_array_int a = rc_array_int_make(0, &fix->a);
+    rc_array_int_push(&a, 7, &fix->a);
+    rc_span_int s = rc_array_int_resize_zero(&a, 4, &fix->a);
+    RC_CHECK(a.num, ==, 4u);
+    RC_CHECK(s.num, ==, 4u);              // span over the whole array
+    RC_CHECK(RC_AT(s, 0), ==, 7);         // existing element untouched
+    RC_CHECK(RC_AT(s, 1), ==, 0);         // added elements are zeroed
+    RC_CHECK(RC_AT(s, 2), ==, 0);
+    RC_CHECK(RC_AT(s, 3), ==, 0);
+}
+
+RC_TEST_STEP(array, resize_zero_shrink_and_regrow, fix)
+{
+    rc_array_int a = rc_array_int_make(0, &fix->a);
+    rc_array_int_push(&a, 1, &fix->a);
+    rc_array_int_push(&a, 2, &fix->a);
+    rc_array_int_push(&a, 3, &fix->a);
+
+    // shrinking is identical to resize: no reallocation, elements retained
+    rc_span_int s = rc_array_int_resize_zero(&a, 1, NULL);
+    RC_CHECK(a.num, ==, 1u);
+    RC_CHECK(s.num, ==, 1u);
+    RC_CHECK(RC_AT(s, 0), ==, 1);
+
+    // regrowing within capacity zeroes the reclaimed elements (stale 2 and 3)
+    s = rc_array_int_resize_zero(&a, 3, NULL);
+    RC_CHECK(RC_AT(s, 0), ==, 1);
+    RC_CHECK(RC_AT(s, 1), ==, 0);
+    RC_CHECK(RC_AT(s, 2), ==, 0);
+}
+
+RC_TEST_STEP(array, resize_zero_same_size_and_empty, fix)
+{
+    // resizing to the current size zeroes nothing (no "new" elements)
+    rc_array_int a = rc_array_int_make(0, &fix->a);
+    rc_array_int_push(&a, 5, &fix->a);
+    rc_span_int s = rc_array_int_resize_zero(&a, 1, NULL);
+    RC_CHECK(RC_AT(s, 0), ==, 5);
+
+    // growing an empty zero-init array zeroes everything
+    rc_array_int e = {0};
+    rc_span_int t = rc_array_int_resize_zero(&e, 3, &fix->a);
+    RC_CHECK(e.num, ==, 3u);
+    RC_CHECK(RC_AT(t, 0), ==, 0);
+    RC_CHECK(RC_AT(t, 1), ==, 0);
+    RC_CHECK(RC_AT(t, 2), ==, 0);
+
+    // resizing an empty array to zero is a no-op needing no arena
+    rc_array_int z = {0};
+    rc_span_int u = rc_array_int_resize_zero(&z, 0, NULL);
+    RC_CHECK(z.num, ==, 0u);
+    RC_CHECK(u.num, ==, 0u);
+}
+
 RC_TEST_STEP(array, reset, fix)
 {
     rc_array_int a = rc_array_int_make(0, &fix->a);

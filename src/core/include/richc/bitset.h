@@ -18,6 +18,8 @@
  *
  * Allocating operations (bitset.c)
  * --------------------------------
+ *   rc_bitset_make(num, arena) -> rc_bitset
+ *        A freshly allocated bitset of num zero bits, reserved exactly.
  *   rc_bitset_reserve(bs, min_bits, arena)
  *        Ensure capacity for at least min_bits, allocated exactly (rounded up to
  *        a whole word).  No-op when cap >= min_bits.  Asserts arena != NULL when
@@ -87,6 +89,8 @@ typedef struct rc_bitset {
 
 /* ---- non-trivial operations (bitset.c) ---- */
 
+/* A freshly allocated bitset of num zero bits, reserved exactly.  arena is last, per convention. */
+rc_bitset rc_bitset_make(uint32_t num, rc_arena *arena);
 void     rc_bitset_reserve(rc_bitset *bs, uint32_t min_bits, rc_arena *arena);
 void     rc_bitset_resize(rc_bitset *bs, uint32_t new_num, rc_arena *arena);
 uint32_t rc_bitset_push(rc_bitset *bs, bool val, rc_arena *arena);

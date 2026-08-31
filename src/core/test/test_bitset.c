@@ -59,6 +59,55 @@ RC_TEST_STEP(bitset, reserve_noop_when_smaller, fix)
     RC_CHECK(bs.cap, ==, cap);
 }
 
+/* ---- make ---- */
+
+RC_TEST_STEP(bitset, make_zeroed, fix)
+{
+    rc_bitset bs = rc_bitset_make(100, &fix->a);
+    RC_CHECK(bs.num, ==, 100u);
+    RC_CHECK(bs.cap, ==, 128u);       // reserved exactly: rounded up to a whole word
+    for (uint32_t i = 0; i < 100; i++) {
+        RC_CHECK_FALSE(rc_bitset_is_set(&bs, i));
+    }
+    RC_CHECK(rc_bitset_get_first_set(&bs), ==, RC_INDEX_NONE);
+    RC_CHECK(rc_bitset_num_set_bits(&bs), ==, 0u);
+
+    // immediately usable: set/clear work across word boundaries
+    rc_bitset_set(&bs, 0);
+    rc_bitset_set(&bs, 63);
+    rc_bitset_set(&bs, 99);
+    RC_CHECK(rc_bitset_num_set_bits(&bs), ==, 3u);
+}
+
+RC_TEST_STEP(bitset, make_word_aligned, fix)
+{
+    // an exact word multiple stays put
+    rc_bitset bs = rc_bitset_make(64, &fix->a);
+    RC_CHECK(bs.num, ==, 64u);
+    RC_CHECK(bs.cap, ==, 64u);
+    RC_CHECK(rc_bitset_get_first_set(&bs), ==, RC_INDEX_NONE);
+}
+
+RC_TEST(bitset, make_empty)
+{
+    // num == 0 allocates nothing and needs no arena
+    rc_bitset bs = rc_bitset_make(0, NULL);
+    RC_CHECK(bs.num, ==, 0u);
+    RC_CHECK(bs.cap, ==, 0u);
+    RC_CHECK_TRUE(bs.data == NULL);
+    RC_CHECK(rc_bitset_get_first_set(&bs), ==, RC_INDEX_NONE);
+}
+
+RC_TEST_STEP(bitset, make_single_bit, fix)
+{
+    rc_bitset bs = rc_bitset_make(1, &fix->a);
+    RC_CHECK(bs.num, ==, 1u);
+    RC_CHECK(bs.cap, ==, 32u);
+    RC_CHECK_FALSE(rc_bitset_is_set(&bs, 0));
+    rc_bitset_set(&bs, 0);
+    RC_CHECK(rc_bitset_get_first_set(&bs), ==, 0u);
+}
+
 /* ---- set / clear / is_set ---- */
 
 RC_TEST_STEP(bitset, set_clear_is_set, fix)

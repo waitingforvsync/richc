@@ -74,6 +74,7 @@
  *   rc_array_<s>_is_empty(array)                      -> bool (num == 0)
  *   rc_array_<s>_reserve(array, capacity, arena)      -> void  (exact capacity)
  *   rc_array_<s>_resize(array, num, arena)            -> rc_span_<s> (whole array)
+ *   rc_array_<s>_resize_zero(array, num, arena)       -> rc_span_<s> (added elements zeroed)
  *   rc_array_<s>_reset(array)                         -> void
  *   rc_array_<s>_deinit(array, arena)                -> void  (free + zero)
  *   rc_array_<s>_push(array, value, arena)            -> uint32_t (index added)
@@ -181,6 +182,7 @@
 #define RC_ARRAY_RESERVE_       RC_CONCAT(RC_ARRAY_, _reserve)
 #define RC_ARRAY_GROW_          RC_CONCAT(RC_ARRAY_, _grow_)
 #define RC_ARRAY_RESIZE_        RC_CONCAT(RC_ARRAY_, _resize)
+#define RC_ARRAY_RESIZE_ZERO_   RC_CONCAT(RC_ARRAY_, _resize_zero)
 #define RC_ARRAY_RESET_         RC_CONCAT(RC_ARRAY_, _reset)
 #define RC_ARRAY_DEINIT_        RC_CONCAT(RC_ARRAY_, _deinit)
 #define RC_ARRAY_PUSH_          RC_CONCAT(RC_ARRAY_, _push)
@@ -380,6 +382,18 @@ static inline RC_ARRAY_TYPE *RC_ARRAY_AT_(RC_ARRAY_ *array, uint32_t index)
 static inline RC_SPAN_ RC_ARRAY_RESIZE_(RC_ARRAY_ *array, uint32_t num, rc_arena *arena)
 {
     RC_ARRAY_RESERVE_(array, num, arena);   // asserts the array
+    array->num = num;
+    return array->span;
+}
+
+// Resize to `num` elements and return a span over the whole array.  Added
+// elements (when growing) are zeroed; shrinking is identical to resize.
+static inline RC_SPAN_ RC_ARRAY_RESIZE_ZERO_(RC_ARRAY_ *array, uint32_t num, rc_arena *arena)
+{
+    RC_ASSERT(array);
+    uint32_t old_num = array->num;
+    RC_ARRAY_RESERVE_(array, num, arena);
+    if (num > old_num) memset(array->data + old_num, 0, (num - old_num) * sizeof(RC_ARRAY_TYPE));
     array->num = num;
     return array->span;
 }
@@ -722,6 +736,7 @@ static inline const RC_ARRAY_TYPE *RC_VIEW_LAST_AT_(RC_VIEW_ view)
 #undef RC_ARRAY_RESERVE_
 #undef RC_ARRAY_GROW_
 #undef RC_ARRAY_RESIZE_
+#undef RC_ARRAY_RESIZE_ZERO_
 #undef RC_ARRAY_RESET_
 #undef RC_ARRAY_DEINIT_
 #undef RC_ARRAY_PUSH_

@@ -240,6 +240,7 @@ NULL when no growth is needed.
 | `_get(a, i) -> T`<br>`_set(a, i, v)`<br>`_at(a, i) -> T *` | element access; index asserted in range |
 | `_reserve(a, capacity, arena)` | ensure exact capacity |
 | `_resize(a, num, arena) -> rc_span_<s>` | set the element count; returns a span over the whole array |
+| `_resize_zero(a, num, arena) -> rc_span_<s>` | as `_resize`, but added elements (when growing) are zeroed |
 | `_reset(a)` | `num = 0`, keep the buffer |
 | `_deinit(a, arena)` | free the backing (best-effort) and zero the struct |
 | `_push(a, v, arena) -> uint32_t` | append; returns the new element's index |
@@ -491,6 +492,7 @@ array policy; `arena` may be NULL whenever no growth is needed.
 
 | API | Description |
 |-----|-------------|
+| `rc_bitset_make(num, arena) -> rc_bitset` | freshly allocated bitset of `num` zero bits, reserved exactly |
 | `rc_bitset_reserve(bs, min_bits, arena)` | ensure capacity for `min_bits`, allocated exactly (word-rounded) |
 | `rc_bitset_resize(bs, new_num, arena)` | set `num`; growing leaves new bits 0, shrinking zeroes the vacated bits |
 | `rc_bitset_push(bs, val, arena) -> uint32_t` | append one bit; returns its index |

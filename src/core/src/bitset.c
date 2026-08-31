@@ -58,6 +58,17 @@ static void grow(rc_bitset *bs, uint32_t min_bits, rc_arena *arena)
     rc_bitset_reserve(bs, new_cap, arena);
 }
 
+/* ---- make ---- */
+
+/* A freshly allocated bitset of num zero bits, reserved exactly.  reserve zeroes the words, so no clearing here. */
+rc_bitset rc_bitset_make(uint32_t num, rc_arena *arena)
+{
+    rc_bitset out = {0};
+    rc_bitset_reserve(&out, num, arena);
+    out.num = num;
+    return out;
+}
+
 /* ---- resize ---- */
 
 /*
