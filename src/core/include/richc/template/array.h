@@ -305,11 +305,12 @@ static inline void RC_ARRAY_RESERVE_(RC_ARRAY_ *array, uint32_t capacity, rc_are
 {
     RC_ASSERT(array);
     if (capacity <= array->cap) return;
-    RC_ASSERT((size_t)capacity <= UINT32_MAX / sizeof(RC_ARRAY_TYPE));     // byte size overflow
+    uint64_t new_size = (uint64_t)capacity * sizeof(RC_ARRAY_TYPE);
+    RC_ASSERT(new_size <= UINT32_MAX);                                     // byte size overflow
     RC_ASSERT(arena);                                                      // arena required to reallocate
     void *p = rc_arena_realloc(arena, array->data,
                                (uint32_t)(array->cap * sizeof(RC_ARRAY_TYPE)),
-                               (uint32_t)(capacity * sizeof(RC_ARRAY_TYPE)));
+                               (uint32_t)new_size);
     array->data = (RC_ARRAY_TYPE *)p;
     array->cap  = capacity;
 }
