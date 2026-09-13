@@ -224,13 +224,13 @@ static void dump_box(rc_mstr *out, rc_box2i rect, rc_arena *arena)
 static void dump_vec4(rc_mstr *out, rc_vec4f v, rc_arena *arena)
 {
     rc_mstr_append_char(out, '(', arena);
-    rc_mstr_append_f32(out, v.x, arena);
+    rc_mstr_append_f32(out, v.x, (rc_float_format) {0}, arena);
     rc_mstr_append_char(out, ',', arena);
-    rc_mstr_append_f32(out, v.y, arena);
+    rc_mstr_append_f32(out, v.y, (rc_float_format) {0}, arena);
     rc_mstr_append_char(out, ',', arena);
-    rc_mstr_append_f32(out, v.z, arena);
+    rc_mstr_append_f32(out, v.z, (rc_float_format) {0}, arena);
     rc_mstr_append_char(out, ',', arena);
-    rc_mstr_append_f32(out, v.w, arena);
+    rc_mstr_append_f32(out, v.w, (rc_float_format) {0}, arena);
     rc_mstr_append_char(out, ')', arena);
 }
 
@@ -319,9 +319,9 @@ rc_mstr rc_gfx_cmd_buffer_dump(rc_gfx_cmd_buffer cb, rc_arena *arena)
             rc_mstr_append(&out, RC_STR("set_viewport "), arena);
             dump_box(&out, cmd.rect, arena);
             rc_mstr_append(&out, RC_STR(" depth=["), arena);
-            rc_mstr_append_f32(&out, cmd.min_depth, arena);
+            rc_mstr_append_f32(&out, cmd.min_depth, (rc_float_format) {0}, arena);
             rc_mstr_append_char(&out, ',', arena);
-            rc_mstr_append_f32(&out, cmd.max_depth, arena);
+            rc_mstr_append_f32(&out, cmd.max_depth, (rc_float_format) {0}, arena);
             rc_mstr_append_char(&out, ']', arena);
             break;
         }

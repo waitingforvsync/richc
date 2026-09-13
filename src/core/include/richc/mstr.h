@@ -49,6 +49,8 @@
  *   rc_mstr_append_n    - append n copies of a character (padding, rules, etc).
  *   rc_mstr_append_<T>  - append the decimal/text form of a number; the i64/u64/f64
  *                         variants do the work and the narrower ones widen into them.
+ *                         The float variants take an rc_float_format: zero-init gives
+ *                         the shortest form ("%g", 6 significant digits).
  *   rc_mstr_append_hexN - append the value as fixed-width uppercase hexadecimal,
  *                         zero-padded to N/4 digits (hex8 -> 2, hex16 -> 4, ...).
  *   rc_mstr_replace     - replace all non-overlapping occurrences of find with
@@ -84,6 +86,14 @@ typedef struct rc_mstr {
     uint32_t cap;
 } rc_mstr;
 
+// Formatting options for the float appenders.  Zero-init gives the default: the
+// shortest form ("%g") with 6 significant digits.  Note %g strips trailing zeroes,
+// so any integer within the precision renders exactly, with no point or exponent.
+typedef struct rc_float_format {
+    uint8_t precision;   // significant digits (fixed: decimal places); 0 = default 6; 17 round-trips a double
+    bool    fixed;       // fixed-point ("%f") instead of the shortest form ("%g")
+} rc_float_format;
+
 /* ---- construction (return by value) ---- */
 
 rc_mstr rc_mstr_make(uint32_t capacity, rc_arena *arena);
@@ -115,8 +125,8 @@ void rc_mstr_append_i64(rc_mstr *s, int64_t value, rc_arena *arena);
 void rc_mstr_append_u64(rc_mstr *s, uint64_t value, rc_arena *arena);
 void rc_mstr_append_i32(rc_mstr *s, int32_t value, rc_arena *arena);
 void rc_mstr_append_u32(rc_mstr *s, uint32_t value, rc_arena *arena);
-void rc_mstr_append_f64(rc_mstr *s, double value, rc_arena *arena);
-void rc_mstr_append_f32(rc_mstr *s, float value, rc_arena *arena);
+void rc_mstr_append_f64(rc_mstr *s, double value, rc_float_format fmt, rc_arena *arena);
+void rc_mstr_append_f32(rc_mstr *s, float value, rc_float_format fmt, rc_arena *arena);
 void rc_mstr_append_hex8(rc_mstr *s, uint8_t value, rc_arena *arena);
 void rc_mstr_append_hex16(rc_mstr *s, uint16_t value, rc_arena *arena);
 void rc_mstr_append_hex32(rc_mstr *s, uint32_t value, rc_arena *arena);

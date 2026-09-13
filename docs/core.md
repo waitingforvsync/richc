@@ -172,7 +172,7 @@ state; the mutators accept it and allocate on first use.
 | `rc_mstr_append_char(s, c, arena)` | append one character |
 | `rc_mstr_append_n(s, c, n, arena)` | append `n` copies of `c` (padding, rules); `n == 0` is a no-op |
 | `rc_mstr_append_i32/i64/u32/u64(s, value, arena)` | append the integer in decimal (minus sign for negatives; no locale, no printf) |
-| `rc_mstr_append_f32/f64(s, value, arena)` | append the float in `%g` form |
+| `rc_mstr_append_f32/f64(s, value, fmt, arena)` | append the float; `fmt` is an `rc_float_format {precision, fixed}` - zero-init gives the shortest form (`%g`, 6 significant digits), `precision` overrides the digit count (17 round-trips a double), `fixed` switches to fixed-point (`%f`, `precision` decimal places) |
 | `rc_mstr_append_hex8/16/32/64(s, value, arena)` | append as uppercase hex, zero-padded to the type's full width (2/4/8/16 digits); no prefix |
 | `rc_mstr_replace(s, find, replacement, arena)` | replace every non-overlapping `find`, rewriting in place; empty `find` is a no-op |
 | `rc_mstr_deinit(s, arena)` | free the backing (best-effort, see `rc_arena_free`) and zero to the invalid state; safe on an already invalid string |

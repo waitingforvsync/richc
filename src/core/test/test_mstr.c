@@ -285,10 +285,43 @@ RC_TEST_STEP(mstr, append_narrow_widths, fix)
 RC_TEST_STEP(mstr, append_floats, fix)
 {
     rc_mstr s = {0};
-    rc_mstr_append_f64(&s, 3.5, &fix->a);
+    rc_mstr_append_f64(&s, 3.5, (rc_float_format) {0}, &fix->a);
     rc_mstr_append_char(&s, ' ', &fix->a);
-    rc_mstr_append_f32(&s, 0.5f, &fix->a);   // exact in binary, so %g is tidy
+    rc_mstr_append_f32(&s, 0.5f, (rc_float_format) {0}, &fix->a);   // exact in binary, so %g is tidy
     RC_CHECK(s.view, ==, RC_STR("3.5 0.5"));
+}
+
+RC_TEST_STEP(mstr, append_floats_precision, fix)
+{
+    // The default 6 significant digits push a big integer into exponent form; 10 renders
+    // every 32-bit integer exactly, with no point and no exponent (%g strips the zeroes).
+    rc_mstr s = {0};
+    rc_mstr_append_f64(&s, 4294967295.0, (rc_float_format) {0}, &fix->a);
+    rc_mstr_append_char(&s, ' ', &fix->a);
+    rc_mstr_append_f64(&s, 4294967295.0, (rc_float_format) {.precision = 10}, &fix->a);
+    RC_CHECK(s.view, ==, RC_STR("4.29497e+09 4294967295"));
+
+    // Precision is significant digits, shared across the point.
+    rc_mstr t = {0};
+    rc_mstr_append_f64(&t, 3.141592653589793, (rc_float_format) {.precision = 10}, &fix->a);
+    RC_CHECK(t.view, ==, RC_STR("3.141592654"));
+
+    // 17 significant digits round-trip any double, warts and all.
+    rc_mstr u = {0};
+    rc_mstr_append_f64(&u, 0.1, (rc_float_format) {.precision = 17}, &fix->a);
+    RC_CHECK(u.view, ==, RC_STR("0.10000000000000001"));
+}
+
+RC_TEST_STEP(mstr, append_floats_fixed, fix)
+{
+    // fixed means decimal places, padded with zeroes - the classic %f.
+    rc_mstr s = {0};
+    rc_mstr_append_f64(&s, 1.5, (rc_float_format) {.precision = 2, .fixed = true}, &fix->a);
+    rc_mstr_append_char(&s, ' ', &fix->a);
+    rc_mstr_append_f64(&s, 5.0, (rc_float_format) {.precision = 3, .fixed = true}, &fix->a);
+    rc_mstr_append_char(&s, ' ', &fix->a);
+    rc_mstr_append_f64(&s, 3.14159, (rc_float_format) {.precision = 2, .fixed = true}, &fix->a);
+    RC_CHECK(s.view, ==, RC_STR("1.50 5.000 3.14"));
 }
 
 RC_TEST_STEP(mstr, append_hex, fix)

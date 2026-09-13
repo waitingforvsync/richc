@@ -172,18 +172,21 @@ void rc_mstr_append_hex64(rc_mstr *s, uint64_t value, rc_arena *arena)
     append_hex(s, value, 16, arena);
 }
 
-void rc_mstr_append_f64(rc_mstr *s, double value, rc_arena *arena)
+void rc_mstr_append_f64(rc_mstr *s, double value, rc_float_format fmt, rc_arena *arena)
 {
     // Interim: a fixed, compile-time-checked snprintf until richc grows real number formatting.
-    char buf[32];
-    int  n = snprintf(buf, sizeof buf, "%g", value);
+    // Sized for the worst case: fixed-point of a huge double is ~309 integer digits plus up to
+    // 255 decimal places.
+    char buf[640];
+    int  precision = (fmt.precision != 0) ? fmt.precision : 6;
+    int  n = snprintf(buf, sizeof buf, fmt.fixed ? "%.*f" : "%.*g", precision, value);
     RC_ASSERT(n >= 0 && (uint32_t)n < sizeof buf);
     rc_mstr_append(s, rc_str_make(buf, (uint32_t)n), arena);
 }
 
-void rc_mstr_append_f32(rc_mstr *s, float value, rc_arena *arena)
+void rc_mstr_append_f32(rc_mstr *s, float value, rc_float_format fmt, rc_arena *arena)
 {
-    rc_mstr_append_f64(s, value, arena);
+    rc_mstr_append_f64(s, value, fmt, arena);
 }
 
 void rc_mstr_replace(rc_mstr *s, rc_str find, rc_str replacement, rc_arena *arena)
