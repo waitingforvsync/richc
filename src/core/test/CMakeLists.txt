@@ -70,12 +70,14 @@ endif()
 # "data/..." path. The fixtures live in test/data/ and are staged next to the
 # binary first so that relative path resolves in every generator (including
 # multi-config, where the binary sits in a per-config subdirectory).
-add_custom_command(
-    TARGET richc_core_test POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_CURRENT_SOURCE_DIR}/data $<TARGET_FILE_DIR:richc_core_test>/data
-    COMMAND $<TARGET_FILE:richc_core_test>
-    WORKING_DIRECTORY $<TARGET_FILE_DIR:richc_core_test>
-    COMMENT "Running richc core tests"
-    VERBATIM
-)
+if(RICHC_RUN_TESTS)
+    add_custom_command(
+        TARGET richc_core_test POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${CMAKE_CURRENT_SOURCE_DIR}/data $<TARGET_FILE_DIR:richc_core_test>/data
+        COMMAND $<TARGET_FILE:richc_core_test>
+        WORKING_DIRECTORY $<TARGET_FILE_DIR:richc_core_test>
+        COMMENT "Running richc core tests"
+        VERBATIM
+    )
+endif()

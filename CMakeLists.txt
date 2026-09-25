@@ -10,4 +10,9 @@ set(CMAKE_C_EXTENSIONS OFF)
 # richc and link `richc` without dragging in windowing dependencies or tests.
 option(RICHC_CORE_ONLY "Build only the richc core library" OFF)
 
+# When ON (the default), the test executables run as a post-build step. A
+# consumer embedding richc can turn this off to build the tests without
+# running them on every build.
+option(RICHC_RUN_TESTS "Run the richc tests as a post-build step" ON)
+
 add_subdirectory(src)

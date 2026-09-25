@@ -27,12 +27,14 @@ endif()
 
 # Stage the binary test fixtures (data/) next to the test binary first, then run
 # with that directory as the working dir so the tests resolve "data/..." paths.
-add_custom_command(
-    TARGET richc_app_test POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_CURRENT_SOURCE_DIR}/data $<TARGET_FILE_DIR:richc_app_test>/data
-    COMMAND $<TARGET_FILE:richc_app_test>
-    WORKING_DIRECTORY $<TARGET_FILE_DIR:richc_app_test>
-    COMMENT "Running richc app tests"
-    VERBATIM
-)
+if(RICHC_RUN_TESTS)
+    add_custom_command(
+        TARGET richc_app_test POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${CMAKE_CURRENT_SOURCE_DIR}/data $<TARGET_FILE_DIR:richc_app_test>/data
+        COMMAND $<TARGET_FILE:richc_app_test>
+        WORKING_DIRECTORY $<TARGET_FILE_DIR:richc_app_test>
+        COMMENT "Running richc app tests"
+        VERBATIM
+    )
+endif()
