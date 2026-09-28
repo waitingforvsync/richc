@@ -1,0 +1,39 @@
+name: Build (Ubuntu 26)
+
+on:
+  push:
+    branches: [ "main" ]
+    tags:
+      - v*
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-26.04
+
+    strategy:
+      fail-fast: true
+      matrix:
+        build_type:
+          - Debug
+          - Release
+          - RelWithDebInfo
+          - MinSizeRel
+
+    name: Build (${{ matrix.build_type }})
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Wayland and GLFW build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwayland-dev libwayland-bin wayland-protocols libxkbcommon-dev
+
+      - name: Configure CMake with Ninja Multi-Config
+        run: cmake . -G "Ninja Multi-Config" -B build
+
+      - name: Build ${{ matrix.build_type }} Configuration
+        run: cmake --build build --config ${{ matrix.build_type }} -j1
