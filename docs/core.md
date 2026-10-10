@@ -230,7 +230,9 @@ Shared macros, defined once and usable with any instantiation:
 Array operations (`rc_array_<s>_` prefix). Growing operations grow
 geometrically - to the larger of double the capacity, the request, or 8 - so
 they stay amortised O(1); `reserve` is exact. `arena` comes last and may be
-NULL when no growth is needed.
+NULL when no growth is needed. A request whose element count or byte size
+would overflow 32 bits panics, in release builds too, rather than wrapping
+into a too-small buffer.
 
 | API | Description |
 |-----|-------------|

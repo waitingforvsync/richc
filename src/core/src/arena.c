@@ -128,6 +128,7 @@ static void *rc_arena_realloc_impl(rc_arena *a, void *ptr, uint32_t old_size, ui
 
     uint32_t aligned_old = rc_arena_align_up(old_size);
     uint32_t aligned_new = rc_arena_align_up(new_size);
+    RC_PANIC(aligned_new >= new_size);              // alignment rounding did not overflow (else it reads as a shrink)
     uint32_t ptr_offset  = (uint32_t)(size_t)((char *)ptr - a->base);
     bool     is_last     = (ptr_offset + aligned_old == a->top);
 
@@ -138,9 +139,9 @@ static void *rc_arena_realloc_impl(rc_arena *a, void *ptr, uint32_t old_size, ui
             return ptr;
         }
 
-        // Grow in place.
+        // Grow in place.  Checked before the addition, which could wrap past the reservation.
+        RC_PANIC(aligned_new <= a->reserved - ptr_offset);   // the grown block fits the reservation
         uint32_t new_top = ptr_offset + aligned_new;
-        RC_PANIC(new_top <= a->reserved);           // the grown block fits the reservation
         if (new_top > a->committed) {
             bool committed = rc_arena_grow_committed(a, new_top);
             RC_PANIC(committed);                    // the OS committed the pages

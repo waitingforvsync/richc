@@ -300,12 +300,14 @@ static inline bool RC_VIEW_IS_EMPTY_(RC_VIEW_ view)
 /* ---- generated array operations ---- */
 
 // Ensure capacity for exactly `capacity` elements; no-op when already at least
-// that large.  The arena is required only when a reallocation happens.
+// that large.  The arena is required only when a reallocation happens.  Panics
+// (in release too) if the byte size overflows 32 bits: a truncated size would
+// allocate less than `cap` promises.
 static inline void RC_ARRAY_RESERVE_(RC_ARRAY_ *array, uint32_t capacity, rc_arena *arena)
 {
     RC_ASSERT(array);
     if (capacity <= array->cap) return;
-    RC_ASSERT((uint64_t)capacity * sizeof(RC_ARRAY_TYPE) <= UINT32_MAX);   // byte size overflow
+    RC_PANIC((uint64_t)capacity * sizeof(RC_ARRAY_TYPE) <= UINT32_MAX);    // byte size overflow
     RC_ASSERT(arena);                                                      // arena required to reallocate
     void *p = rc_arena_realloc(arena, array->data,
                                (uint32_t)(array->cap * sizeof(RC_ARRAY_TYPE)),
@@ -314,17 +316,22 @@ static inline void RC_ARRAY_RESERVE_(RC_ARRAY_ *array, uint32_t capacity, rc_are
     array->cap  = capacity;
 }
 
-// Internal: ensure capacity for at least `capacity` elements, growing to the
-// larger of double the current capacity, the request, or 8 (the std::vector
-// policy).  Backs the incremental operations so they stay amortised O(1).
-static inline void RC_ARRAY_GROW_(RC_ARRAY_ *array, uint32_t capacity, rc_arena *arena)
+// Internal: ensure room for `n` more elements, growing to the larger of double
+// the current capacity (clamped to the largest a 32-bit byte size can hold),
+// the request, or 8 (the std::vector policy).  Backs the incremental operations
+// so they stay amortised O(1).  Panics (in release too) if num + n overflows:
+// a wrapped count would skip the growth and let the caller write past the end.
+static inline void RC_ARRAY_GROW_(RC_ARRAY_ *array, uint32_t n, rc_arena *arena)
 {
     RC_ASSERT(array);
+    RC_PANIC(n <= UINT32_MAX - array->num);             // the element count does not wrap
+    uint32_t capacity = array->num + n;
     if (capacity <= array->cap) return;
-    uint32_t doubled = array->cap * 2;                  // wraps on overflow; request dominates below
+    uint32_t max_cap = (uint32_t)(UINT32_MAX / sizeof(RC_ARRAY_TYPE));
+    uint32_t doubled = array->cap > max_cap / 2 ? max_cap : array->cap * 2;
     uint32_t new_cap = capacity > doubled ? capacity : doubled;
     if (new_cap < 8) new_cap = 8;
-    RC_ARRAY_RESERVE_(array, new_cap, arena);           // asserts on byte-size overflow
+    RC_ARRAY_RESERVE_(array, new_cap, arena);           // panics on byte-size overflow
 }
 
 // Create an empty array with initial_capacity pre-allocated (exact).
@@ -421,7 +428,7 @@ static inline uint32_t RC_ARRAY_PUSH_(RC_ARRAY_ *array, RC_ARRAY_TYPE value, rc_
 {
     RC_ASSERT(array);
     uint32_t index = array->num;
-    RC_ARRAY_GROW_(array, index + 1, arena);
+    RC_ARRAY_GROW_(array, 1, arena);
     array->data[index] = value;
     array->num = index + 1;
     return index;
@@ -433,7 +440,7 @@ static inline uint32_t RC_ARRAY_PUSH_N_(RC_ARRAY_ *array, uint32_t n, rc_arena *
 {
     RC_ASSERT(array);
     uint32_t index = array->num;
-    RC_ARRAY_GROW_(array, index + n, arena);
+    RC_ARRAY_GROW_(array, n, arena);
     array->num = index + n;
     return index;
 }
@@ -444,7 +451,7 @@ static inline uint32_t RC_ARRAY_PUSH_N_ZERO_(RC_ARRAY_ *array, uint32_t n, rc_ar
 {
     RC_ASSERT(array);
     uint32_t index = array->num;
-    RC_ARRAY_GROW_(array, index + n, arena);
+    RC_ARRAY_GROW_(array, n, arena);
     if (n > 0) memset(array->data + index, 0, n * sizeof(RC_ARRAY_TYPE));
     array->num = index + n;
     return index;
@@ -475,7 +482,7 @@ static inline uint32_t RC_ARRAY_APPEND_(RC_ARRAY_ *array, RC_VIEW_ view, rc_aren
     RC_ASSERT(RC_VIEW_IS_VALID_(view) || RC_VIEW_IS_EMPTY_(view));
     if (view.num > 0) {
         uint32_t index = array->num;
-        RC_ARRAY_GROW_(array, index + view.num, arena);
+        RC_ARRAY_GROW_(array, view.num, arena);
         memcpy(array->data + index, view.data, view.num * sizeof(RC_ARRAY_TYPE));
         array->num = index + view.num;
     }
@@ -488,7 +495,7 @@ static inline void RC_ARRAY_INSERT_(RC_ARRAY_ *array, uint32_t index, RC_ARRAY_T
 {
     RC_ASSERT(array);
     RC_ASSERT(index <= array->num);
-    RC_ARRAY_GROW_(array, array->num + 1, arena);
+    RC_ARRAY_GROW_(array, 1, arena);
     memmove(array->data + index + 1, array->data + index,
             (array->num - index) * sizeof(RC_ARRAY_TYPE));
     array->data[index] = value;
@@ -502,7 +509,7 @@ static inline void RC_ARRAY_INSERT_N_(RC_ARRAY_ *array, uint32_t index, uint32_t
     RC_ASSERT(array);
     RC_ASSERT(index <= array->num);
     if (num == 0) return;
-    RC_ARRAY_GROW_(array, array->num + num, arena);
+    RC_ARRAY_GROW_(array, num, arena);
     memmove(array->data + index + num, array->data + index,
             (array->num - index) * sizeof(RC_ARRAY_TYPE));
     array->num += num;
@@ -515,7 +522,7 @@ static inline void RC_ARRAY_INSERT_N_ZERO_(RC_ARRAY_ *array, uint32_t index, uin
     RC_ASSERT(array);
     RC_ASSERT(index <= array->num);
     if (num == 0) return;
-    RC_ARRAY_GROW_(array, array->num + num, arena);
+    RC_ARRAY_GROW_(array, num, arena);
     memmove(array->data + index + num, array->data + index,
             (array->num - index) * sizeof(RC_ARRAY_TYPE));
     memset(array->data + index, 0, num * sizeof(RC_ARRAY_TYPE));
